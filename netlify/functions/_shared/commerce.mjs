@@ -341,14 +341,21 @@ export async function reserveInventoryHold({
       Number(availability[item.productId] || 0);
 
     const held =
-      heldQuantity(
-        holds,
-        item.productId,
-        orderId
-      );
+  heldQuantity(
+    holds,
+    item.productId,
+    orderId
+  );
 
-    const available =
-      sourceQuantity - held;
+const committed =
+  await committedQuantity(
+    item.productId
+  );
+
+const available =
+  sourceQuantity -
+  held -
+  committed;
 
     if (available < item.quantity) {
       const error = new Error(
@@ -558,4 +565,109 @@ export function publicOrder(order) {
 
     bank: bankInstructions(),
   };
+}
+
+export function adminAuthorized(request) {
+  const expected = String(
+    process.env.ADMIN_TOKEN || ''
+  );
+
+  const provided = String(
+    request.headers.get('x-admin-token') || ''
+  );
+
+  return Boolean(
+    expected &&
+    provided &&
+    expected === provided
+  );
+}
+
+
+export async function listOrders() {
+  const store = ordersStore();
+
+  const result = await store.list();
+
+  const orders = [];
+
+  for (const blob of result.blobs) {
+    const order = await store.get(
+      blob.key,
+      {
+        type: 'json',
+        consistency: 'strong',
+      }
+    );
+
+    if (order) {
+      orders.push(order);
+    }
+  }
+
+  orders.sort(
+    (a, b) =>
+      Number(b.createdAt || 0) -
+      Number(a.createdAt || 0)
+  );
+
+  return orders;
+}
+
+
+async function committedQuantity(productId) {
+  const record = await inventoryStore().get(
+    `committed:${productId}`,
+    {
+      type: 'json',
+      consistency: 'strong',
+    }
+  );
+
+  return Number(
+    record?.quantity || 0
+  );
+}
+
+
+export async function commitInventoryHold(
+  orderId
+) {
+  const store = inventoryStore();
+
+  const key = `hold:${orderId}`;
+
+  const hold = await store.get(
+    key,
+    {
+      type: 'json',
+      consistency: 'strong',
+    }
+  );
+
+  if (!hold) {
+    return false;
+  }
+
+  for (const item of hold.items || []) {
+    const committed =
+      await committedQuantity(
+        item.productId
+      );
+
+    await store.setJSON(
+      `committed:${item.productId}`,
+      {
+        quantity:
+          committed +
+          Number(item.quantity || 0),
+
+        updatedAt: Date.now(),
+      }
+    );
+  }
+
+  await store.delete(key);
+
+  return true;
 }

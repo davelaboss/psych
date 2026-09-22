@@ -1,9 +1,13 @@
-/api/orders/create      /.netlify/functions/create-order      200
-/api/orders/get         /.netlify/functions/get-order         200
-/api/orders/receipt     /.netlify/functions/upload-receipt    200
+/api/admin/orders              /.netlify/functions/admin-orders             200
+/api/admin/order               /.netlify/functions/admin-order              200
+/api/admin/receipt             /.netlify/functions/admin-receipt            200
+/api/admin/confirm-payment     /.netlify/functions/admin-confirm-payment    200
+/api/orders/create             /.netlify/functions/create-order             200
+/api/orders/get                /.netlify/functions/get-order                200
+/api/orders/receipt            /.netlify/functions/upload-receipt           200
 
 /producto/*             /index.html                            200
 /carrito                /index.html                            200
 /checkout               /index.html                            200
 /pedido/*               /index.html                            200
-/admin                   /index.html                            200
+/admin                  /index.html                            200

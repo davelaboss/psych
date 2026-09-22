@@ -1136,6 +1136,12 @@ function orderStatusLabel(status) {
     PAID_IN_FULL:
       'Pago completo',
 
+    PAYMENT_CONFIRMED:
+      'Pago confirmado',
+
+    DEPOSIT_CONFIRMED:
+      'Seña confirmada',
+  
     READY_TO_SCHEDULE:
       'Listo para coordinar retiro',
 
