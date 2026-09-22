@@ -1,0 +1,1 @@
+import{n as e}from"./server-ZKGoXLHE.js";import{o as t}from"./database-BjUZ_K5o.js";async function n(n){try{let r=await n.json(),i=await t(Array.isArray(r.items)?r.items:[]);return e.json(i)}catch(t){return e.json({error:t instanceof Error?t.message:`No se pudo iniciar la compra.`},{status:409})}}export{n as POST};
