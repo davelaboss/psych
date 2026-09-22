@@ -1,0 +1,4 @@
+serve.py
+source/.next/
+source/node_modules/
+source/package-lock.json
