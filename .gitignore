@@ -2,3 +2,8 @@ serve.py
 source/.next/
 source/node_modules/
 source/package-lock.json
+# Local Netlify folder
+.env
+.netlify/
+node_modules/
+deno.lock

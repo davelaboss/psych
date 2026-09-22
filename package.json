@@ -1,0 +1,8 @@
+{
+  "name": "psych-sale-site",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.0"
+  }
+}
