@@ -1,6 +1,8 @@
 // File: js/site.js
 // Run static routing after the old generated app has completely finished loading.
 window.addEventListener('load', function () {
+  updateStaticCartCount();
+  
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
 
   if (!path.startsWith('/producto/')) {
@@ -217,26 +219,56 @@ window.addEventListener('load', function () {
             </div>
           </div>
 
-          <div class="product-actions">
-            <a
-              class="secondary-action"
-              href="https://wa.me/595972588347?text=${encodeURIComponent(
-          'Hola, quisiera consultar sobre ' +
-          product.title +
-          ' (Item ' +
-          String(product.itemNumber).padStart(3, '0') +
-          ').'
-        )}"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Consultar por WhatsApp
-            </a>
+<div class="product-actions">
+  <button
+    id="product-cart-button"
+    class="primary-action"
+    type="button"
+    ${product.status !== 'AVAILABLE' ? 'disabled' : ''}
+  >
+    ${
+      product.status !== 'AVAILABLE'
+        ? 'No disponible'
+        : product.saleMode === 'DELAYED'
+          ? 'Reservar este artículo'
+          : 'Agregar al carrito'
+    }
+  </button>
 
-            <a class="text-action" href="/#articulos">
-              ← Volver al catálogo
-            </a>
-          </div>
+  <a
+    class="secondary-action"
+    href="https://wa.me/595972588347?text=${encodeURIComponent(
+      'Hola, quisiera consultar sobre ' +
+      product.title +
+      ' (Item ' +
+      String(product.itemNumber).padStart(3, '0') +
+      ').'
+    )}"
+    target="_blank"
+    rel="noreferrer"
+  >
+    Consultar por WhatsApp
+  </a>
+
+  <a
+    class="text-action"
+    href="https://wa.me/595972588347?text=${encodeURIComponent(
+      'Mirá este artículo de la venta de mudanza: ' +
+      product.title +
+      ' · ' +
+      formatPYG(product.askingPricePYG) +
+      '.'
+    )}"
+    target="_blank"
+    rel="noreferrer"
+  >
+    Compartir por WhatsApp
+  </a>
+
+  <a class="text-action" href="/#articulos">
+    ← Volver al catálogo
+  </a>
+</div>
 
           <p class="reservation-rule">
             Un mensaje de interés no reserva el artículo.
@@ -301,11 +333,104 @@ window.addEventListener('load', function () {
 
       </section>
     </section>
-  `;
+    `;
+
+  setupProductCartButton(product);
+}
+const STATIC_CART_KEY = 'mudanza-demo-cart';
+
+function getStaticCart() {
+  try {
+    const stored = JSON.parse(
+      localStorage.getItem(STATIC_CART_KEY) || '{"ids":[],"quantities":{}}'
+    );
+
+    if (Array.isArray(stored)) {
+      return {
+        ids: stored.filter((id) => typeof id === 'string'),
+        quantities: Object.fromEntries(
+          stored
+            .filter((id) => typeof id === 'string')
+            .map((id) => [id, 1])
+        ),
+      };
     }
 
+    return {
+      ids: Array.isArray(stored.ids) ? stored.ids : [],
+      quantities:
+        stored.quantities && typeof stored.quantities === 'object'
+          ? stored.quantities
+          : {},
+    };
+  } catch {
+    return {
+      ids: [],
+      quantities: {},
+    };
+  }
+}
 
-    function formatPYG(value) {
+function saveStaticCart(cart) {
+  localStorage.setItem(STATIC_CART_KEY, JSON.stringify(cart));
+  updateStaticCartCount();
+}
+
+function addStaticCartItem(productId) {
+  const cart = getStaticCart();
+
+  if (!cart.ids.includes(productId)) {
+    cart.ids.push(productId);
+  }
+
+  if (!cart.quantities[productId]) {
+    cart.quantities[productId] = 1;
+  }
+
+  saveStaticCart(cart);
+}
+
+function staticCartHas(productId) {
+  return getStaticCart().ids.includes(productId);
+}
+
+function updateStaticCartCount() {
+  const cart = getStaticCart();
+
+  const total = cart.ids.reduce(
+    (sum, id) => sum + Number(cart.quantities[id] || 1),
+    0
+  );
+
+  const counter = document.querySelector('.cart-link span');
+
+  if (counter) {
+    counter.textContent = String(total);
+  }
+}
+
+function setupProductCartButton(product) {
+  const button = document.getElementById('product-cart-button');
+
+  if (!button || product.status !== 'AVAILABLE') {
+    return;
+  }
+
+  function refreshButton() {
+    if (staticCartHas(product.id)) {
+      button.textContent = 'Ya está en el carrito';
+      button.disabled = true;
+    }
+  }
+
+  refreshButton();
+
+  button.addEventListener('click', function () {
+    addStaticCartItem(product.id);
+    refreshButton();
+  });
+}
+function formatPYG(value) {
       return 'Gs. ' + Number(value || 0).toLocaleString('es-PY');
     }
 
