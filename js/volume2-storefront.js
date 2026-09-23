@@ -12,6 +12,8 @@
 
   async function boot() {
     try {
+      installStyles();
+
       const original = collectOriginalProducts();
       const volume2 = await fetchVolume2();
       state.products = dedupe([...original, ...volume2])
@@ -24,10 +26,13 @@
       if (path.startsWith('/producto/')) {
         const slug = decodeURIComponent(path.slice('/producto/'.length));
         const product = state.products.find((item) => item.slug === slug);
+
         if (product && typeof window.renderProductDetail === 'function') {
           window.renderProductDetail(product);
-          installDetailLightbox();
         }
+
+        enhanceDetailPhotoAction();
+        installDetailLightbox();
         return;
       }
 
@@ -373,80 +378,389 @@
     return 'GOOD';
   }
 
-  function installDetailLightbox() {
-    document.addEventListener('click', (event) => {
-      const main = event.target.closest('.main-image');
-      if (!main) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
+  function enhanceDetailPhotoAction() {
+    const main =
+      document.querySelector('.main-image');
 
-      const slug = decodeURIComponent(cleanPath().slice('/producto/'.length));
-      const product = state.products.find((item) => item.slug === slug);
-      if (product) createLightbox(product.images || [], 0);
-    }, true);
+    if (!main) {
+      return;
+    }
+
+    main.setAttribute(
+      'aria-label',
+      'Ver foto(s)'
+    );
+
+    if (
+      !main.querySelector(
+        '.image-enlarge-hint'
+      )
+    ) {
+      const hint =
+        document.createElement('span');
+
+      hint.className =
+        'image-enlarge-hint';
+
+      hint.textContent =
+        'Ver foto(s)';
+
+      main.appendChild(hint);
+    }
+  }
+
+
+  function installDetailLightbox() {
+    document.addEventListener(
+      'click',
+      (event) => {
+        const trigger =
+          event.target.closest(
+            '.main-image, .product-gallery-thumbnails button'
+          );
+
+        if (!trigger) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        const renderedImages =
+          [
+            ...document.querySelectorAll(
+              '.product-gallery img'
+            ),
+          ]
+            .map(
+              (img) =>
+                img.getAttribute('src') ||
+                img.currentSrc ||
+                ''
+            )
+            .filter(Boolean);
+
+        const images =
+          [
+            ...new Set(
+              renderedImages.map(
+                withLeadingSlash
+              )
+            ),
+          ];
+
+        if (!images.length) {
+          return;
+        }
+
+        const clickedImage =
+          trigger.querySelector('img');
+
+        const clickedSrc =
+          withLeadingSlash(
+            clickedImage?.getAttribute(
+              'src'
+            ) ||
+            clickedImage?.currentSrc ||
+            ''
+          );
+
+        let initialIndex =
+          images.findIndex(
+            (src) =>
+              src === clickedSrc
+          );
+
+        if (initialIndex < 0) {
+          initialIndex = 0;
+        }
+
+        createLightbox(
+          images,
+          initialIndex
+        );
+      },
+      true
+    );
   }
 
   function createLightbox(images, initialIndex) {
-    const clean = [...new Set(images.map(withLeadingSlash).filter(Boolean))];
-    if (!clean.length) return;
+    const clean =
+      [
+        ...new Set(
+          images
+            .map(withLeadingSlash)
+            .filter(Boolean)
+        ),
+      ];
 
-    let index = Math.max(0, Math.min(initialIndex || 0, clean.length - 1));
+    if (!clean.length) {
+      return;
+    }
+
+    let index =
+      Math.max(
+        0,
+        Math.min(
+          initialIndex || 0,
+          clean.length - 1
+        )
+      );
+
     let zoom = 1;
     let dragging = false;
-    let startX = 0, startY = 0, scrollX = 0, scrollY = 0;
+    let startX = 0;
+    let startY = 0;
+    let scrollX = 0;
+    let scrollY = 0;
 
-    const box = document.createElement('div');
-    box.className = 'catalog-lightbox';
+    const box =
+      document.createElement('div');
+
+    box.className =
+      'catalog-lightbox';
+
     box.innerHTML = `
-      <div class="catalog-lightbox-dialog" role="dialog" aria-modal="true" aria-label="Fotos del artículo">
+      <div
+        class="catalog-lightbox-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Fotos del artículo"
+      >
         <header>
           <strong>Fotos del artículo</strong>
           <span data-count></span>
-          <button type="button" data-close aria-label="Cerrar">×</button>
+
+          <button
+            type="button"
+            class="catalog-lightbox-close"
+            data-close
+            aria-label="Cerrar fotos"
+            title="Cerrar"
+          >
+            ×
+          </button>
         </header>
+
         <div class="catalog-lightbox-stage">
-          <button type="button" data-prev aria-label="Anterior">‹</button>
-          <div class="catalog-lightbox-canvas" data-canvas>
-            <img data-image alt="" draggable="false">
+          <button
+            type="button"
+            data-prev
+            aria-label="Foto anterior"
+          >
+            ‹
+          </button>
+
+          <div
+            class="catalog-lightbox-canvas"
+            data-canvas
+          >
+            <img
+              data-image
+              alt=""
+              draggable="false"
+            >
           </div>
-          <button type="button" data-next aria-label="Siguiente">›</button>
+
+          <button
+            type="button"
+            data-next
+            aria-label="Foto siguiente"
+          >
+            ›
+          </button>
         </div>
+
+        ${
+          clean.length > 1
+            ? `
+              <div
+                class="catalog-lightbox-thumbs"
+                data-thumbs
+                aria-label="Miniaturas de fotos"
+              ></div>
+            `
+            : ''
+        }
+
         <footer>
-          <button type="button" data-out>−</button>
-          <strong data-zoom>100%</strong>
-          <button type="button" data-in>+</button>
-          <button type="button" data-reset>Restablecer</button>
-          <span>Rueda del mouse para zoom · arrastrá para mover</span>
+          <button
+            type="button"
+            data-out
+            aria-label="Alejar"
+          >
+            −
+          </button>
+
+          <strong data-zoom>
+            100%
+          </strong>
+
+          <button
+            type="button"
+            data-in
+            aria-label="Acercar"
+          >
+            +
+          </button>
+
+          <button
+            type="button"
+            data-reset
+          >
+            Restablecer
+          </button>
+
+          <span>
+            Rueda del mouse para zoom · arrastrá para mover
+          </span>
         </footer>
       </div>
     `;
+
     document.body.appendChild(box);
 
-    const canvas = box.querySelector('[data-canvas]');
-    const image = box.querySelector('[data-image]');
-    const count = box.querySelector('[data-count]');
-    const label = box.querySelector('[data-zoom]');
-    let baseW = 0, baseH = 0;
+    const canvas =
+      box.querySelector(
+        '[data-canvas]'
+      );
+
+    const image =
+      box.querySelector(
+        '[data-image]'
+      );
+
+    const count =
+      box.querySelector(
+        '[data-count]'
+      );
+
+    const label =
+      box.querySelector(
+        '[data-zoom]'
+      );
+
+    const thumbs =
+      box.querySelector(
+        '[data-thumbs]'
+      );
+
+    let baseW = 0;
+    let baseH = 0;
+
+    if (thumbs) {
+      thumbs.innerHTML =
+        clean
+          .map(
+            (src, thumbIndex) => `
+              <button
+                type="button"
+                data-thumb="${thumbIndex}"
+                aria-label="Ver foto ${thumbIndex + 1}"
+              >
+                <img
+                  src="${escapeAttr(src)}"
+                  alt=""
+                  draggable="false"
+                >
+              </button>
+            `
+          )
+          .join('');
+
+      thumbs
+        .querySelectorAll(
+          '[data-thumb]'
+        )
+        .forEach(
+          (button) => {
+            button.addEventListener(
+              'click',
+              () => {
+                index =
+                  Number(
+                    button.getAttribute(
+                      'data-thumb'
+                    )
+                  );
+
+                show();
+              }
+            );
+          }
+        );
+    }
 
     function fit() {
-      const scale = Math.min(
-        (canvas.clientWidth - 24) / image.naturalWidth,
-        (canvas.clientHeight - 24) / image.naturalHeight,
-        1
-      );
-      baseW = image.naturalWidth * scale;
-      baseH = image.naturalHeight * scale;
+      if (
+        !image.naturalWidth ||
+        !image.naturalHeight
+      ) {
+        return;
+      }
+
+      const scale =
+        Math.min(
+          (
+            canvas.clientWidth -
+            24
+          ) /
+            image.naturalWidth,
+          (
+            canvas.clientHeight -
+            24
+          ) /
+            image.naturalHeight,
+          1
+        );
+
+      baseW =
+        image.naturalWidth *
+        scale;
+
+      baseH =
+        image.naturalHeight *
+        scale;
+
       setZoom(1);
     }
 
     function setZoom(next) {
-      zoom = Math.max(1, Math.min(4, next));
-      image.style.width = `${Math.round(baseW * zoom)}px`;
-      image.style.height = `${Math.round(baseH * zoom)}px`;
-      image.style.maxWidth = 'none';
-      image.style.maxHeight = 'none';
-      label.textContent = `${Math.round(zoom * 100)}%`;
-      canvas.classList.toggle('can-pan', zoom > 1);
+      zoom =
+        Math.max(
+          1,
+          Math.min(
+            4,
+            next
+          )
+        );
+
+      image.style.width =
+        `${Math.round(
+          baseW * zoom
+        )}px`;
+
+      image.style.height =
+        `${Math.round(
+          baseH * zoom
+        )}px`;
+
+      image.style.maxWidth =
+        'none';
+
+      image.style.maxHeight =
+        'none';
+
+      label.textContent =
+        `${Math.round(
+          zoom * 100
+        )}%`;
+
+      canvas.classList.toggle(
+        'can-pan',
+        zoom > 1
+      );
+
       if (zoom === 1) {
         canvas.scrollLeft = 0;
         canvas.scrollTop = 0;
@@ -455,65 +769,263 @@
 
     function show() {
       zoom = 1;
-      image.src = clean[index];
-      count.textContent = `${index + 1} de ${clean.length}`;
+
+      image.src =
+        clean[index];
+
+      count.textContent =
+        `${index + 1} de ${clean.length}`;
+
+      if (thumbs) {
+        thumbs
+          .querySelectorAll(
+            '[data-thumb]'
+          )
+          .forEach(
+            (button) => {
+              const active =
+                Number(
+                  button.getAttribute(
+                    'data-thumb'
+                  )
+                ) === index;
+
+              button.classList.toggle(
+                'is-active',
+                active
+              );
+
+              button.setAttribute(
+                'aria-current',
+                active
+                  ? 'true'
+                  : 'false'
+              );
+            }
+          );
+
+        const activeThumb =
+          thumbs.querySelector(
+            '.is-active'
+          );
+
+        activeThumb?.scrollIntoView({
+          block: 'nearest',
+          inline: 'center',
+        });
+      }
     }
 
     function move(delta) {
-      index = (index + delta + clean.length) % clean.length;
+      index =
+        (
+          index +
+          delta +
+          clean.length
+        ) %
+        clean.length;
+
       show();
     }
 
     function close() {
       box.remove();
-      document.removeEventListener('keydown', keys);
+
+      document.removeEventListener(
+        'keydown',
+        keys
+      );
     }
 
     function keys(event) {
-      if (event.key === 'Escape') close();
-      if (event.key === 'ArrowLeft') move(-1);
-      if (event.key === 'ArrowRight') move(1);
+      if (
+        event.key === 'Escape'
+      ) {
+        close();
+      }
+
+      if (
+        event.key ===
+        'ArrowLeft'
+      ) {
+        move(-1);
+      }
+
+      if (
+        event.key ===
+        'ArrowRight'
+      ) {
+        move(1);
+      }
     }
 
-    image.addEventListener('load', fit);
-    canvas.addEventListener('wheel', (event) => {
-      event.preventDefault();
-      setZoom(zoom + (event.deltaY < 0 ? .2 : -.2));
-    }, { passive: false });
+    image.addEventListener(
+      'load',
+      fit
+    );
 
-    canvas.addEventListener('pointerdown', (event) => {
-      if (zoom <= 1) return;
-      dragging = true;
-      startX = event.clientX;
-      startY = event.clientY;
-      scrollX = canvas.scrollLeft;
-      scrollY = canvas.scrollTop;
-      canvas.setPointerCapture(event.pointerId);
-      canvas.classList.add('dragging');
-    });
+    canvas.addEventListener(
+      'wheel',
+      (event) => {
+        event.preventDefault();
 
-    canvas.addEventListener('pointermove', (event) => {
-      if (!dragging) return;
-      canvas.scrollLeft = scrollX - (event.clientX - startX);
-      canvas.scrollTop = scrollY - (event.clientY - startY);
-    });
+        setZoom(
+          zoom +
+          (
+            event.deltaY < 0
+              ? .2
+              : -.2
+          )
+        );
+      },
+      {
+        passive: false,
+      }
+    );
 
-    canvas.addEventListener('pointerup', () => {
-      dragging = false;
-      canvas.classList.remove('dragging');
-    });
+    canvas.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (zoom <= 1) {
+          return;
+        }
 
-    image.addEventListener('dblclick', () => setZoom(zoom === 1 ? 2 : 1));
-    box.querySelector('[data-close]').addEventListener('click', close);
-    box.querySelector('[data-prev]').addEventListener('click', () => move(-1));
-    box.querySelector('[data-next]').addEventListener('click', () => move(1));
-    box.querySelector('[data-in]').addEventListener('click', () => setZoom(zoom + .25));
-    box.querySelector('[data-out]').addEventListener('click', () => setZoom(zoom - .25));
-    box.querySelector('[data-reset]').addEventListener('click', () => setZoom(1));
-    box.addEventListener('click', (event) => {
-      if (event.target === box) close();
-    });
-    document.addEventListener('keydown', keys);
+        dragging = true;
+        startX = event.clientX;
+        startY = event.clientY;
+        scrollX = canvas.scrollLeft;
+        scrollY = canvas.scrollTop;
+
+        canvas.setPointerCapture(
+          event.pointerId
+        );
+
+        canvas.classList.add(
+          'dragging'
+        );
+      }
+    );
+
+    canvas.addEventListener(
+      'pointermove',
+      (event) => {
+        if (!dragging) {
+          return;
+        }
+
+        canvas.scrollLeft =
+          scrollX -
+          (
+            event.clientX -
+            startX
+          );
+
+        canvas.scrollTop =
+          scrollY -
+          (
+            event.clientY -
+            startY
+          );
+      }
+    );
+
+    canvas.addEventListener(
+      'pointerup',
+      () => {
+        dragging = false;
+
+        canvas.classList.remove(
+          'dragging'
+        );
+      }
+    );
+
+    image.addEventListener(
+      'dblclick',
+      () =>
+        setZoom(
+          zoom === 1
+            ? 2
+            : 1
+        )
+    );
+
+    box
+      .querySelector(
+        '[data-close]'
+      )
+      .addEventListener(
+        'click',
+        close
+      );
+
+    box
+      .querySelector(
+        '[data-prev]'
+      )
+      .addEventListener(
+        'click',
+        () => move(-1)
+      );
+
+    box
+      .querySelector(
+        '[data-next]'
+      )
+      .addEventListener(
+        'click',
+        () => move(1)
+      );
+
+    box
+      .querySelector(
+        '[data-in]'
+      )
+      .addEventListener(
+        'click',
+        () =>
+          setZoom(
+            zoom + .25
+          )
+      );
+
+    box
+      .querySelector(
+        '[data-out]'
+      )
+      .addEventListener(
+        'click',
+        () =>
+          setZoom(
+            zoom - .25
+          )
+      );
+
+    box
+      .querySelector(
+        '[data-reset]'
+      )
+      .addEventListener(
+        'click',
+        () => setZoom(1)
+      );
+
+    box.addEventListener(
+      'click',
+      (event) => {
+        if (
+          event.target === box
+        ) {
+          close();
+        }
+      }
+    );
+
+    document.addEventListener(
+      'keydown',
+      keys
+    );
+
     show();
   }
 
@@ -533,16 +1045,24 @@
       .image-enlarge-hint{cursor:zoom-in!important}
       .reset-filters,.reset-filters:hover,.reset-filters:focus,.reset-filters:active{color:var(--forest)!important;background:transparent!important;border-color:var(--line)!important;box-shadow:none!important}
       .catalog-lightbox{position:fixed;inset:0;z-index:5000;display:grid;place-items:center;padding:18px;background:rgba(3,10,7,.95)}
-      .catalog-lightbox-dialog{width:min(1450px,100%);height:min(920px,calc(100vh - 36px));display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;color:#fff;background:#151a17;border:1px solid rgba(255,255,255,.18);border-radius:12px}
-      .catalog-lightbox header{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.15)}
+      .catalog-lightbox-dialog{width:min(1450px,100%);height:min(920px,calc(100vh - 36px));display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;overflow:hidden;color:#fff;background:#151a17;border:1px solid rgba(255,255,255,.18);border-radius:12px}
+      .catalog-lightbox header{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:10px 12px 10px 16px;border-bottom:1px solid rgba(255,255,255,.15)}
       .catalog-lightbox button{min-height:40px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:#252c28;color:#fff;font-weight:800;cursor:pointer}
+      .catalog-lightbox .catalog-lightbox-close{width:52px;height:52px;min-height:52px;padding:0;font-size:30px;line-height:1;display:grid;place-items:center}
       .catalog-lightbox-stage{min-height:0;display:grid;grid-template-columns:54px minmax(0,1fr) 54px;gap:8px;padding:12px}
       .catalog-lightbox-stage>button{align-self:center;width:48px;font-size:30px}
       .catalog-lightbox-canvas{min-width:0;min-height:0;overflow:auto;display:grid;place-items:center;background:#0c100e;border-radius:8px;cursor:zoom-in;touch-action:none}
       .catalog-lightbox-canvas.can-pan{cursor:grab}.catalog-lightbox-canvas.dragging{cursor:grabbing}
       .catalog-lightbox-canvas img{display:block;object-fit:contain;user-select:none}
+      .catalog-lightbox-thumbs{display:flex;gap:10px;overflow-x:auto;padding:10px 14px;border-top:1px solid rgba(255,255,255,.12);background:#111612}
+      .catalog-lightbox-thumbs button{flex:0 0 auto;width:78px;height:78px;min-height:78px;padding:4px;border:2px solid transparent;background:#252c28}
+      .catalog-lightbox-thumbs button.is-active{border-color:#fff}
+      .catalog-lightbox-thumbs img{width:100%;height:100%;object-fit:cover;border-radius:4px;display:block}
       .catalog-lightbox footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;padding:12px 16px;border-top:1px solid rgba(255,255,255,.15)}
       .catalog-lightbox footer button{padding:4px 12px}.catalog-lightbox footer span{color:#c7d0cb;font-size:12px}
+      .main-image{position:relative!important;cursor:zoom-in!important}
+      .main-image .image-enlarge-hint{position:absolute;right:12px;bottom:12px;z-index:2}
+      .product-gallery-thumbnails button{cursor:zoom-in!important}
     `;
     document.head.appendChild(style);
   }
