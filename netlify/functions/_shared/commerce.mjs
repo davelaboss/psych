@@ -86,6 +86,100 @@ function inventoryStore() {
 }
 
 
+function productOverrideStore() {
+  return getStore({
+    name: 'mudanza-product-overrides',
+    consistency: 'strong',
+  });
+}
+
+
+export function productMediaStore() {
+  return getStore({
+    name: 'mudanza-product-media',
+    consistency: 'strong',
+  });
+}
+
+
+export async function getProductOverride(productId) {
+  return productOverrideStore().get(
+    `product:${productId}`,
+    {
+      type: 'json',
+      consistency: 'strong',
+    }
+  );
+}
+
+
+export async function saveProductOverride(productId, override) {
+  const saved = {
+    ...override,
+    productId,
+    updatedAt: Date.now(),
+  };
+
+  await productOverrideStore().setJSON(
+    `product:${productId}`,
+    saved
+  );
+
+  return saved;
+}
+
+
+export async function listProductOverrides() {
+  const store = productOverrideStore();
+  const result = await store.list({
+    prefix: 'product:',
+  });
+
+  const overrides = [];
+
+  for (const blob of result.blobs || []) {
+    const value = await store.get(
+      blob.key,
+      {
+        type: 'json',
+        consistency: 'strong',
+      }
+    );
+
+    if (value) {
+      overrides.push(value);
+    }
+  }
+
+  return overrides;
+}
+
+
+function applyProductOverride(product, override) {
+  if (!override) {
+    return product;
+  }
+
+  const next = {
+    ...product,
+    ...(override.publicFields || {}),
+  };
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      override,
+      'images'
+    )
+  ) {
+    next.images = Array.isArray(override.images)
+      ? override.images
+      : [];
+  }
+
+  return next;
+}
+
+
 export function receiptStore() {
   return getStore({
     name: 'mudanza-receipts',
@@ -263,7 +357,26 @@ export async function loadCatalog(origin) {
     );
   }
 
-  return products;
+  const overrides =
+    await listProductOverrides();
+
+  const overrideById =
+    new Map(
+      overrides.map(
+        (override) => [
+          override.productId,
+          override,
+        ]
+      )
+    );
+
+  return products.map(
+    (product) =>
+      applyProductOverride(
+        product,
+        overrideById.get(product.id)
+      )
+  );
 }
 
 
