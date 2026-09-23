@@ -32,12 +32,20 @@ window.addEventListener('load', function () {
 
 
 function getEmbeddedProductBySlug(slug) {
-  return getEmbeddedProduct('slug', slug);
+  const unified = Array.isArray(window.__catalogProducts)
+    ? window.__catalogProducts.find((product) => product.slug === slug)
+    : null;
+
+  return unified || getEmbeddedProduct('slug', slug);
 }
 
 
 function getEmbeddedProductById(id) {
-  return getEmbeddedProduct('id', id);
+  const unified = Array.isArray(window.__catalogProducts)
+    ? window.__catalogProducts.find((product) => product.id === id)
+    : null;
+
+  return unified || getEmbeddedProduct('id', id);
 }
 
 
@@ -340,19 +348,27 @@ function renderProductDetail(product) {
             <dd>${escapeHtml(product.condition)}</dd>
           </div>
 
-          <div>
-            <dt>Observaciones</dt>
-            <dd>${escapeHtml(
-              product.conditionNotes || 'Sin observaciones adicionales.'
-            )}</dd>
-          </div>
+          ${
+            Number(product.itemNumber) <= 57 && product.conditionNotes
+              ? `
+                <div>
+                  <dt>Observaciones</dt>
+                  <dd>${escapeHtml(product.conditionNotes)}</dd>
+                </div>
+              `
+              : ''
+          }
 
-          <div>
-            <dt>Defectos conocidos</dt>
-            <dd>${escapeHtml(
-              product.knownDefects || 'Ninguno indicado.'
-            )}</dd>
-          </div>
+          ${
+            Number(product.itemNumber) <= 57 && product.knownDefects
+              ? `
+                <div>
+                  <dt>Defectos conocidos</dt>
+                  <dd>${escapeHtml(product.knownDefects)}</dd>
+                </div>
+              `
+              : ''
+          }
 
           <div>
             <dt>Accesorios incluidos</dt>

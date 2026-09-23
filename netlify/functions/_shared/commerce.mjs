@@ -1,3 +1,4 @@
+import { volume2Products } from './volume2-public.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
 
@@ -286,7 +287,7 @@ export async function loadCatalog(origin) {
 
   if (!response.ok) {
     throw new Error(
-      'No se pudo cargar el catálogo.'
+      'No se pudo cargar el catÃ¡logo.'
     );
   }
 
@@ -297,7 +298,7 @@ export async function loadCatalog(origin) {
 
   if (markerIndex === -1) {
     throw new Error(
-      'No se encontró el inventario del sitio.'
+      'No se encontrÃ³ el inventario del sitio.'
     );
   }
 
@@ -338,7 +339,7 @@ export async function loadCatalog(origin) {
 
   if (end === -1) {
     throw new Error(
-      'El inventario embebido está incompleto.'
+      'El inventario embebido estÃ¡ incompleto.'
     );
   }
 
@@ -472,7 +473,7 @@ const available =
 
     if (available < item.quantity) {
       const error = new Error(
-        'Uno de los artículos ya no tiene la cantidad solicitada disponible.'
+        'Uno de los artÃ­culos ya no tiene la cantidad solicitada disponible.'
       );
 
       error.status = 409;
@@ -555,7 +556,7 @@ export async function writeNewOrder(order) {
 
   if (!result.modified) {
     throw new Error(
-      'No se pudo crear el número de pedido.'
+      'No se pudo crear el nÃºmero de pedido.'
     );
   }
 }
@@ -635,7 +636,7 @@ export async function mutateOrder(
   }
 
   throw new Error(
-    'El pedido cambió mientras intentábamos actualizarlo.'
+    'El pedido cambiÃ³ mientras intentÃ¡bamos actualizarlo.'
   );
 }
 

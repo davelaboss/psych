@@ -1,7 +1,7 @@
 import {
   adminAuthorized,
   jsonResponse,
-  getProductOverride,
+  listProductOverrides,
   loadCatalog,
 } from './_shared/commerce.mjs';
 
@@ -284,6 +284,72 @@ function liveKey(product) {
 }
 
 
+const LIVE_PUBLIC_FIELDS = [
+  'title',
+  'category',
+  'description',
+  'condition',
+  'conditionNotes',
+  'knownDefects',
+  'includedAccessories',
+  'askingPricePYG',
+  'saleMode',
+  'depositPercent',
+  'pickupAvailableDate',
+  'pickupWindowStart',
+  'pickupWindowEnd',
+  'requiresVehicle',
+  'requiresLoadingHelp',
+  'logisticsNotes',
+  'quantityTotal',
+  'quantityRemaining',
+  'quantitySold',
+  'status',
+  'sellerConfirmedFields',
+];
+
+
+function applyLivePublicAuthority(
+  legacy,
+  live
+) {
+  if (
+    !live ||
+    Number(legacy.itemNumber || 0) < 1 ||
+    Number(legacy.itemNumber || 0) > 57
+  ) {
+    return legacy;
+  }
+
+  const next = {
+    ...legacy,
+  };
+
+  for (const field of LIVE_PUBLIC_FIELDS) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        live,
+        field
+      )
+    ) {
+      next[field] =
+        structuredClone(
+          live[field]
+        );
+    }
+  }
+
+  if (
+    Array.isArray(live.images)
+  ) {
+    next.images =
+      [...live.images];
+  }
+
+  return next;
+}
+
+
 export default async function handler(request) {
   if (!adminAuthorized(request)) {
     return jsonResponse(
@@ -312,6 +378,19 @@ export default async function handler(request) {
     const liveCatalog =
       await loadCatalog(origin);
 
+    const overrides =
+      await listProductOverrides();
+
+    const overrideById =
+      new Map(
+        overrides.map(
+          (override) => [
+            override.productId,
+            override,
+          ]
+        )
+      );
+
     const liveByKey =
       new Map();
 
@@ -322,44 +401,39 @@ export default async function handler(request) {
       );
     }
 
-    const baseLegacyProducts = [
+    const legacyProducts = [
       ...PHASE2_BATCH_ITEMS.map(
         normalizePhase2
       ),
       ...VOLUME2_BATCH_ITEMS.map(
         normalizeVolume2
       ),
-    ];
+    ].map(
+      (product) => {
+        const override =
+          overrideById.get(
+            product.id
+          );
 
-    const legacyProducts =
-      await Promise.all(
-        baseLegacyProducts.map(
-          async (product) => {
-            const override =
-              await getProductOverride(
-                product.id
-              );
+        if (!override) {
+          return product;
+        }
 
-            if (!override) {
-              return product;
-            }
+        return {
+          ...product,
+          ...(override.publicFields || {}),
+          ...(override.internalFields || {}),
 
-            return {
-              ...product,
-              ...(override.publicFields || {}),
-              ...(override.internalFields || {}),
-
-              images:
-                Object.prototype.hasOwnProperty.call(
-                  override,
-                  'images'
-                )
-                  ? override.images
-                  : undefined,
-            };
-          }
-        )
-      );
+          images:
+            Object.prototype.hasOwnProperty.call(
+              override,
+              'images'
+            )
+              ? override.images
+              : undefined,
+        };
+      }
+    );
 
     const seenLiveKeys =
       new Set();
@@ -385,17 +459,23 @@ export default async function handler(request) {
             );
           }
 
+          const authoritative =
+            applyLivePublicAuthority(
+              product,
+              live
+            );
+
           return {
-            ...product,
+            ...authoritative,
 
             published:
               Boolean(live),
 
             images:
               Array.isArray(
-                product.images
+                authoritative.images
               )
-                ? product.images
+                ? authoritative.images
                 : live?.images || [],
 
             live: live
