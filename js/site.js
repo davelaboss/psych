@@ -420,7 +420,7 @@ function renderProductDetail(product) {
             <span class="section-kicker">POLÍTICA GENERAL</span>
 
             <ul>
-              <li>Retiro personal en San Lorenzo.</li>
+              <li>Retiro personal en San Lorenzo, Barrio Santo Tomás.</li>
               <li>El comprador organiza y cubre el transporte.</li>
               <li>No hacemos delivery ni envíos.</li>
             </ul>
