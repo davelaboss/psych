@@ -88,6 +88,7 @@
     prepareControls(panel);
     installCatalogEvents(grid);
     applyFilters();
+    buildDelayedShelf();
 
     const heading = document.querySelector('.catalog-heading > p');
     if (heading) {
@@ -177,38 +178,171 @@
       applyFilters();
     });
 
-    grid.addEventListener('click', (event) => {
-      const card = event.target.closest('.product-card');
-      if (!card) return;
+    grid.addEventListener('click', handleProductCardClick);
+  }
 
-      const id = card.dataset.productId;
-      const product = state.products.find((item) => item.id === id);
-      if (!product) return;
+  function handleProductCardClick(event) {
+    const card = event.target.closest('.product-card');
+    if (!card) return;
 
-      const cartButton = event.target.closest('[data-cart-action]');
-      if (cartButton) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (product.status !== 'AVAILABLE') return;
-        if (typeof window.addStaticCartItem === 'function') {
-          window.addStaticCartItem(product.id);
-          cartButton.textContent = 'En carrito';
-          cartButton.disabled = true;
-        }
-        return;
-      }
+    const id = card.dataset.productId;
+    const product = state.products.find((item) => item.id === id);
+    if (!product) return;
 
-      const photoButton = event.target.closest('[data-photo-action]');
-      if (photoButton) {
-        event.preventDefault();
-        event.stopPropagation();
-        createLightbox(product.images || [], 0);
-        return;
-      }
-
+    const cartButton = event.target.closest('[data-cart-action]');
+    if (cartButton) {
       event.preventDefault();
-      window.location.assign(`/producto/${encodeURIComponent(product.slug)}`);
+      event.stopPropagation();
+      if (product.status !== 'AVAILABLE') return;
+      if (typeof window.addStaticCartItem === 'function') {
+        window.addStaticCartItem(product.id);
+        cartButton.textContent = 'En carrito';
+        cartButton.disabled = true;
+      }
+      return;
+    }
+
+    const photoButton = event.target.closest('[data-photo-action]');
+    if (photoButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      createLightbox(product.images || [], 0);
+      return;
+    }
+
+    event.preventDefault();
+    window.location.assign(`/producto/${encodeURIComponent(product.slug)}`);
+  }
+
+  function buildDelayedShelf() {
+    const shelf = document.querySelector('[data-delayed-shelf]');
+    const track = shelf?.querySelector('.shelf-grid');
+    const heading = shelf?.querySelector('.shelf-heading');
+
+    if (!shelf || !track || !heading) return;
+
+    const products = state.products
+      .filter(
+        (product) =>
+          product.status === 'AVAILABLE' &&
+          product.saleMode === 'DELAYED'
+      )
+      .sort((a, b) => Number(a.itemNumber) - Number(b.itemNumber));
+
+    track.innerHTML = '';
+
+    products.forEach((product) => {
+      const card = renderCard(product);
+      card.classList.add('compact');
+      track.appendChild(card);
     });
+
+    if (track.dataset.catalogEventsBound !== 'true') {
+      track.addEventListener('click', handleProductCardClick);
+      track.dataset.catalogEventsBound = 'true';
+    }
+
+    let meta = shelf.querySelector('[data-delayed-meta]');
+
+    if (!meta) {
+      meta = document.createElement('div');
+      meta.dataset.delayedMeta = 'true';
+      meta.className = 'delayed-shelf-meta';
+      heading.appendChild(meta);
+    }
+
+    meta.innerHTML = `
+      <strong>${products.length} artículos con retiro posterior</strong>
+      <div class="delayed-shelf-controls" aria-label="Navegar artículos con retiro posterior">
+        <button type="button" data-delayed-prev aria-label="Artículo anterior">←</button>
+        <span data-delayed-position aria-live="polite"></span>
+        <button type="button" data-delayed-next aria-label="Artículo siguiente">→</button>
+      </div>
+    `;
+
+    const cards = [...track.querySelectorAll('.product-card')];
+    const prev = meta.querySelector('[data-delayed-prev]');
+    const next = meta.querySelector('[data-delayed-next]');
+    const position = meta.querySelector('[data-delayed-position]');
+
+    let currentIndex = 0;
+    let scrollFrame = null;
+
+    function syncControls() {
+      if (!cards.length) {
+        position.textContent = '0 de 0';
+        prev.disabled = true;
+        next.disabled = true;
+        return;
+      }
+
+      currentIndex = Math.max(
+        0,
+        Math.min(currentIndex, cards.length - 1)
+      );
+
+      position.textContent = `${currentIndex + 1} de ${cards.length}`;
+      prev.disabled = currentIndex === 0;
+      next.disabled = currentIndex === cards.length - 1;
+    }
+
+    function goTo(index) {
+      if (!cards.length) return;
+
+      currentIndex = Math.max(
+        0,
+        Math.min(index, cards.length - 1)
+      );
+
+      const trackBox = track.getBoundingClientRect();
+      const cardBox = cards[currentIndex].getBoundingClientRect();
+
+      track.scrollTo({
+        left: track.scrollLeft + cardBox.left - trackBox.left,
+        behavior: 'smooth',
+      });
+
+      syncControls();
+    }
+
+    prev.addEventListener('click', () => goTo(currentIndex - 1));
+    next.addEventListener('click', () => goTo(currentIndex + 1));
+
+    track.addEventListener(
+      'scroll',
+      () => {
+        if (scrollFrame !== null) {
+          window.cancelAnimationFrame(scrollFrame);
+        }
+
+        scrollFrame = window.requestAnimationFrame(() => {
+          scrollFrame = null;
+
+          if (!cards.length) return;
+
+          let nearestIndex = 0;
+          let nearestDistance = Infinity;
+          const trackLeft = track.getBoundingClientRect().left;
+
+          cards.forEach((card, index) => {
+            const distance = Math.abs(
+              card.getBoundingClientRect().left - trackLeft
+            );
+
+            if (distance < nearestDistance) {
+              nearestDistance = distance;
+              nearestIndex = index;
+            }
+          });
+
+          currentIndex = nearestIndex;
+          syncControls();
+        });
+      },
+      { passive: true }
+    );
+
+    syncControls();
   }
 
   function applyFilters() {
@@ -1023,6 +1157,18 @@
       .card-actions button{cursor:pointer!important}
       .image-enlarge-hint{cursor:zoom-in!important}
       .reset-filters,.reset-filters:hover,.reset-filters:focus,.reset-filters:active{color:var(--forest)!important;background:transparent!important;border-color:var(--line)!important;box-shadow:none!important}
+      [data-delayed-shelf] .shelf-heading{display:flex!important;align-items:flex-end!important;justify-content:space-between!important;gap:24px!important;flex-wrap:wrap!important}
+      .delayed-shelf-meta{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap}
+      .delayed-shelf-meta>strong{font-size:13px;color:var(--forest)}
+      .delayed-shelf-controls{display:flex;align-items:center;gap:8px}
+      .delayed-shelf-controls button{width:42px;height:42px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--forest);font-size:20px;font-weight:800;cursor:pointer}
+      .delayed-shelf-controls button:disabled{opacity:.35;cursor:default}
+      .delayed-shelf-controls span{min-width:62px;text-align:center;font-size:12px;font-weight:800;color:var(--muted)}
+      [data-delayed-shelf] .shelf-grid{display:grid!important;grid-template-columns:none!important;grid-auto-flow:column!important;grid-auto-columns:minmax(260px,320px)!important;gap:16px!important;overflow-x:auto!important;overscroll-behavior-inline:contain;scroll-snap-type:x mandatory;scroll-padding-inline:2px;padding:4px 2px 14px!important}
+      [data-delayed-shelf] .shelf-grid>.product-card{scroll-snap-align:start;min-width:0}
+      .back-to-top{display:inline-flex;align-items:center;gap:6px;margin-top:20px;color:var(--forest);font-size:12px;font-weight:800;text-decoration:none}
+      .back-to-top:hover,.back-to-top:focus{text-decoration:underline}
+      @media (max-width:700px){[data-delayed-shelf] .shelf-heading{align-items:flex-start!important}.delayed-shelf-meta{width:100%;justify-content:space-between}[data-delayed-shelf] .shelf-grid{grid-auto-columns:minmax(82vw,82vw)!important}}
       .catalog-lightbox{position:fixed;inset:0;z-index:5000;display:grid;place-items:center;padding:18px;background:rgba(3,10,7,.95)}
       .catalog-lightbox-dialog{width:min(1450px,100%);height:min(920px,calc(100vh - 36px));display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;overflow:hidden;color:#fff;background:#151a17;border:1px solid rgba(255,255,255,.18);border-radius:12px}
       .catalog-lightbox header{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:10px 12px 10px 16px;border-bottom:1px solid rgba(255,255,255,.15)}
