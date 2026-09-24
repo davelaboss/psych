@@ -287,7 +287,7 @@ export async function loadCatalog(origin) {
 
   if (!response.ok) {
     throw new Error(
-      'No se pudo cargar el catÃ¡logo.'
+      'No se pudo cargar el catálogo.'
     );
   }
 
@@ -298,7 +298,7 @@ export async function loadCatalog(origin) {
 
   if (markerIndex === -1) {
     throw new Error(
-      'No se encontrÃ³ el inventario del sitio.'
+      'No se encontró el inventario del sitio.'
     );
   }
 
@@ -339,7 +339,7 @@ export async function loadCatalog(origin) {
 
   if (end === -1) {
     throw new Error(
-      'El inventario embebido estÃ¡ incompleto.'
+      'El inventario embebido está incompleto.'
     );
   }
 
@@ -473,7 +473,7 @@ const available =
 
     if (available < item.quantity) {
       const error = new Error(
-        'Uno de los artÃ­culos ya no tiene la cantidad solicitada disponible.'
+        'Uno de los artículos ya no tiene la cantidad solicitada disponible.'
       );
 
       error.status = 409;
@@ -556,7 +556,7 @@ export async function writeNewOrder(order) {
 
   if (!result.modified) {
     throw new Error(
-      'No se pudo crear el nÃºmero de pedido.'
+      'No se pudo crear el número de pedido.'
     );
   }
 }
@@ -636,7 +636,7 @@ export async function mutateOrder(
   }
 
   throw new Error(
-    'El pedido cambiÃ³ mientras intentÃ¡bamos actualizarlo.'
+    'El pedido cambió mientras intentábamos actualizarlo.'
   );
 }
 
