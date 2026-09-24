@@ -14,9 +14,8 @@
     try {
       installStyles();
 
-      const original = collectOriginalProducts();
-      const volume2 = await fetchVolume2();
-      state.products = dedupe([...original, ...volume2])
+      const catalog = await fetchCatalog();
+      state.products = dedupe(catalog)
         .sort((a, b) => Number(a.itemNumber) - Number(b.itemNumber));
 
       window.__catalogProducts = state.products;
@@ -55,28 +54,7 @@
     return window.location.pathname.replace(/\/+$/, '') || '/';
   }
 
-  function collectOriginalProducts() {
-    const seen = new Set();
-    const products = [];
-
-    document.querySelectorAll('.product-grid a[href^="/producto/"]').forEach((link) => {
-      const href = link.getAttribute('href') || '';
-      const slug = decodeURIComponent(href.split('/producto/')[1] || '');
-      if (!slug || seen.has(slug)) return;
-      seen.add(slug);
-
-      const product =
-        typeof window.getEmbeddedProductBySlug === 'function'
-          ? window.getEmbeddedProductBySlug(slug)
-          : null;
-
-      if (product) products.push(product);
-    });
-
-    return products;
-  }
-
-  async function fetchVolume2() {
+  async function fetchCatalog() {
     const response = await fetch('/.netlify/functions/volume2-catalog', {
       cache: 'no-store',
     });
@@ -84,11 +62,12 @@
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'No se pudo cargar Volumen 2.');
+      throw new Error(data.error || 'No se pudo cargar el catálogo.');
     }
 
     return Array.isArray(data.products) ? data.products : [];
   }
+
 
   function dedupe(products) {
     const byId = new Map();

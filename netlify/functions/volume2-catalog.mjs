@@ -1,6 +1,7 @@
 import {
   jsonResponse,
   listProductOverrides,
+  loadCatalog,
 } from './_shared/commerce.mjs';
 
 import {
@@ -16,8 +17,17 @@ export default async function handler(request) {
     );
   }
 
-  const overrides =
-    await listProductOverrides();
+  const origin =
+    new URL(request.url).origin;
+
+  const [
+    originalProducts,
+    overrides,
+  ] =
+    await Promise.all([
+      loadCatalog(origin),
+      listProductOverrides(),
+    ]);
 
   const byId =
     new Map(
@@ -29,7 +39,7 @@ export default async function handler(request) {
       )
     );
 
-  const products =
+  const volume2 =
     volume2Products().map(
       (product) => {
         const override =
@@ -59,6 +69,34 @@ export default async function handler(request) {
         return next;
       }
     );
+
+  const products =
+    [
+      ...originalProducts,
+      ...volume2,
+    ]
+      .filter(
+        (product) =>
+          product &&
+          product.id
+      )
+      .filter(
+        (
+          product,
+          index,
+          all
+        ) =>
+          all.findIndex(
+            (candidate) =>
+              candidate.id ===
+              product.id
+          ) === index
+      )
+      .sort(
+        (a, b) =>
+          Number(a.itemNumber) -
+          Number(b.itemNumber)
+      );
 
   return jsonResponse({
     ok: true,
