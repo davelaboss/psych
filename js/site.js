@@ -126,12 +126,25 @@ function renderProductDetail(product) {
       ? product.includedAccessories.join(' · ')
       : 'Ninguno indicado';
 
-  const logistics =
-    product.logisticsNotes && product.logisticsNotes.length
+  const itemLogistics = [
+    ...(Array.isArray(product.logisticsNotes)
       ? product.logisticsNotes
-          .map((note) => `<li>${escapeHtml(note)}</li>`)
-          .join('')
-      : '<li>Retiro personal.</li>';
+      : []),
+    product.requiresVehicle
+      ? 'Requiere vehículo adecuado.'
+      : '',
+    product.requiresLoadingHelp
+      ? 'El comprador debe traer ayuda para cargar.'
+      : '',
+  ]
+    .map((note) => String(note || '').trim())
+    .filter(Boolean)
+    .filter(
+      (note, index, notes) =>
+        notes.indexOf(note) === index
+    )
+    .map((note) => `<li>${escapeHtml(note)}</li>`)
+    .join('');
 
   main.innerHTML = `
     <nav class="breadcrumbs" aria-label="Migas de pan">
@@ -384,14 +397,34 @@ function renderProductDetail(product) {
         <div class="logistics">
           <strong>Para el retiro</strong>
 
-          <ul>
-            ${logistics}
-          </ul>
+          <div>
+            <span class="section-kicker">ESTE ARTÍCULO</span>
 
-          <p>
-            El comprador es responsable del transporte.
-            No hacemos delivery ni envíos.
-          </p>
+            ${
+              itemLogistics
+                ? `
+                  <ul>
+                    ${itemLogistics}
+                  </ul>
+                `
+                : `
+                  <p>
+                    No tiene requisitos especiales de transporte
+                    o carga indicados.
+                  </p>
+                `
+            }
+          </div>
+
+          <div>
+            <span class="section-kicker">POLÍTICA GENERAL</span>
+
+            <ul>
+              <li>Retiro personal en San Lorenzo.</li>
+              <li>El comprador organiza y cubre el transporte.</li>
+              <li>No hacemos delivery ni envíos.</li>
+            </ul>
+          </div>
         </div>
 
       </section>
