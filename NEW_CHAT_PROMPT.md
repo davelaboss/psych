@@ -130,7 +130,7 @@ Do not expose internal/reviewer/TODO material publicly.
 
 ---
 
-# 6. DELIVERY RULES
+# 6. DELIVERY AND PRODUCTION-DATA WORKFLOW
 
 The user is not a programmer.
 
@@ -150,6 +150,26 @@ The PowerShell installer is only a file-delivery mechanism.
 
 It must never become a runtime patch architecture.
 
+For production product-data mutations:
+
+- prefer the established application/admin interfaces;
+- use the normal `/admin` workflow whenever it supports the required change;
+- do not introduce ad-hoc DevTools Console scripts, one-off browser mutation scripts, or similar production-data shortcuts without explicit owner approval;
+- do not bypass the established admin/data workflow merely because a direct endpoint or Blob write is technically possible;
+- change only the public fields that actually require correction;
+- do not change photos, internal pricing/research, or unrelated fields unless the assigned workstream explicitly requires it.
+
+Optimize for owner time:
+
+- batch known safe corrections whenever practical;
+- batch verification steps whenever practical;
+- if files are needed, request all relevant files together whenever possible instead of interrogating them through many terminal commands;
+- batch safe read-only diagnostics when doing so reduces unnecessary owner interaction.
+
+Production deploys may be used when they materially save time.
+
+Optimize for completion speed rather than minimizing deploy count, while staying within the current Netlify monthly credit budget.
+
 ---
 
 # 7. GIT RULES
@@ -168,9 +188,21 @@ Never commit:
 - generated debugging debris;
 - secrets.
 
-Give command-line commands ONE AT A TIME unless the user explicitly asks for grouped commands.
+For routine, known-safe Git workflows, give the user the FULL command sequence at once and briefly state what should be expected after each command.
 
-Allow each command to complete before moving to the next important Git step.
+The user will stop and report back if the actual result materially differs.
+
+Use one-command-at-a-time mode only when:
+
+- the next command depends on the exact previous output;
+- merge/rebase conflicts are possible;
+- the working tree is unexpectedly dirty;
+- local and remote history have diverged;
+- restore/reset/stash operations are involved;
+- another chat may have uncommitted work;
+- a command could overwrite, discard, or complicate existing work.
+
+Safe read-only diagnostics may be batched.
 
 Do not run `git pull`, reset, rebase, restore, or stash blindly when the working tree is dirty.
 
@@ -228,24 +260,19 @@ When the user says the result is NOMINAL, proceed to checkpointing.
 
 After the task is successfully implemented and the user confirms it is NOMINAL:
 
-1. Stage only the exact intended files.
-2. Commit the successful work.
-3. Push it.
-4. Update `PROJECT_MASTER.md`.
+1. Update `PROJECT_MASTER.md` with the completed factual status, regression performed, files/data changed, and remaining follow-up.
+2. Update `NEW_CHAT_PROMPT.md` only if the workstream established a permanent workflow rule.
+3. Verify the working tree and intended diff.
+4. Stage only the exact intended files.
+5. Commit the successful work.
+6. Push it.
+7. Verify that local `main` is synchronized with `origin/main` and the working tree is clean.
 
-The master update should record, where relevant:
+For a routine, known-safe checkpoint, provide the full Git command sequence together and briefly state the expected result after each command.
 
-- what was completed;
-- files changed;
-- important factual/business/architecture decisions established;
-- testing/regression performed;
-- anything still pending;
-- active-workstream status;
-- new checkpoint/commit information.
+Switch to one-command-at-a-time mode only when one of the Git-risk conditions in Section 7 applies.
 
 Do not mark failed or untested work as completed.
-
-Leave the repository clean and synchronized before the workstream is considered closed.
 
 ---
 

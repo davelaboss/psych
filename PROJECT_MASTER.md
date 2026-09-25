@@ -1,6 +1,6 @@
 # Psych Website — Project Master
 
-Last updated: 2026-09-24
+Last updated: 2026-09-25
 
 This file is the authoritative human-readable project record for the Psych website.
 
@@ -75,6 +75,14 @@ Hosting/deployment:
 
 Netlify automatically deploys from GitHub `main`.
 
+As of 2026-09-25, the Netlify team is on the Pro plan with 3,000 credits/month.
+
+Production deploys resumed normally after the previous Free-plan credit exhaustion paused deploys.
+
+Do not redesign architecture because of that historical paused-deploy incident.
+
+Use production deploys when they materially save time; optimize for completion speed rather than minimizing deploy count while staying within the current monthly credit budget.
+
 Admin:
 
 https://thelabossieres.com/admin
@@ -97,16 +105,48 @@ https://thelabossieres.com/admin
 - Do not introduce speculative improvements outside the assigned task.
 - One programming chat should own one coherent workstream.
 - Do not have multiple chats simultaneously modifying the same files/workstream.
+- Use production deploys when they materially save completion time; do not artificially minimize deploy count.
 
-## User workflow
+## Production product-data workflow
+
+Production product-data mutations should use the established supported application/admin architecture unless the owner explicitly approves another method.
+
+Preferred path:
+
+- use the normal `/admin` interface when it supports the required change;
+- do not use ad-hoc DevTools Console mutation scripts or one-off browser mutation scripts without explicit owner approval;
+- do not bypass the established admin/data workflow merely because a direct endpoint or Blob write is technically possible;
+- change only the fields that actually need correction;
+- do not change photos, internal pricing/research, or unrelated fields unless the assigned workstream requires them.
+
+Optimize for owner time:
+
+- batch known safe corrections whenever practical;
+- batch verification steps whenever practical;
+- request all relevant files together when files are needed;
+- batch safe read-only diagnostics where doing so avoids repetitive owner interaction.
+
+## Git workflow
 
 The site owner is not a programmer.
 
-When command-line commands are required:
+For routine, known-safe Git workflows:
 
-- provide ONE command at a time;
-- allow the command to complete before giving the next important command;
-- do not combine several Git commands into one code block unless specifically requested.
+- provide the FULL command sequence at once;
+- briefly state what should be expected after each command;
+- the owner will stop and report back if the actual result materially differs.
+
+Use one-command-at-a-time mode only when:
+
+- the next command depends on the exact previous output;
+- merge/rebase conflicts are possible;
+- the working tree is unexpectedly dirty;
+- local and remote history have diverged;
+- restore/reset/stash operations are involved;
+- another chat may have uncommitted work;
+- a command could overwrite, discard, or complicate existing work.
+
+Safe read-only diagnostics may be batched.
 
 Do not use:
 
@@ -184,11 +224,13 @@ Rules:
 6. Do not run `git pull` blindly when the working tree contains uncommitted work.
 
 7. After a task is tested and the owner says NOMINAL:
+   - update this file with the completed factual status;
+   - update `NEW_CHAT_PROMPT.md` if a permanent workflow rule changed;
    - stage exact intended files;
    - commit;
    - push;
-   - update this file;
-   - record the new checkpoint.
+   - verify the final checkpoint and clean/synchronized Git state.
+   - use the grouped-vs-stepwise Git policy in `NEW_CHAT_PROMPT.md` Section 7.
 
 8. If work fails or remains untested:
    do not mark it completed here.
@@ -214,6 +256,22 @@ The site originated from a Vinext/Cloudflare-oriented application.
 A full source migration to Netlify was previously attempted and abandoned.
 
 The current production architecture intentionally retains a static/public storefront with Netlify backend functionality.
+
+`netlify.toml` publishes the repository root directly:
+
+- publish directory: `.`
+- functions directory: `netlify/functions`
+- no separate production build step generates a replacement `index.html`
+
+Therefore, when current GitHub `main` is successfully deployed, the committed root `index.html` is the production base document.
+
+The September 2026 stale-production incident was caused by Netlify production deploys being paused after the Free-plan credit allowance was exhausted.
+
+It was NOT an architecture failure.
+
+After the Netlify team was upgraded to Pro and a production deploy was triggered, the current committed source began publishing normally again.
+
+No architecture change was made or required because of that incident.
 
 Important current files/components include:
 
@@ -252,7 +310,23 @@ The public catalog has been consolidated.
 
 Original inventory and Volume 2 use a unified public catalog path.
 
-Netlify Blob admin overrides remain the highest-priority current override layer.
+For original products, the committed base catalog is loaded from the public root document and Netlify Blob product overrides are applied on top of that base at runtime.
+
+The current runtime precedence is therefore:
+
+base product
+
+→ stored Blob `publicFields` / image override where present
+
+→ resolved public product
+
+A stale Blob override can survive a source deployment and continue to mask corrected committed base data.
+
+A successful source deploy does NOT automatically clear or rewrite product Blob overrides.
+
+When a stale Blob override conflicts with an approved current product fact, correct the override through the established `/admin` workflow rather than adding a competing runtime patch.
+
+Netlify Blob admin overrides remain the highest-priority runtime override layer.
 
 Do NOT recreate separate competing storefront/catalog controllers.
 
@@ -272,7 +346,20 @@ Original inventory:
 
 Items 001–057
 
-A previous audit identified 52 sellable original records.
+Current verified published/sellable original records:
+
+52
+
+Legacy unpublished original records:
+
+- Item 034
+- Item 044
+- Item 053
+
+Items without a meaningful current public record in the completed reconciliation:
+
+- Item 055
+- Item 056
 
 Volume 2:
 
@@ -282,7 +369,7 @@ Volume 2 contains:
 
 101 products
 
-Current regression-tested storefront total:
+Current final-regression storefront total:
 
 153 articles
 
@@ -294,20 +381,39 @@ Future inventory may continue beyond Item 158.
 
 # 9. DATA AUTHORITY / PRECEDENCE
 
-For original inventory reconciliation and future product editing, preserve this precedence:
+Distinguish runtime precedence from semantic authority.
 
-1. Current Netlify Blob admin override, where one exists.
-2. Explicit current seller-confirmed information.
-3. Established current public information when known to supersede stale legacy information.
-4. Older embedded/static/Phase 2/admin/source information is historical evidence and is not automatically authoritative.
+## Runtime precedence
+
+For resolved public products, a current Netlify Blob product override is applied on top of the committed base product and therefore wins at runtime for fields it overrides.
+
+This is an implementation fact, not proof that every stored override is semantically current.
+
+## Reconciliation authority
+
+For product reconciliation, preserve this authority logic:
+
+1. Explicit current owner/seller-confirmed information.
+2. Established current public information known to supersede stale historical values.
+3. Current committed source that implements those approved facts.
+4. Existing Blob override data when it is consistent with the approved current facts.
+5. Older embedded/static/Phase 2/admin/source/history information as historical evidence only.
 
 A newer timestamp alone does not prove semantic authority.
 
-When sources conflict:
+A stored Blob override can itself be stale.
+
+When a Blob override conflicts with an approved current fact:
+
+- do not treat runtime precedence as semantic truth;
+- correct the stale override through the supported `/admin` workflow;
+- do not add an ad-hoc runtime patch to fight the override.
+
+When sources genuinely conflict and the established authority does not resolve the discrepancy:
 
 - do not guess;
 - do not silently overwrite;
-- report genuine ambiguity to the owner.
+- report the ambiguity to the owner.
 
 Internal research, pricing analysis, reviewer notes, and verification material must remain private unless explicitly approved for public display.
 
@@ -391,29 +497,85 @@ This public-data hygiene work was separate from the later full Items 001–057 c
 
 # 13. CONFIRMED PRODUCT CORRECTIONS
 
+The completed Items 001–057 reconciliation established and/or re-verified the following important product facts.
+
 ## Item 002
 
-Previous public wording included prohibited language such as:
+Current public facts:
 
-`Usado y parcialmente funcional`
+- cold water works very well;
+- hot-water function does not work;
+- includes 4 large jugs;
+- condition is partially functional;
+- do not restore prohibited `Usado/Usada` wording.
 
-and referenced:
+## Item 016
 
-`bidones usados`
+The public measurement wording is:
 
-The public copy was corrected.
+`Medidas de la maceta:`
 
-Do not restore the prohibited wording.
+Do not restore:
+
+`Medidas confirmadas de la maceta:`
+
+## Item 017
+
+`poco uso` / `tuvo poco uso` is seller-confirmed.
 
 ## Item 019
 
-The comprehensive reconciliation audit identified Item 019 as the only remaining owner ambiguity.
+Owner resolution:
 
-Owner decision:
+- 2 individual woven baskets;
+- sold separately;
+- Gs. 140.000 each;
+- `quantityTotal = 2`;
+- `quantityRemaining = 2`;
+- current title: `Canasto tejido (cada uno)`;
+- condition: `Excelente estado`;
+- seller-confirmed `Semi-nuevo` wording remains valid.
 
-2 individual baskets at Gs. 140.000 each.
+Do not restore the stale `Juego de canastos tejidos` / Gs. 120.000 total-set data.
 
-This decision is authoritative unless the owner explicitly changes it.
+## Item 020
+
+Current reconciled public facts include:
+
+- title: `Florero azul (flores no incluidas)`;
+- asking price: Gs. 100.000;
+- the flowers visible in the photo are not included.
+
+## Item 025
+
+Current reconciled public facts include:
+
+- title: `Reloj de pared decorativo de café`;
+- asking price: Gs. 65.000;
+- public `knownDefects` is blank.
+
+Do not restore verification-task wording such as `Movimiento y precisión no verificados.`
+
+## Item 028
+
+Current reconciled public facts include:
+
+- title: `Helecho con maceta con colgador metálico (sin mesa)`;
+- asking price: Gs. 50.000;
+- the table visible in the photo is not included;
+- included: plant, pot, metal hanger;
+- public `knownDefects` is blank.
+
+## Item 031
+
+Current authoritative public facts:
+
+- Gs. 25.000 each;
+- 2 plants available;
+- each price is for one plant with its pot;
+- the table is not included.
+
+Do not restore the old higher legacy/admin price.
 
 ## Item 032
 
@@ -425,46 +587,69 @@ Do not restore the old photo containing the shears.
 
 ## Item 033
 
-Confirmed price:
+Current authoritative public facts:
 
-Gs. 24.000
+- asking price: Gs. 24.000;
+- title includes 3 small plants, pots, and a rustic small table;
+- the rustic table is included.
+
+## Item 036
+
+The public placeholder:
+
+`Medidas a ser agregado.`
+
+was removed.
+
+Do not invent replacement dimensions without confirmed evidence.
 
 ## Item 039
 
-Known wording/data correction was completed during original-inventory cleanup.
+Seller-confirmed wording:
 
-Refer to current committed source for the final authoritative text.
+`(Poco uso)`
+
+Do not restore:
+
+`(Apenas usada)`
 
 ## Item 047
 
-Included:
+There are 3 shelves sold individually.
 
-- 3 shelves;
-- 3 metal rear/support brackets PER shelf.
+Each shelf includes:
+
+- 3 rear/support metal brackets.
 
 Not included:
 
 - black horizontal bar;
 - hooks/S-hooks.
 
-Do not describe the black bar or hooks as included.
+Do not claim screws/bolts are included without confirmed evidence.
+
+## Item 054
+
+Current public record:
+
+- `Mesa auxiliar plegable blanca marmolada`;
+- asking price: Gs. 220.000;
+- requires a suitable vehicle.
+
+Old review/TODO material is stale and must not control public copy.
 
 ## Item 057
 
-Color:
+Current authoritative public facts:
 
-white / blanco
-
-Quantity:
-
-2 units
-
-The two units are NOT interchangeable because their individual wear/use characteristics differ.
-
-Public information should make clear:
-
+- white / blanco;
+- quantity 2;
+- sold by unit at Gs. 180.000 each;
+- the two units are NOT interchangeable because individual wear differs;
 - photographs show one of the two units;
 - both have comparable signs of wear.
+
+Do not restore the stale gray/interchangeable description.
 
 ---
 
@@ -576,20 +761,54 @@ fix the actual source.
 
 ---
 
-# 18. PREVIOUS STOREFRONT REGRESSION BASELINE
+# 18. FINAL STOREFRONT / RECONCILIATION REGRESSION BASELINE
 
-A full storefront regression pass was successful before the current reconciliation implementation work began.
+A full storefront regression had already passed before the final Items 001–057 reconciliation closeout.
 
-Known-good behavior included:
+The final reconciliation regression was completed again on 2026-09-25 against production after the current source was successfully redeployed and stale Blob overrides were corrected through `/admin`.
 
-- 153 articles;
+Verified production results:
+
+- unified catalog total = 153;
+- published original records = 52;
+- legacy/non-current original Items 034, 044, 053, 055, and 056 absent from the resolved public original set;
+- no prohibited public `Usado/Usada/Usados/Usadas` condition wording in Items 001–057;
+- no `Medidas confirmadas`;
+- no obvious public review/TODO leakage matching the targeted reconciliation patterns;
+- Item 019 correct;
+- Item 020 correct;
+- Item 025 correct;
+- Item 028 correct;
+- Item 033 correct;
+- Item 039 correct;
+- Item 047 correct;
+- Item 057 correct;
+- homepage reports 52 original articles;
+- old `PAGO COMPLETO` shelf absent;
+- `SEÑA CONFIGURABLE` present;
+- footer uses the approved San Lorenzo / Barrio Santo Tomás wording;
+- old footer wording absent.
+
+The first Windows CMD comparison produced false negatives for Items 025, 028, and 047 because accented literals were involved.
+
+A follow-up ASCII-safe production check passed all three:
+
+- Item 025 = true;
+- Item 028 = true;
+- Item 047 = true.
+
+The owner then completed the requested visual/interactive production review and confirmed the result:
+
+NOMINAL
+
+Known-good storefront behavior to preserve includes:
+
 - search;
 - filters;
 - sort ascending/descending;
 - reset filters;
 - reservation carousel;
 - delayed-product count/navigation;
-- targeted Items 002/032/033/039/047/057;
 - product-detail rendering;
 - detail photo/lightbox behavior;
 - homepage photo/lightbox behavior;
@@ -600,8 +819,6 @@ Known-good behavior included:
 - visible text encoding.
 
 Future changes touching storefront/customer data should preserve this baseline.
-
-Because the Items 001–057 reconciliation implementation is currently still in progress, its completed corrections must receive an appropriate final regression before that workstream is closed.
 
 ---
 
@@ -633,79 +850,83 @@ Do not reintroduce runtime text-repair hacks.
 
 ACTIVE OWNER:
 
-Chat #4
+None.
 
 ACTIVE TASK:
 
-Complete implementation of the approved Items 001–057 reconciliation results and perform final verification/regression for that workstream.
+None.
+
+Chat #4's Items 001–057 reconciliation implementation workstream is COMPLETE and CLOSED as of 2026-09-25.
 
 ## Audit status
 
 The comprehensive Items 001–057 admin/public/source/history reconciliation audit is COMPLETE.
 
-It is no longer a pending discovery task.
+Do not restart it unless new evidence identifies a specific unresolved discrepancy.
 
-The audit found one owner ambiguity:
+The only owner ambiguity found by the completed audit was Item 019.
 
-Item 019.
-
-Owner decision:
+Owner resolution:
 
 2 individual baskets at Gs. 140.000 each.
 
 ## Implementation status
 
-Implementation of the approved reconciliation results is IN PROGRESS.
+COMPLETE.
 
-Items 016, 025, and 036 were corrected locally in `index.html`.
+The approved source corrections were implemented.
 
-Those changes were safely preserved, committed, rebased with the project-master addition, and pushed.
+After the Netlify Pro upgrade restored production deployments, the current committed source was successfully published.
 
-Current synchronized checkpoint after that work:
+A fresh admin inventory export then identified four remaining stale Blob public-field overrides:
 
-`d6e911e`
+- Item 019
+- Item 020
+- Item 025
+- Item 028
 
-Branch:
+All four were corrected through the supported `/admin` interface in one owner pass.
 
-`main`
+A second inventory export verified all four corrections.
 
-Working tree was confirmed clean and synchronized with `origin/main` after the push.
+Final production regression passed and the owner confirmed NOMINAL.
 
-Chat #4 owns ONLY this reconciliation implementation workstream until it is completed or explicitly reassigned.
-
-No other programming chat should simultaneously modify files belonging to this workstream.
+No unrelated future workstream is activated by this closeout.
 
 ---
 
-# 21. ITEMS 001–057 RECONCILIATION — AUDIT COMPLETE
+# 21. ITEMS 001–057 RECONCILIATION — COMPLETE
 
-The comprehensive Items 001–057 cross-source reconciliation audit has been completed.
+The comprehensive Items 001–057 cross-source reconciliation audit, approved implementation, Blob reconciliation, and final regression are COMPLETE.
 
 The audit compared available current and legacy/admin/source/history information across the applicable original inventory.
 
-The purpose was to identify stale legacy values, current authoritative values, clearly reconcilable discrepancies, and genuine ambiguity.
+The purpose was to identify:
+
+- stale legacy values;
+- current authoritative values;
+- clearly reconcilable discrepancies;
+- current runtime Blob conflicts;
+- genuine ambiguity.
 
 The only owner ambiguity identified by the completed audit was Item 019.
-
-That ambiguity has been resolved by the owner.
 
 Owner resolution:
 
 Item 019 = 2 individual baskets at Gs. 140.000 each.
 
-The current workstream is therefore no longer:
+That resolution was implemented in the committed base source and, after deployment, in the stale Blob override that had continued to mask the base value.
 
-discover all discrepancies.
+The final stale Blob overrides corrected through `/admin` were:
 
-The remaining work is:
+- Item 019;
+- Item 020;
+- Item 025;
+- Item 028.
 
-1. implement all approved reconciliation corrections;
-2. preserve current Blob override precedence;
-3. preserve all previously confirmed product facts;
-4. verify resulting data;
-5. perform relevant regression testing;
-6. update this file when implementation is complete;
-7. commit and push the final completed workstream.
+A fresh admin inventory export verified all four.
+
+Final production regression then passed.
 
 Do not restart the entire Items 001–057 audit unless new evidence establishes a specific unresolved discrepancy.
 
@@ -745,7 +966,7 @@ Sources materially agree.
 
 B. CLEARLY RECONCILABLE
 
-Sources differ but established precedence clearly determines the authoritative value.
+Sources differ but established authority clearly determines the authoritative value.
 
 C. AMBIGUOUS — OWNER DECISION REQUIRED
 
@@ -1016,20 +1237,27 @@ No giant cross-chat historical handoff should normally be required after this sy
 - Footer/location wording updated.
 - Source mojibake cleanup completed.
 - Detail/homepage photo lightbox behavior completed.
-- Previous full storefront regression passed.
-- Comprehensive Items 001–057 reconciliation AUDIT completed.
+- Comprehensive Items 001–057 reconciliation audit completed.
 - Item 019 owner ambiguity resolved.
-- Items 016/025/036 reconciliation corrections committed and pushed.
+- Approved Items 001–057 reconciliation implementation completed.
+- Production source redeployed successfully after Netlify deploy credits were restored.
+- Stale Blob overrides for Items 019, 020, 025, and 028 corrected through `/admin`.
+- Fresh admin export verified those four Blob corrections.
+- Final Items 001–057 production regression passed.
+- Owner confirmed final production result NOMINAL.
+- Permanent production-data/admin and Git workflow rules incorporated into `NEW_CHAT_PROMPT.md`.
 
 ## Active
 
-Chat #4:
+None.
 
-Finish implementation of all approved Items 001–057 reconciliation corrections and perform final verification/regression.
+No future workstream should be started merely because it is listed below.
+
+The owner must explicitly assign the next workstream.
 
 ## Future retained work
 
-Separate future chats:
+Separate future chats may address, when explicitly assigned:
 
 1. Volume 2 public-copy hygiene audit.
 2. Product-to-product navigation on detail pages.
@@ -1044,25 +1272,29 @@ Separate future chats:
 
 # 30. CURRENT CHECKPOINT
 
-Current known synchronized checkpoint after preserving Chat #4's first implementation changes:
+Immediately before the final documentation closeout, Git was verified clean and synchronized:
 
-Commit:
+`## main...origin/main`
 
-`d6e911e`
+The synchronized pre-closeout commit was:
+
+`97bb708`
 
 Branch:
 
 `main`
 
-At the time this checkpoint was established:
+Important distinction:
 
-- local `main` matched `origin/main`;
-- working tree was clean;
-- `PROJECT_MASTER.md` was present in the repository;
-- Items 016/025/036 reconciliation corrections were pushed;
-- Chat #4 was authorized to resume only its Items 001–057 reconciliation implementation workstream.
+- the source repository was already clean and synchronized at that checkpoint;
+- the final stale product-data corrections for Items 019, 020, 025, and 028 were production Blob/admin data changes made through `/admin`, not new source-code edits;
+- the final production regression passed after those admin corrections;
+- the owner confirmed NOMINAL;
+- the only intended repository changes for final closeout are the coordination-document updates in `NEW_CHAT_PROMPT.md` and `PROJECT_MASTER.md`.
 
-A future chat must verify current Git state rather than assuming this remains the latest commit forever.
+The final closeout checkpoint is the Git commit containing this project-master update.
+
+Future chats must verify the current Git state rather than assuming `97bb708` remains the latest commit forever.
 
 ---
 
@@ -1102,3 +1334,14 @@ Format:
 - Regression performed: Final reconciliation regression still pending until the entire workstream is implemented.
 - Commit: `d6e911e`
 - Remaining follow-up: Chat #4 must finish the remaining approved Items 001–057 reconciliation implementation, test it, and close the workstream.
+
+## 2026-09-25 — Items 001–057 reconciliation completed and closed
+
+- Owner/chat: Chat #4
+- Files changed during source implementation: `index.html` in earlier reconciliation commits; final closeout documentation updates `NEW_CHAT_PROMPT.md` and `PROJECT_MASTER.md`.
+- Production data changed during final reconciliation: Blob public-field overrides for Items 019, 020, 025, and 028, corrected through the supported `/admin` interface.
+- Result: Completed the approved Items 001–057 reconciliation implementation; restored normal production publishing after the Netlify plan upgrade; reconciled the remaining stale Blob overrides; updated permanent admin/data and Git workflow rules.
+- Regression performed: Fresh admin export verification; production catalog/homepage regression; ASCII-safe follow-up for Items 025/028/047; owner visual/interactive review.
+- Owner confirmation: NOMINAL.
+- Commit: The final documentation checkpoint is the Git commit containing this entry.
+- Remaining follow-up: None for the Items 001–057 reconciliation workstream. Retained future work remains separate and unassigned until explicitly started.
