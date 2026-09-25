@@ -101,6 +101,8 @@
   function prepareControls(panel) {
     const searchLabel = panel.querySelector('.search-field');
     if (searchLabel) {
+      searchLabel.classList.remove('search-field');
+      searchLabel.classList.add('catalog-search-label');
       searchLabel.innerHTML = `
         <span>Buscar</span>
         <input type="search" placeholder="Buscar heladera, mesa, herramientas…" autocomplete="off">
@@ -440,7 +442,6 @@
     const delayed = product.saleMode === 'DELAYED';
     const available = product.status === 'AVAILABLE';
     const image = product.images?.[0] || '';
-    const quantity = Number(product.quantityRemaining || product.quantityTotal || 1);
     const multiple = Number(product.quantityTotal || 1) > 1;
 
     article.innerHTML = `
@@ -450,32 +451,28 @@
         <span class="image-enlarge-hint">Ver foto(s)</span>
       </button>
       <div class="product-copy">
-        <div class="product-meta">
-          <span>${escapeHtml(product.category || '')}</span>
-          <span class="${!available ? 'status-unavailable' : delayed ? 'status-later' : 'status-now'}">
-            ${!available ? 'VENDIDO' : delayed ? 'RETIRO 9–12 DIC.' : 'DISPONIBLE AHORA'}
-          </span>
-        </div>
         <span class="item-number">Item ${String(product.itemNumber).padStart(3, '0')}</span>
         <a href="/producto/${escapeAttr(product.slug)}"><h3>${escapeHtml(product.title)}</h3></a>
         <strong class="price">${formatMoney(product.askingPricePYG)}${multiple ? ' por unidad' : ''}</strong>
-        ${multiple ? `<p>${quantity} unidades disponibles</p>` : ''}
-        <p>${escapeHtml(delayed ? `Reserva ${Number(product.depositPercent || 25)}% · Retiro 9–12 de diciembre` : publicCondition(product))}</p>
-        <div class="card-actions">
+        <div class="card-detail-row">
           <a href="/producto/${escapeAttr(product.slug)}">Ver detalle</a>
+          <span class="card-category">${escapeHtml(product.category || '')}</span>
+        </div>
+        <div class="card-actions">
           <button type="button" data-cart-action ${!available ? 'disabled' : ''}>
-            ${!available ? 'No disponible' : delayed ? 'Reservar' : 'Agregar'}
+            ${!available ? 'No disponible' : 'Agregar al carrito'}
           </button>
+        </div>
+        <div class="card-availability">
+          <span class="${!available ? 'status-unavailable' : delayed ? 'status-later' : 'status-now'}">
+            ${!available ? 'VENDIDO' : delayed ? 'RETIRO 9–12 DIC.' : 'DISPONIBLE AHORA'}
+          </span>
+          ${delayed && available ? `<span class="deposit-note">Seña ${Number(product.depositPercent || 25)}%</span>` : ''}
         </div>
       </div>
     `;
 
     return article;
-  }
-
-  function publicCondition(product) {
-    const value = String(product.condition || '').trim();
-    return value || 'Buen estado';
   }
 
   function conditionBucket(product) {
@@ -1147,9 +1144,9 @@
     const style = document.createElement('style');
     style.id = 'unified-catalog-styles';
     style.textContent = `
-      .search-panel .search-field{display:grid!important;grid-template-rows:auto 1fr!important;gap:6px!important;padding:0!important;border:0!important;background:transparent!important;align-items:stretch!important}
-      .search-panel .search-field>span{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
-      .search-panel .search-field input{min-height:48px!important;width:100%!important;padding:0 14px!important;border:1px solid var(--line)!important;border-radius:8px!important;background:#fff!important;font:inherit!important;outline:none!important}
+      .search-panel .catalog-search-label{display:block;min-width:0;margin:0;padding:0;border:0;background:transparent}
+      .search-panel .catalog-search-label>span{transform:none;font-family:inherit}
+      .search-panel .catalog-search-label input{display:block;box-sizing:border-box;min-width:0;width:100%;height:48px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:inherit;outline:none}
       .catalog-results-unified{margin:8px 0 14px;color:var(--forest);font-size:13px;font-weight:800}
       .product-card,.product-card:hover,.product-card:focus-within{transform:none!important;box-shadow:none!important;background:#fff!important;border-color:#e7e1d5!important}
       .product-card img,.product-card:hover img,.product-photo:hover img{transform:none!important;transition:none!important}

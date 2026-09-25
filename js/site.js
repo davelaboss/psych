@@ -1,6 +1,7 @@
 // File: js/site.js
 
 const STATIC_CART_KEY = 'mudanza-demo-cart';
+const DELAYED_FINAL_PAYMENT_WINDOW = '1–8 diciembre 2026';
 
 window.addEventListener('load', function () {
   updateStaticCartCount();
@@ -243,8 +244,13 @@ function renderProductDetail(product) {
               balance > 0
                 ? `
                   <div>
-                    <span>Saldo al retirar</span>
+                    <span>Saldo pendiente</span>
                     <strong>${formatPYG(balance)}</strong>
+                  </div>
+
+                  <div>
+                    <span>Pago final</span>
+                    <strong>${DELAYED_FINAL_PAYMENT_WINDOW}</strong>
                   </div>
                 `
                 : ''
@@ -498,11 +504,12 @@ function renderCartPage() {
     .join('');
 
   main.innerHTML = `
+    <section class="cart-page">
     <div class="page-heading">
       <span class="section-kicker">TU SELECCIÓN</span>
       <h1>Carrito</h1>
       <p>
-        Revisá cuánto pagás ahora y qué saldo queda para el retiro.
+        Revisá los artículos y los importes antes de continuar.
       </p>
     </div>
 
@@ -532,7 +539,7 @@ function renderCartPage() {
           </div>
 
           <div>
-            <dt>Saldo futuro</dt>
+            <dt>Saldo pendiente</dt>
             <dd>${formatPYG(totals.balance)}</dd>
           </div>
         </dl>
@@ -540,10 +547,10 @@ function renderCartPage() {
         ${
           totals.balance > 0
             ? `
-              <p>
-                El saldo futuro corresponde a los artículos con retiro
-                posterior y se paga al retirar.
-              </p>
+              <div class="cart-payment-window">
+                <strong>Pago final del saldo pendiente</strong>
+                <span>${DELAYED_FINAL_PAYMENT_WINDOW}</span>
+              </div>
             `
             : ''
         }
@@ -588,6 +595,7 @@ function renderCartPage() {
       </aside>
 
     </div>
+    </section>
   `;
 
   setupCartPageEvents(hasUnavailable);
@@ -700,7 +708,7 @@ function renderCartItem(product) {
           product.askingPricePYG > due
             ? `
               <div>
-                <dt>Saldo al retirar</dt>
+                <dt>Saldo pendiente</dt>
                 <dd>
                   ${formatPYG(
                     (product.askingPricePYG - due) * quantity
@@ -709,7 +717,12 @@ function renderCartItem(product) {
               </div>
 
               <div>
-                <dt>Ventana de retiro</dt>
+                <dt>Pago final</dt>
+                <dd>${DELAYED_FINAL_PAYMENT_WINDOW}</dd>
+              </div>
+
+              <div>
+                <dt>Retiro</dt>
                 <dd>
                   ${formatPickupWindow(
                     product.pickupWindowStart,
@@ -1033,7 +1046,7 @@ function formatPickupWindow(start, end) {
       month: 'long',
     });
 
-  return `Ventana del ${startDay}–${endDay} de ${month}`;
+  return `${startDay}–${endDay} ${month} ${endDate.getFullYear()}`;
 }
 
 

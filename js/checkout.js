@@ -246,6 +246,24 @@ function renderCheckoutPage() {
                 ) * quantity
               )}
             </span>
+
+            ${
+              product.saleMode === 'DELAYED' &&
+              product.askingPricePYG > dueNowForProduct(product)
+                ? `
+                  <span>
+                    Saldo pendiente: ${formatPYG(
+                      (product.askingPricePYG - dueNowForProduct(product)) * quantity
+                    )}
+                  </span>
+                  <span>Pago final: ${DELAYED_FINAL_PAYMENT_WINDOW}</span>
+                  <span>Retiro: ${escapeHtml(formatPickupWindow(
+                    product.pickupWindowStart,
+                    product.pickupWindowEnd
+                  ))}</span>
+                `
+                : ''
+            }
           </div>
         `
       )
@@ -390,7 +408,7 @@ function renderCheckoutPage() {
 
             <div>
               <dt>
-                Saldo futuro
+                Saldo pendiente
               </dt>
 
               <dd>
@@ -400,6 +418,12 @@ function renderCheckoutPage() {
               </dd>
             </div>
           </dl>
+
+          ${
+            totals.future > 0
+              ? `<p>Pago final del saldo pendiente: ${DELAYED_FINAL_PAYMENT_WINDOW}.</p>`
+              : ''
+          }
         </aside>
 
       </div>
@@ -740,6 +764,13 @@ function displayOrder(
                         item.futureBalancePYG
                       )}
                     </span>
+
+                    <span>Pago final: ${DELAYED_FINAL_PAYMENT_WINDOW}</span>
+
+                    <span>Retiro: ${escapeHtml(formatPickupWindow(
+                      item.pickupWindowStart,
+                      item.pickupWindowEnd
+                    ))}</span>
                   `
                   : ''
               }
