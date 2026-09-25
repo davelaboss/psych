@@ -850,15 +850,11 @@ Do not reintroduce runtime text-repair hacks.
 
 ACTIVE OWNER:
 
-Sale-readiness customer UX punch list (this chat).
+None.
 
 ACTIVE TASK:
 
-Source changes and owner visual review are locally complete. Production deployment and regression verification remain before this workstream closes.
-
-The buyer-facing changes cover the homepage search label; December 1–8 final payment and December 9–12 pickup wording; cart spacing and the consistent `Saldo pendiente` label; San Lorenzo / Barrio Santo Tomás in the top strip; a family illustration in the header and footer; removal of the repeated homepage eyebrow; and a simplified catalog card hierarchy with `Agregar al carrito`, availability, and `Seña 25%` for delayed items. The seña is an advance payment, not a price discount. Commerce amounts and reservation transitions were not changed.
-
-Owner reviewed the local site on desktop and mobile during the punch list and described the final spacing as excellent. Production deployment and the 153-product storefront regression have not yet been reconfirmed for this source change.
+None. The sale-readiness customer UX punch list was deployed and production-checked on 2026-09-25. Its source and buyer-facing changes are recorded in the closeout entry below.
 
 Chat #4's Items 001–057 reconciliation implementation workstream is COMPLETE and CLOSED as of 2026-09-25.
 
@@ -1253,7 +1249,7 @@ No giant cross-chat historical handoff should normally be required after this sy
 
 ## Active
 
-Sale-readiness customer UX punch list: owner-approved local implementation; production deployment and regression verification pending.
+None. The sale-readiness customer UX punch list is complete and closed.
 
 No future workstream should be started merely because it is listed below.
 
@@ -1350,12 +1346,12 @@ Format:
 - Commit: The final documentation checkpoint is the Git commit containing this entry.
 - Remaining follow-up: None for the Items 001–057 reconciliation workstream. Retained future work remains separate and unassigned until explicitly started.
 
-## 2026-09-25 — Sale-readiness customer UX punch list, local review complete
+## 2026-09-25 — Sale-readiness customer UX punch list, production verified and closed
 
 - Owner/chat: Sale-readiness customer UX punch list.
 - Files changed: `index.html`, `css/site.css`, `js/site.js`, `js/checkout.js`, `js/volume2-storefront.js`, and `assets/media/maria-david-luciano.png`; this coordination entry in `PROJECT_MASTER.md`.
 - Result: Fixed the BUSCAR input overlap; clarified delayed-item final payment (December 1–8, 2026) and pickup (December 9–12, 2026) across product detail, cart, checkout, and private order views; aligned cart labels and payment-window callout; added cart gutters; updated the top-strip neighborhood, family illustration, homepage eyebrow, and catalog card hierarchy. Available cards say `Agregar al carrito`; delayed cards show one pickup label and `Seña 25%`. Product data, prices, deposit arithmetic, search/filter result logic, cart totals, and reservation state transitions were not changed.
-- Regression performed: JavaScript syntax and `git diff --check`; static/dynamic card structure and date-copy checks; owner visual checks of search and catalog on desktop/mobile, and detail/cart copy. The last local spacing adjustment was approved by the owner. Production regression remains pending after deployment.
-- Owner confirmation: Local result approved; owner requested workstream closeout.
-- Commit: The source/documentation checkpoint is the Git commit containing this entry.
-- Remaining follow-up: Deploy the source, confirm the 153-product catalog plus search/filter/cart/reservation and buyer date flow on production, then mark this workstream closed. The separate pickup-scheduling workstream should reconcile its `netlify/functions/_shared/commerce.mjs` `delayedPickup.endDate` of `2026-12-13` with the owner's approved December 9–12 pickup window before scheduling goes live.
+- Regression performed: JavaScript syntax and `git diff --check`; static/dynamic card and date-copy checks; owner visual checks on desktop/mobile. After deploying source commit `aa18c45`, a public browser check found the 153-article catalog; a `licuadora` search returned 2 of 153, delayed-pickup filtering returned 25 of 153, sort and filter reset worked, and the reservation carousel advanced. Item 017 detail, cart, and checkout displayed the approved December 1–8 final-payment and December 9–12 pickup windows. Its Gs. 175.000 total split into Gs. 43.750 due now and Gs. 131.250 pending; adding and removing it updated the cart count, leaving the browser cart empty. No production order or payment confirmation was created.
+- Owner confirmation: Owner approved the final local desktop/mobile appearance and requested closeout; the production checks above were performed in this chat.
+- Commit: Buyer-facing source and initial coordination entry deployed in `aa18c45`; this final documentation entry is in a subsequent documentation-only checkpoint.
+- Remaining follow-up: None for this UX workstream. The separate pickup-scheduling workstream should reconcile its `netlify/functions/_shared/commerce.mjs` `delayedPickup.endDate` of `2026-12-13` with the owner's approved December 9–12 pickup window before scheduling goes live.
