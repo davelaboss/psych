@@ -128,11 +128,13 @@ function renderProductDetail(product) {
   const balance = product.askingPricePYG - dueNow;
 
   const statusText =
-    product.status !== 'AVAILABLE'
-      ? 'NO DISPONIBLE'
-      : product.saleMode === 'DELAYED'
-        ? 'RETIRO 9–12 DIC.'
-        : 'DISPONIBLE AHORA';
+    product.status === 'SOLD' || product.status === 'PICKED_UP'
+      ? 'VENDIDO'
+      : product.status !== 'AVAILABLE'
+        ? 'NO DISPONIBLE'
+        : product.saleMode === 'DELAYED'
+          ? 'RETIRO 9–12 DIC.'
+          : 'DISPONIBLE AHORA';
 
   const conditionText =
     publicConditionText(
@@ -314,11 +316,13 @@ function renderProductDetail(product) {
               ${product.status !== 'AVAILABLE' ? 'disabled' : ''}
             >
               ${
-                product.status !== 'AVAILABLE'
-                  ? 'No disponible'
-                  : product.saleMode === 'DELAYED'
-                    ? 'Reservar este artículo'
-                    : 'Agregar al carrito'
+                product.status === 'SOLD' || product.status === 'PICKED_UP'
+                  ? 'Vendido'
+                  : product.status !== 'AVAILABLE'
+                    ? 'No disponible'
+                    : product.saleMode === 'DELAYED'
+                      ? 'Reservar este artículo'
+                      : 'Agregar al carrito'
               }
             </button>
 
