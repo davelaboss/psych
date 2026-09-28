@@ -2,6 +2,7 @@ import {
   adminAuthorized,
   jsonResponse,
   listProductOverrides,
+  loadBaseCatalog,
   loadCatalog,
 } from './_shared/commerce.mjs';
 
@@ -342,6 +343,78 @@ const LIVE_PUBLIC_FIELDS = [
 ];
 
 
+const SOURCE_SYNC_FIELDS = [
+  'title',
+  'category',
+  'description',
+  'condition',
+  'conditionNotes',
+  'knownDefects',
+  'includedAccessories',
+  'askingPricePYG',
+  'saleMode',
+  'depositPercent',
+  'pickupAvailableDate',
+  'pickupWindowStart',
+  'pickupWindowEnd',
+  'requiresVehicle',
+  'requiresLoadingHelp',
+  'quantityTotal',
+];
+
+
+function normalizedSyncValue(
+  field,
+  value
+) {
+  if (field === 'images') {
+    return (Array.isArray(value) ? value : [])
+      .map(
+        (image) =>
+          String(image || '')
+            .replace(/\?v=\d+$/, '')
+      );
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  return value ?? null;
+}
+
+
+function sourceMismatchFields(
+  base,
+  live
+) {
+  if (!base || !live) {
+    return [];
+  }
+
+  const fields = [
+    ...SOURCE_SYNC_FIELDS,
+    'images',
+  ];
+
+  return fields.filter(
+    (field) =>
+      JSON.stringify(
+        normalizedSyncValue(
+          field,
+          base[field]
+        )
+      ) !==
+      JSON.stringify(
+        normalizedSyncValue(
+          field,
+          live[field]
+        )
+      )
+  );
+}
+
+
 function applyLivePublicAuthority(
   legacy,
   live
@@ -408,8 +481,14 @@ export default async function handler(request) {
     const origin =
       new URL(request.url).origin;
 
-    const liveCatalog =
-      await loadCatalog(origin);
+    const [
+      baseCatalog,
+      liveCatalog,
+    ] =
+      await Promise.all([
+        loadBaseCatalog(origin),
+        loadCatalog(origin),
+      ]);
 
     const overrides =
       await listProductOverrides();
@@ -429,6 +508,17 @@ export default async function handler(request) {
 
     for (const product of liveCatalog) {
       liveByKey.set(
+        liveKey(product),
+        product
+      );
+    }
+
+
+    const baseByKey =
+      new Map();
+
+    for (const product of baseCatalog) {
+      baseByKey.set(
         liveKey(product),
         product
       );
@@ -578,6 +668,58 @@ export default async function handler(request) {
         },
       });
     }
+
+    for (const product of products) {
+      const itemNumber =
+        Number(product.itemNumber || 0);
+
+      if (
+        itemNumber < 1 ||
+        itemNumber > 57
+      ) {
+        product.sourceSyncRequired =
+          false;
+
+        product.sourceMismatchFields =
+          [];
+
+        continue;
+      }
+
+      const key =
+        liveKey(product);
+
+      const base =
+        baseByKey.get(key) ||
+        baseCatalog.find(
+          (candidate) =>
+            candidate.id ===
+            product.id
+        ) ||
+        null;
+
+      const live =
+        liveByKey.get(key) ||
+        liveCatalog.find(
+          (candidate) =>
+            candidate.id ===
+            product.id
+        ) ||
+        null;
+
+      const mismatchFields =
+        sourceMismatchFields(
+          base,
+          live
+        );
+
+      product.sourceSyncRequired =
+        mismatchFields.length > 0;
+
+      product.sourceMismatchFields =
+        mismatchFields;
+    }
+
 
     products.sort(
       (a, b) =>
