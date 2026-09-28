@@ -192,11 +192,11 @@ Never commit:
 - generated debugging debris;
 - secrets.
 
-For terminal/Git instructions, give the user ONE copy-and-paste command or compact command block at a time so it is easy to copy.
+For routine, known-safe terminal/Git workflows, give the user the FULL command sequence for the current task at once, preferably as one compact copy-and-paste block or clearly ordered commands. State what result to expect after each command or logical stage. Do not make the user return to chat just to say "continue" between predictable safe steps.
 
-Immediately after each command/block, briefly state what the user should expect to see.
+For workflows where a later command genuinely depends on inspecting the exact output of an earlier command, stop only at that dependency point.
 
-If the result matches the stated expectation, the user may continue to the next provided step without pasting the output back into chat. Ask the user to paste output only when:
+If the result matches the stated expectation, the user may continue through the provided sequence without pasting the output back into chat. Ask the user to paste output only when:
 
 - the result materially differs from the expectation;
 - the next command genuinely depends on exact output;
@@ -273,7 +273,7 @@ After the task is successfully implemented and the user confirms it is NOMINAL:
 6. Push it.
 7. Verify that local `main` is synchronized with `origin/main` and the working tree is clean.
 
-For a routine, known-safe checkpoint, provide one copy-and-paste command or compact command block at a time and state the expected result immediately after it. If the output matches the expectation, the user may proceed without reporting it back. Request pasted output only when Section 7 says it is actually needed.
+For a routine, known-safe checkpoint, provide the full safe command sequence for that checkpoint at once and state the expected result after each command or logical stage. Do not require the user to return between each predictable step. Request pasted output only when Section 7 says it is actually needed.
 
 Do not mark failed or untested work as completed.
 
