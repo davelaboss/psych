@@ -1437,3 +1437,5 @@ Format:
 - Item 168 rolling bag is AVAILABLE NOW at Gs. 150.000 with 15 bag photos and confirmed dimensions.
 - Intentional hidden records 096, 111, 118, 128, 132, and 137 remain hidden for duplicate/given-away reasons and are not launch blockers.
 - Before production publish/closeout: perform the batched local refresh/recheck, finish required original-catalog production/admin reconciliation (including Item 054 live override data), merge/deploy, and run production regression.
+
+- Item 106 replacement-photo identification on 2026-09-28: owner identified the correct replacement third photo as `IMG_8372` in Volume 2A. The asset is not yet present in the GitHub branch/tree as of this check, so do not replace `IMG_8353.JPG` until the actual `IMG_8372` file (with confirmed extension/path) appears. Once present, replace only the third Item 106 photo and preserve `IMG_7915.JPG` and `IMG_7917.JPG`.
