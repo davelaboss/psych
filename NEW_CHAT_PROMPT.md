@@ -136,6 +136,8 @@ The user is not a programmer.
 
 When available tools/connectors can make the repository change directly, make the change yourself and have the owner verify/test it. Do not hand the owner code to paste for changes you can safely apply yourself.
 
+Photo-preservation rule: when adding new product photos, preserve all existing product photos by default. Do not remove, replace, or detach an existing product photo unless the owner explicitly instructs that photo to be removed/replaced, or the photo is being intentionally reassigned as part of an explicitly approved split/duplicate correction. Treat new photos as additive unless clearly told otherwise.
+
 Do not make the user manually splice JavaScript functions, braces, handlers, or large code fragments.
 
 Do not create ZIP bundles.
