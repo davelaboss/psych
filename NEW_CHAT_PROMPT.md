@@ -134,6 +134,8 @@ Do not expose internal/reviewer/TODO material publicly.
 
 The user is not a programmer.
 
+When available tools/connectors can make the repository change directly, make the change yourself and have the owner verify/test it. Do not hand the owner code to paste for changes you can safely apply yourself.
+
 Do not make the user manually splice JavaScript functions, braces, handlers, or large code fragments.
 
 Do not create ZIP bundles.
