@@ -371,13 +371,42 @@ export async function loadCatalog(origin) {
       )
     );
 
-  return products.map(
-    (product) =>
-      applyProductOverride(
-        product,
-        overrideById.get(product.id)
-      )
-  );
+  const staticProducts =
+    products.map(
+      (product) =>
+        applyProductOverride(
+          product,
+          overrideById.get(product.id)
+        )
+    );
+
+  const merchandisingProducts =
+    volume2Products().map(
+      (product) =>
+        applyProductOverride(
+          product,
+          overrideById.get(product.id)
+        )
+    );
+
+  const byId =
+    new Map();
+
+  for (const product of [
+    ...staticProducts,
+    ...merchandisingProducts,
+  ]) {
+    if (product?.id) {
+      byId.set(product.id, product);
+    }
+  }
+
+  return [...byId.values()]
+    .sort(
+      (a, b) =>
+        Number(a.itemNumber) -
+        Number(b.itemNumber)
+    );
 }
 
 
