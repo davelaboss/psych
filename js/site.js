@@ -99,6 +99,21 @@ function publicConditionText(value) {
 }
 
 
+function publicKnownDefectText(value) {
+  const text = String(value || '').trim();
+
+  if (
+    !text ||
+    /^(ninguno|ninguna|sin defectos conocidos)$/i.test(text) ||
+    /no se (?:han )?informado defectos/i.test(text)
+  ) {
+    return '';
+  }
+
+  return text;
+}
+
+
 function renderProductDetail(product) {
   const main = document.querySelector('main');
 
@@ -122,6 +137,11 @@ function renderProductDetail(product) {
   const conditionText =
     publicConditionText(
       product.condition
+    );
+
+  const knownDefectText =
+    publicKnownDefectText(
+      product.knownDefects
     );
 
   const gallery = (product.images || [])
@@ -410,11 +430,11 @@ function renderProductDetail(product) {
           }
 
           ${
-            Number(product.itemNumber) <= 57 && product.knownDefects
+            knownDefectText
               ? `
                 <div>
                   <dt>Defectos conocidos</dt>
-                  <dd>${escapeHtml(product.knownDefects)}</dd>
+                  <dd>${escapeHtml(knownDefectText)}</dd>
                 </div>
               `
               : ''
