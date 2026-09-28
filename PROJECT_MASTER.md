@@ -1355,3 +1355,21 @@ Format:
 - Owner confirmation: Owner approved the final local desktop/mobile appearance and requested closeout; the production checks above were performed in this chat.
 - Commit: Buyer-facing source and initial coordination entry deployed in `aa18c45`; this final documentation entry is in a subsequent documentation-only checkpoint.
 - Remaining follow-up: None for this UX workstream. The separate pickup-scheduling workstream should reconcile its `netlify/functions/_shared/commerce.mjs` `delayedPickup.endDate` of `2026-12-13` with the owner's approved December 9–12 pickup window before scheduling goes live.
+
+
+## 2026-09-27 — Product merchandising / sale-readiness implementation in progress
+
+- Owner/chat: Product merchandising / sale-readiness completion.
+- Working branch: `merchandising-sale-readiness-2026-09-27`.
+- Photo checkpoint already committed and pushed to `main`: `d88631cd6659684b198063e5d788a2e091d5ea10` (`Add sale-readiness product photos`).
+- Source files updated on the work branch so far: `source/lib/volume2-batch.ts` and `source/lib/volume2-image-map.mjs`.
+- Result so far: owner-confirmed Volume 2 merchandising facts, revised asking prices, measurements, condition/functionality wording, availability, and new photo assignments have been incorporated into the durable source baseline while preserving established photo assignments except where the owner explicitly supplied replacements/additions.
+- Important Item 056 restoration: the older ChatGPT Sites inventory contained **Item 056, TP-Link MC111CS V4.0 media converter**. Preserve Item 056; do not assign it a new item number. The owner confirms there are **exactly 2 product photos**, and both are expected in the upcoming **Volume 4** photo folder. When Volume 4 is processed, identify those two photos and attach both to Item 056. The former draft asking price was Gs. 120.000, but the final price must be reconfirmed before publication.
+- Other photo dependency still pending from owner: the new dark-gray folding side tables, 2 units at Gs. 70.000 each with later pickup, still need their product photos.
+- Split/companion listings to preserve in later implementation: second/delayed curtain set for Item 060 as needed by the single-saleMode data model; remaining curtain rod associated with Item 060 (Gs. 90.000, later pickup); curtain rod associated with Item 117 (Gs. 45.000, later pickup); Google Chromecast 3rd generation separated from old Item 116 cover photo (Gs. 60.000); Item 081 split into simple square plus combination square; Item 152 split by availability if required by the one-saleMode-per-listing model; Item 158 split into cortahierro/cincel, wire stripper, and small hand saw.
+- Duplicate/removal decisions retained: remove/unlist Item 096 (given away), Item 111 duplicate of Item 045, Item 118 duplicate of Item 054, Item 128 duplicate absorbed into Item 129, Item 132 given away, and Item 137 given away. Item 119 is sold. Item 150 is sold; do not restore the corrupt photo.
+- Original Items 001–057 remain governed by the closed reconciliation workstream. Any new owner-approved changes from this merchandising chat should be applied through the supported normal `/admin` workflow where possible rather than reopening the prior reconciliation wholesale.
+- Public-copy rule retained: remove generic reviewer/internal boilerplate from buyer-facing copy, including generic statements about original photos, unidentified visible objects, TODO/review instructions, and generic condition wording using `usado/usada/usados/usadas`.
+- Expected gross asking-price revenue after the owner-confirmed merchandising changes is approximately **Gs. 30.200.000**, excluding Item 056 because its final price is not yet reconfirmed. If Item 056 retains its old Gs. 120.000 draft price, the corresponding total would be approximately **Gs. 30.320.000**.
+- Regression/production verification: pending until the complete merchandising batch is merged/deployed.
+- Remaining follow-up: finish source/admin reconciliation, create the required companion/new listings without reusing retired Item IDs, incorporate Item 056 and dark-gray-table photos when supplied, run regression, obtain owner NOMINAL confirmation, then close this workstream.
