@@ -85,6 +85,20 @@ function getEmbeddedProduct(field, value) {
 }
 
 
+function publicConditionText(value) {
+  const text = String(value || '').trim();
+
+  if (
+    !text ||
+    /estado visual\s+seg[uú]n\s+(?:las\s+)?fotograf[ií]as?/i.test(text)
+  ) {
+    return '';
+  }
+
+  return text;
+}
+
+
 function renderProductDetail(product) {
   const main = document.querySelector('main');
 
@@ -104,6 +118,11 @@ function renderProductDetail(product) {
       : product.saleMode === 'DELAYED'
         ? 'RETIRO 9–12 DIC.'
         : 'DISPONIBLE AHORA';
+
+  const conditionText =
+    publicConditionText(
+      product.condition
+    );
 
   const gallery = (product.images || [])
     .map((image, index) => {
@@ -214,9 +233,15 @@ function renderProductDetail(product) {
               : ''
           }
 
-          <span class="condition-pill">
-            ${escapeHtml(product.condition)}
-          </span>
+          ${
+            conditionText
+              ? `
+                <span class="condition-pill">
+                  ${escapeHtml(conditionText)}
+                </span>
+              `
+              : ''
+          }
 
           <p class="lead">
             ${escapeHtml(product.description).replace(/\\n/g, '<br>')}
@@ -362,10 +387,16 @@ function renderProductDetail(product) {
             <dd>Item ${String(product.itemNumber).padStart(3, '0')}</dd>
           </div>
 
-          <div>
-            <dt>Estado</dt>
-            <dd>${escapeHtml(product.condition)}</dd>
-          </div>
+          ${
+            conditionText
+              ? `
+                <div>
+                  <dt>Estado</dt>
+                  <dd>${escapeHtml(conditionText)}</dd>
+                </div>
+              `
+              : ''
+          }
 
           ${
             Number(product.itemNumber) <= 57 && product.conditionNotes
