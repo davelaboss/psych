@@ -253,16 +253,6 @@ function renderProductDetail(product) {
               : ''
           }
 
-          ${
-            conditionText
-              ? `
-                <span class="condition-pill">
-                  ${escapeHtml(conditionText)}
-                </span>
-              `
-              : ''
-          }
-
           <p class="lead">
             ${escapeHtml(product.description).replace(/\\n/g, '<br>')}
           </p>
