@@ -1454,5 +1454,7 @@ Format:
   - Item 086 now has 6 photos total; existing cover `IMG_7855.JPG` and prior two PXL photos preserved, with additive `IMG_8150.JPG`, `IMG_8154.JPG`, and `IMG_8152.JPG`.
   - Item 106 wrong third photo `IMG_8353.JPG` replaced with owner-confirmed `IMG_8372.jpg`; original `IMG_7915.JPG` and `IMG_7917.JPG` preserved.
   - Item 163 now has its 3 owner-confirmed photos and is no longer UNLISTED/needs-review for missing photos; remains Gs. 70.000 each, quantity 2, delayed pickup.
-  - Item 056 now has its 3 owner-confirmed photos attached: `IMG_8128.JPG`, `PXL_20260913_152523154.jpg`, and `IMG_8127.JPG`. It remains intentionally UNLISTED/needs-review only because its final price has not yet been reconfirmed; current source still carries the old Gs. 120.000 draft asking price.
+  - Item 056 now has its 3 owner-confirmed photos attached: `IMG_8128.JPG`, `PXL_20260913_152523154.jpg`, and `IMG_8127.JPG`. Owner subsequently confirmed Gs. 120.000 as the final sale price, so Item 056 is publishable.
   - The image map now contains all 10 newly uploaded Volume 2A assets.
+
+- Item 056 final confirmation on 2026-09-28: owner confirmed the sale price at Gs. 120.000. With its 3 Volume 2A photos already attached, Item 056 is now AVAILABLE/publishable and no longer UNLISTED or needs-review for price/photo readiness.
