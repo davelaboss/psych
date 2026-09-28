@@ -165,6 +165,25 @@ function cleanDescription(item) {
 }
 
 
+function publicKnownDefects(item) {
+  const value =
+    cleanPublicText(item.knownDefects);
+
+  if (!value) {
+    return '';
+  }
+
+  return value
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) =>
+      /no funciona|no enciende|falla|defecto|roto|rota|dañado|dañada|desgaste|desprendimiento/i.test(sentence)
+    )
+    .join(' ')
+    .trim();
+}
+
+
 function publicCondition(item) {
   const value =
     cleanPublicText(item.condition);
@@ -215,7 +234,8 @@ function publicProduct(item) {
     condition:
       publicCondition(item),
     conditionNotes: '',
-    knownDefects: '',
+    knownDefects:
+      publicKnownDefects(item),
     images:
       (item.photos || [])
         .map(
