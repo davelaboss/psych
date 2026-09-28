@@ -1402,3 +1402,5 @@ Format:
 
 
 - Item 106 owner verification on 2026-09-28: listing content is otherwise NOMINAL, but the currently added third photo (IMG_8353.JPG) is the wrong image for this item. Replace it when the owner provides the correct photo showing the two main compartments open-backed so the wall is visible through them. Do not remove either of the two original Item 106 photos. Item 111 is confirmed hidden/NOMINAL as a duplicate of Item 045.
+
+- Owner workflow rule added 2026-09-28: batch local verification. Do not require stop Netlify Dev -> fetch -> pull -> restart -> hard refresh after each small change. Keep a running recheck queue and request one local refresh at sensible checkpoints, unless an immediate validation is necessary to avoid building on an uncertain result. Current pending recheck queue includes Item 117 copy cleanup; Item 106 remains pending correct replacement third photo; Item 086 remains pending approximately two additional photos.
