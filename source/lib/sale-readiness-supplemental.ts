@@ -104,6 +104,7 @@ export const SALE_READINESS_SUPPLEMENTAL_ITEMS: Volume2BatchItem[] = [
     ],
     asking: 90000,
     description: 'Barral de cortina vendido por unidad. De las 2 unidades originales, una ya fue vendida y queda 1 disponible.',
+    included: ['Soportes de montaje'],
     delayed: true,
   }),
   build({
@@ -112,7 +113,9 @@ export const SALE_READINESS_SUPPLEMENTAL_ITEMS: Volume2BatchItem[] = [
     category: 'Hogar',
     photos: ['PXL_20260904_155218020.jpg', 'PXL_20260904_155227444.jpg'],
     asking: 45000,
-    description: 'Barral de cortina separado del juego de cortinas del Item 117.',
+    description: 'Barral de cortina separado del juego de cortinas del Item 117. Es ajustable.',
+    included: ['Soportes de montaje'],
+    measurements: '180 cm de largo; ajustable.',
     delayed: true,
   }),
   build({
