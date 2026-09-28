@@ -1607,7 +1607,7 @@ function renderLegacyProductDetail(
               </p>
 
               <p>
-                Este artículo debe reconciliarse antes de cerrar o desplegar un cambio de catálogo original.
+                Este artículo debe reconciliarse antes de cerrar este trabajo o pasar a otro workstream.
               </p>
             </div>
           `
