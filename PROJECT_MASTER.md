@@ -1468,7 +1468,7 @@ Format:
   - preserve Blob override precedence;
   - expose a source-versus-production drift check in the owner admin for Items 001–057, including the mismatched field names;
   - add an admin overview count for source/live drift;
-  - establish a permanent closeout gate: any original-catalog change is incomplete until committed source and production/admin data agree, and reconciliation must happen before merge/closeout rather than being deferred to a final production spot check.
+  - establish a permanent two-phase closeout gate: deploy the committed original-catalog source change, then immediately reconcile production/admin data before moving to another workstream or closing; do not defer the live reconciliation to a later production spot check.
 - Owner-confirmed intended facts for this correction:
   - Item 019: Gs. 120.000 each, quantity 2.
   - Item 020: Gs. 42.000.
