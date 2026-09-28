@@ -178,6 +178,19 @@ export function publicStatusLabel(status: InventoryStatus): string {
   return status === 'SOLD' || status === 'PICKED_UP' ? 'Vendido' : statusLabel(status);
 }
 
+export function publicConditionText(value: string | null | undefined): string {
+  const text = String(value || '').trim();
+
+  if (
+    !text ||
+    /estado visual\s+seg[uú]n\s+(?:las\s+)?fotograf[ií]as?/i.test(text)
+  ) {
+    return '';
+  }
+
+  return text;
+}
+
 export function formatPickupDate(value: string | null): string {
   if (!value) return 'Retiro inmediato';
   return new Intl.DateTimeFormat('es-PY', {
