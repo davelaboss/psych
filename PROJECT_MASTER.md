@@ -1397,3 +1397,5 @@ Format:
 
 
 - Detail-page defect display rule (2026-09-28): show `Defectos conocidos` only when a specific confirmed defect exists; omit the row when there is no actual defect. Item 090 is the reference case: the front-right burner lights manually, but its automatic ignition does not work. The public catalog transform now exposes specific defect statements while suppressing generic/no-defect filler.
+
+- Detail-page condition placement rule (2026-09-28): do not show a separate condition pill/tag directly below the price on product detail pages. If meaningful condition information exists, it may appear naturally in the description and in the structured lower `Estado` row. This avoids redundant condition copy such as Item 086 showing “En perfecto estado” in three places.
