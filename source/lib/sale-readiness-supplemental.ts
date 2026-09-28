@@ -84,7 +84,7 @@ export const SALE_READINESS_SUPPLEMENTAL_ITEMS: Volume2BatchItem[] = [
     category: 'Hogar',
     photos: ['IMG_7792.JPG', 'IMG_7794.JPG', 'IMG_7797.JPG'],
     asking: 190000,
-    description: 'Segundo juego idéntico de 2 paneles de cortina grises. Cada panel mide aproximadamente 135 cm de ancho por 250 cm de alto.',
+    description: 'Segundo juego idéntico de 2 paneles de cortina grises.',
     included: ['2 paneles de cortina', 'Cortinas de encaje blancas'],
     excluded: 'Barral no incluido.',
     measurements: 'Cada panel: 135 cm de ancho × 250 cm de alto.',
