@@ -1449,3 +1449,10 @@ Format:
 - Owner workflow clarification on 2026-09-28: for routine, predictable, known-safe terminal/Git workflows, provide the entire sequence at once with expected results. Do not make the owner return to chat to say “continue” after each successful command. Stop only when the next step genuinely depends on inspecting exact output, a conflict/divergence appears, or a destructive/uncertain operation requires confirmation.
 
 - Owner terminal/Git formatting clarification on 2026-09-28: provide the whole safe sequence in one assistant reply, but put every command in its own separate code block so each can be copied with one click. Do not combine routine commands into one block unless the owner explicitly asks for a combined block. Include the expected result after each command. Do not require “continue” between expected successful steps.
+
+- Photo batch integration completed after the 2026-09-28 local-to-GitHub sync:
+  - Item 086 now has 6 photos total; existing cover `IMG_7855.JPG` and prior two PXL photos preserved, with additive `IMG_8150.JPG`, `IMG_8154.JPG`, and `IMG_8152.JPG`.
+  - Item 106 wrong third photo `IMG_8353.JPG` replaced with owner-confirmed `IMG_8372.jpg`; original `IMG_7915.JPG` and `IMG_7917.JPG` preserved.
+  - Item 163 now has its 3 owner-confirmed photos and is no longer UNLISTED/needs-review for missing photos; remains Gs. 70.000 each, quantity 2, delayed pickup.
+  - Item 056 now has its 3 owner-confirmed photos attached: `IMG_8128.JPG`, `PXL_20260913_152523154.jpg`, and `IMG_8127.JPG`. It remains intentionally UNLISTED/needs-review only because its final price has not yet been reconfirmed; current source still carries the old Gs. 120.000 draft asking price.
+  - The image map now contains all 10 newly uploaded Volume 2A assets.
