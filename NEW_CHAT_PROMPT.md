@@ -205,6 +205,8 @@ If the result matches the stated expectation, the user may continue to the next 
 
 Safe read-only diagnostics may still be batched when that materially reduces unnecessary work, but keep the copy/paste experience simple and clearly separated.
 
+For local Netlify testing, do not assume an already-running `npx netlify dev` process will reload newly pulled changes to `netlify/functions` or source modules imported by those functions. After pulling changes that affect Netlify functions or their imported source/data modules, explicitly stop and restart `npx netlify dev` before judging the result in the browser. A browser hard refresh alone is not sufficient for this class of change.
+
 Do not run `git pull`, reset, rebase, restore, or stash blindly when the working tree is dirty.
 
 ---
