@@ -175,18 +175,18 @@ function item(spec: Spec, index: number): Volume2BatchItem {
   const marketLow = spec.market?.[0] ?? Math.max(10000, Math.round(spec.asking * 0.8 / 10000) * 10000);
   const marketHigh = spec.market?.[1] ?? Math.max(marketLow, Math.round(spec.asking * 1.35 / 10000) * 10000);
   const quantity = spec.quantity ?? 1;
-  const excluded = spec.excluded ?? 'No se identificaron otros objetos visibles que deban considerarse incluidos.';
+  const excluded = spec.excluded ?? '';
   const functionality = spec.functionality ?? 'No aplica o no requiere prueba funcional específica; estado estructural no verificado.';
   return {
     id: `real-202609-volume2-${itemNumber}`,
     itemNumber,
     title: spec.title,
     category: spec.category,
-    description: `${spec.description ?? `${spec.title} usado, ofrecido tal como aparece en las fotografías originales.`} ${excluded}`,
-    condition: spec.condition ?? 'Usado; estado visual según fotografías',
-    conditionNotes: 'Se conservan las fotografías originales sin retoque. Revisar señales de uso y detalles visibles antes de aprobar.',
+    description: [spec.description ?? spec.title, excluded].filter(Boolean).join(' '),
+    condition: spec.condition ?? 'Estado visual según fotografías',
+    conditionNotes: '',
     functionality,
-    knownDefects: `${functionality} ${spec.flag ?? 'Medidas no disponibles.'}`,
+    knownDefects: [functionality, spec.flag ?? ''].filter(Boolean).join(' '),
     includedAccessories: spec.included ?? [],
     notIncludedVisible: excluded,
     quantityStructure: spec.structure ?? (quantity > 1 ? `Precio por unidad; ${quantity} unidades disponibles.` : 'Una unidad / un lote, según se describe.'),
