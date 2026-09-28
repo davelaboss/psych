@@ -188,21 +188,20 @@ Never commit:
 - generated debugging debris;
 - secrets.
 
-For routine, known-safe Git workflows, give the user the FULL command sequence at once and briefly state what should be expected after each command.
+For terminal/Git instructions, give the user ONE copy-and-paste command or compact command block at a time so it is easy to copy.
 
-The user will stop and report back if the actual result materially differs.
+Immediately after each command/block, briefly state what the user should expect to see.
 
-Use one-command-at-a-time mode only when:
+If the result matches the stated expectation, the user may continue to the next provided step without pasting the output back into chat. Ask the user to paste output only when:
 
-- the next command depends on the exact previous output;
-- merge/rebase conflicts are possible;
-- the working tree is unexpectedly dirty;
+- the result materially differs from the expectation;
+- the next command genuinely depends on exact output;
+- a merge/rebase conflict or unexpected dirty state appears;
 - local and remote history have diverged;
-- restore/reset/stash operations are involved;
-- another chat may have uncommitted work;
-- a command could overwrite, discard, or complicate existing work.
+- restore/reset/stash or another potentially destructive operation is involved;
+- explicit verification of a specific value is required.
 
-Safe read-only diagnostics may be batched.
+Safe read-only diagnostics may still be batched when that materially reduces unnecessary work, but keep the copy/paste experience simple and clearly separated.
 
 Do not run `git pull`, reset, rebase, restore, or stash blindly when the working tree is dirty.
 
@@ -268,9 +267,7 @@ After the task is successfully implemented and the user confirms it is NOMINAL:
 6. Push it.
 7. Verify that local `main` is synchronized with `origin/main` and the working tree is clean.
 
-For a routine, known-safe checkpoint, provide the full Git command sequence together and briefly state the expected result after each command.
-
-Switch to one-command-at-a-time mode only when one of the Git-risk conditions in Section 7 applies.
+For a routine, known-safe checkpoint, provide one copy-and-paste command or compact command block at a time and state the expected result immediately after it. If the output matches the expectation, the user may proceed without reporting it back. Request pasted output only when Section 7 says it is actually needed.
 
 Do not mark failed or untested work as completed.
 
