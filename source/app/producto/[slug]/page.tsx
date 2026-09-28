@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { ProductActions } from '@/components/product-actions';
 import { ProductImageGallery } from '@/components/image-lightbox';
 import { getPublicProductBySlug } from '@/lib/database';
-import { dueNowForProduct, formatItemNumber, formatPickupWindow, formatPYG, itemTitle, publicStatusLabel } from '@/lib/types';
+import { dueNowForProduct, formatItemNumber, formatPickupWindow, formatPYG, itemTitle, publicConditionText, publicStatusLabel } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const product = await getPublicProductBySlug(slug);
   if (!product) return { title: 'Artículo no encontrado', openGraph: { images: [] }, twitter: { images: [] } };
   const title = `${itemTitle(product)} · ${formatPYG(product.askingPricePYG)}`;
-  const description = `${product.condition}. ${product.saleMode === 'DELAYED' ? `Retiro ${formatPickupWindow(product.pickupWindowStart, product.pickupWindowEnd, product.pickupAvailableDate)}.` : 'Disponible para retiro inmediato.'}`;
+  const conditionText = publicConditionText(product.condition);
+  const availabilityText = product.saleMode === 'DELAYED'
+    ? `Retiro ${formatPickupWindow(product.pickupWindowStart, product.pickupWindowEnd, product.pickupAvailableDate)}.`
+    : 'Disponible para retiro inmediato.';
+  const description = [conditionText, availabilityText].filter(Boolean).join(' ');
   const images = product.images[0] ? [{ url: product.images[0], alt: product.title }] : [];
   return {
     title, description,
@@ -27,6 +31,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   if (!product) notFound();
   const dueNow = dueNowForProduct(product);
   const balance = product.askingPricePYG - dueNow;
+  const conditionText = publicConditionText(product.condition);
 
   return <main className="product-page">
     <nav className="breadcrumbs" aria-label="Migas de pan"><a href="/#articulos">← Volver al catálogo</a><span>/</span><span>{product.category}</span><span>/</span><span>{product.title}</span></nav>
@@ -38,7 +43,6 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         {product.originalPricePYG ? <del>{formatPYG(product.originalPricePYG)}</del> : null}
         <strong className="detail-price">{formatPYG(product.askingPricePYG)}{(product.quantityTotal ?? 1) > 1 ? ' por unidad' : ''}</strong>
         {(product.quantityTotal ?? 1) > 1 ? <p>{product.quantityRemaining} unidades disponibles</p> : null}
-        <span className="condition-pill">{product.condition}</span>
         <p className="lead">{product.description}</p>
 
         <div className="payment-breakdown">
@@ -55,7 +59,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
     <section className="product-notes">
       <div><span className="section-kicker">DETALLES</span><h2>Lo que tenés que saber</h2></div>
-      <dl><div><dt>Item ID</dt><dd>{formatItemNumber(product.itemNumber)}</dd></div><div><dt>Estado</dt><dd>{product.condition}</dd></div><div><dt>Observaciones</dt><dd>{product.conditionNotes}</dd></div><div><dt>Defectos conocidos</dt><dd>{product.knownDefects}</dd></div><div><dt>Accesorios incluidos</dt><dd>{product.includedAccessories.length ? product.includedAccessories.join(' · ') : 'Ninguno indicado'}</dd></div><div><dt>Disponibilidad</dt><dd>{publicStatusLabel(product.status)}</dd></div></dl>
+      <dl><div><dt>Item ID</dt><dd>{formatItemNumber(product.itemNumber)}</dd></div>{conditionText ? <div><dt>Estado</dt><dd>{conditionText}</dd></div> : null}{product.conditionNotes ? <div><dt>Observaciones</dt><dd>{product.conditionNotes}</dd></div> : null}{product.knownDefects ? <div><dt>Defectos conocidos</dt><dd>{product.knownDefects}</dd></div> : null}<div><dt>Accesorios incluidos</dt><dd>{product.includedAccessories.length ? product.includedAccessories.join(' · ') : 'Ninguno indicado'}</dd></div><div><dt>Disponibilidad</dt><dd>{publicStatusLabel(product.status)}</dd></div></dl>
       <div className="logistics"><strong>Para el retiro</strong><ul>{product.logisticsNotes.map((note) => <li key={note}>{note}</li>)}</ul><p>El comprador es responsable del transporte. No hacemos delivery ni envíos.</p></div>
     </section>
   </main>;

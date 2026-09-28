@@ -1355,3 +1355,106 @@ Format:
 - Owner confirmation: Owner approved the final local desktop/mobile appearance and requested closeout; the production checks above were performed in this chat.
 - Commit: Buyer-facing source and initial coordination entry deployed in `aa18c45`; this final documentation entry is in a subsequent documentation-only checkpoint.
 - Remaining follow-up: None for this UX workstream. The separate pickup-scheduling workstream should reconcile its `netlify/functions/_shared/commerce.mjs` `delayedPickup.endDate` of `2026-12-13` with the owner's approved December 9–12 pickup window before scheduling goes live.
+
+
+## 2026-09-27 — Product merchandising / sale-readiness implementation in progress
+
+- Owner/chat: Product merchandising / sale-readiness completion.
+- Working branch: `merchandising-sale-readiness-2026-09-27`.
+- Photo checkpoint already committed and pushed to `main`: `d88631cd6659684b198063e5d788a2e091d5ea10` (`Add sale-readiness product photos`).
+- Source files updated on the work branch so far: `source/lib/volume2-batch.ts` and `source/lib/volume2-image-map.mjs`.
+- Result so far: owner-confirmed Volume 2 merchandising facts, revised asking prices, measurements, condition/functionality wording, availability, and new photo assignments have been incorporated into the durable source baseline while preserving established photo assignments except where the owner explicitly supplied replacements/additions.
+- Important Item 056 restoration: the older ChatGPT Sites inventory contained **Item 056, TP-Link MC111CS V4.0 media converter**. Preserve Item 056; do not assign it a new item number. The owner later superseded the earlier two-photo note and supplied **3 product-photo filenames** for Volume 2A: `IMG_8128`, `PXL_20260913_152523154`, and `IMG_8127`. Attach all three once the actual files are visible in the repository. The former draft asking price was Gs. 120.000, but the final price must be reconfirmed before publication.
+- Other photo dependency still pending from owner: the new dark-gray folding side tables, 2 units at Gs. 70.000 each with later pickup, still need their product photos.
+- Split/companion listings to preserve in later implementation: second/delayed curtain set for Item 060 as needed by the single-saleMode data model; remaining curtain rod associated with Item 060 (Gs. 90.000, later pickup); curtain rod associated with Item 117 (Gs. 45.000, later pickup); Google Chromecast 3rd generation separated from old Item 116 cover photo (Gs. 60.000); Item 081 split into simple square plus combination square; Item 152 split by availability if required by the one-saleMode-per-listing model; Item 158 split into cortahierro/cincel, wire stripper, and small hand saw.
+- Duplicate/removal decisions retained: remove/unlist Item 096 (given away), Item 111 duplicate of Item 045, Item 118 duplicate of Item 054, Item 128 duplicate absorbed into Item 129, Item 132 given away, and Item 137 given away. Item 119 is sold. Item 150 is sold; do not restore the corrupt photo.
+- Original Items 001–057 remain governed by the closed reconciliation workstream. Any new owner-approved changes from this merchandising chat should be applied through the supported normal `/admin` workflow where possible rather than reopening the prior reconciliation wholesale.
+- Pending owner-approved original-catalog admin reconciliation after this branch is ready for test: Item 019 Gs. 120.000 each, quantity 2; Item 020 Gs. 42.000; Item 045 remains the two matching chairs and should absorb the applicable Item 111 photo `images/volume-2a/IMG_7926.JPG` before Item 111 stays unlisted; Item 047 title `Repisas macizas`, Gs. 75.000 each, quantity 3, measurements 100 × 3,7 × 29,3 cm, three rear/support metal brackets included per shelf, black horizontal bar/hooks excluded, and no `flotante/flotantes` wording; Item 052 Gs. 42.000 total; Item 054 Gs. 90.000 with December 9–12 pickup and wording that it remains wrapped/covered in its original protective plastic without calling it new; Item 057 Gs. 60.000 each, quantity 2, with later pickup and wording that the two units have their own wear while the photos show one unit.
+- Public-copy rule retained: remove generic reviewer/internal boilerplate from buyer-facing copy, including generic statements about original photos, unidentified visible objects, TODO/review instructions, and generic condition wording using `usado/usada/usados/usadas`.
+- Public condition-display rule clarified by owner on 2026-09-28: do not show generic buyer-facing `Estado visual según fotografías` (or equivalent photo-only condition wording) anywhere on the site. If no meaningful condition fact exists, omit the condition pill/`Estado` row entirely. Meaningful specific wear, damage, or functionality defects may still be shown. Photo-edit cleanup must also remove stale exclusions that refer to objects removed from the edited image; Item 059 specifically should no longer say that curtains or other furniture are excluded after those objects were removed from its published photo.
+- Public-copy deduplication rule clarified by owner on 2026-09-28: do not repeat the same measurements, functionality statement, exclusion, or other factual sentence twice in a buyer-facing description. Keep structured facts, but the public transform should suppress a structured measurement/functionality append when that fact is already present in the description and should preserve normal sentence punctuation between composed fields. A full source scan at this checkpoint found no remaining exact duplicate sentences in the original embedded catalog and no remaining clear measurement/functionality/exclusion duplication in Volume 2 or the supplemental listings. Clear fixes made in this pass: Item 060 measurement duplication removed, Item 063 measurement duplication removed, Item 080 tester functionality wording deduplicated, and companion Item 159 measurement duplication removed.
+- Expected gross asking-price revenue after the owner-confirmed merchandising changes is approximately **Gs. 30.200.000**, excluding Item 056 because its final price is not yet reconfirmed. If Item 056 retains its old Gs. 120.000 draft price, the corresponding total would be approximately **Gs. 30.320.000**.
+- Source consistency validation before owner testing: the Volume 2 source still contains exactly 101 immutable Items 058–158; the supplemental source contains 10 records (Item 056 plus Items 159–167); Volume 2 status counts are 93 available, 2 sold, and 6 unlisted; all 232 referenced product-photo filenames resolve through the image map to files that exist in the branch; remaining gross asking-price math reconciles to Gs. 30.200.000 when the pending dark-gray tables are included and Item 056 is excluded, or Gs. 30.320.000 if Item 056 ultimately retains its old Gs. 120.000 draft price.
+- Regression/production verification: pending until local owner testing and the complete merchandising batch are merged/deployed.
+- Remaining follow-up: finish source/admin reconciliation, create the required companion/new listings without reusing retired Item IDs, incorporate Item 056 and dark-gray-table photos when supplied, run regression, obtain owner NOMINAL confirmation, then close this workstream.
+
+
+## 2026-09-28 — Terminal command handoff preference
+
+- Owner/chat: Product merchandising / sale-readiness completion.
+- Permanent workflow rule: future programming chats should give terminal/Git instructions one copy-and-paste command or compact command block at a time, followed immediately by the expected result.
+- Owner interaction rule: if the result matches the stated expectation, the owner may continue without pasting the output back. Request pasted output only when the result differs materially, exact output is needed for the next step, or a risky/conflicted Git state requires inspection.
+- Canonical instruction updated: `NEW_CHAT_PROMPT.md`.
+- Remaining follow-up: none; this rule applies to future website programming chats.
+
+- Permanent workflow clarification from owner on 2026-09-28: when the assistant has tool/connector access to make a safe repository change directly, the assistant should make the change and the owner should verify/test it. Do not hand the owner source code to paste for changes the assistant can apply itself.
+
+- Local test workflow correction from owner on 2026-09-28: a previous fetch + fast-forward pull + browser Ctrl+F5 did not expose the new catalog/function behavior while `npx netlify dev` was already running. For changes under `netlify/functions` or imported source/data modules, restart the Netlify dev process after pulling before browser verification; do not rely on Ctrl+F5 alone.
+
+- Permanent photo-preservation rule from owner on 2026-09-28: adding new photos is additive by default. Do not remove, replace, or detach existing product photos unless the owner explicitly asks, or the photo is intentionally reassigned in an explicitly approved split/duplicate correction. Audit after this clarification restored unintentionally dropped legacy photos to Items 064, 071, 077, 086, 103, and 151. Item 071 now has 5 photos total: 3 newer PXL photos plus original IMG_7830.JPG and IMG_7831.JPG. Intentional split-related removals remain for Items 081, 116, 117, and 158 because those photos belong to approved companion listings.
+
+- Item 086 owner confirmation on 2026-09-28: use IMG_7855.JPG as the cover/first photo; describe age as approximately 5–6 years old with very little use; condition is perfect and functionality is fully working with no known issue. Owner expects to upload approximately 2 additional Item 086 photos later; preserve all existing photos and add the new ones when provided.
+
+
+- Detail-page defect display rule (2026-09-28): show `Defectos conocidos` only when a specific confirmed defect exists; omit the row when there is no actual defect. Item 090 is the reference case: the front-right burner lights manually, but its automatic ignition does not work. The public catalog transform now exposes specific defect statements while suppressing generic/no-defect filler.
+
+- Detail-page condition placement rule (2026-09-28): do not show a separate condition pill/tag directly below the price on product detail pages. If meaningful condition information exists, it may appear naturally in the description and in the structured lower `Estado` row. This avoids redundant condition copy such as Item 086 showing “En perfecto estado” in three places.
+
+
+- Item 106 owner verification on 2026-09-28: listing content is otherwise NOMINAL, but the currently added third photo (IMG_8353.JPG) is the wrong image for this item. Replace it when the owner provides the correct photo showing the two main compartments open-backed so the wall is visible through them. Do not remove either of the two original Item 106 photos. Item 111 is confirmed hidden/NOMINAL as a duplicate of Item 045.
+
+- Owner workflow rule added 2026-09-28: batch local verification. Do not require stop Netlify Dev -> fetch -> pull -> restart -> hard refresh after each small change. Keep a running recheck queue and request one local refresh at sensible checkpoints, unless an immediate validation is necessary to avoid building on an uncertain result. Current pending recheck queue includes Item 117 copy cleanup; Item 106 remains pending correct replacement third photo; Item 086 remains pending approximately two additional photos.
+
+- Item 119 correction on 2026-09-28: the sold Singer sewing machine and rolling bag are separate products. Item 119 remains SOLD at Gs. 345.000 and now uses only its first 8 sewing-machine photos, through PXL_20260904_210026385.jpg. Remove “con bolso rodante”, remove the bag from included accessories, and never put “Artículo vendido” in the description. The rolling bag is a separate pending companion listing (next available supplemental ID: Item 168) using these 15 photos: PXL_20260904_210310279.jpg, PXL_20260904_210319849.jpg, PXL_20260904_210327829.jpg, PXL_20260904_210340018.jpg, PXL_20260904_210405823.jpg, PXL_20260904_210414517.jpg, PXL_20260904_210426648.jpg, PXL_20260904_210437854.jpg, PXL_20260904_210548036.jpg, PXL_20260904_210557880.jpg, PXL_20260904_210611395.jpg, PXL_20260904_210621040.jpg, PXL_20260904_210631335.jpg, PXL_20260904_210708822.jpg, PXL_20260904_210808221.jpg. Do not publish Item 168 until owner confirms its price and availability/status timing. Sold detail pages should show VENDIDO, not generic NO DISPONIBLE. Item 150 had the same redundant “Artículo vendido” copy removed under this rule.
+
+
+- Item 119 availability correction on 2026-09-28: prior buyer reneged. Item 119 sewing machine is no longer SOLD and is available now at the existing Gs. 345.000 price. Keep only the first 8 sewing-machine photos. The rolling bag remains a separate pending Item 168; owner will provide its price next. Item 118 remains hidden as the duplicate of Item 054.
+
+- Owner-confirmed dimensions/accessories batch on 2026-09-28:
+  - Item 122: 103 cm wide × 55 cm deep × 79 cm high.
+  - Item 168 rolling bag: 48 cm wide × 30 cm deep; 43 cm high to top of bag; 51 cm high to top of closed handle; 95 cm high with handle fully extended. Price confirmed at Gs. 150.000 (USD 25 × Gs. 6.000 exactly). Draft listing created with its 15 bag photos; remains UNLISTED only because availability timing is still pending confirmation.
+  - Item 054: 48 cm wide × 38 cm deep × 65 cm high. Source fallback updated; production/admin override must also be updated during live publish if it supersedes source.
+  - Item 117: each curtain panel 107 cm wide × 157 cm high.
+  - Item 161 curtain rod: 180 cm long and adjustable; includes mounting brackets.
+  - Mounting brackets also added to companion curtain-rod Item 160, interpreting the owner's “all curtains include the mounting brackets” statement as applying to the curtain rods, not the fabric curtain sets.
+  - Item 116: 100 cm wide × 37 cm deep × 85 cm high.
+  - Item 113: 46 cm diameter.
+  - Item 112: 59.5 cm wide × 45 cm high; includes accessories not pictured.
+  - Item 110: fully open 111 cm wide × 59 cm high; slid/compressed closed width 60 cm.
+  - Item 109: closed height 132 cm, width 45 cm; when open, top step height 70.5 cm.
+- Recheck queue after next batched local refresh now includes Items 109, 110, 112, 113, 116, 117, 122, 160, 161, Item 054 dimensions, Item 119 availability/split, plus prior pending Item 106 replacement photo and Item 086 additional photos. Item 168 remains pending price and therefore is not yet published.
+
+- Item 168 price confirmation on 2026-09-28: owner set the rolling bag at USD 25 using Gs. 6.000/USD. Exact result is Gs. 150.000, so no rounding was needed. Item 168 now matches Item 119 availability: AVAILABLE NOW / immediate pickup, with 15 bag photos, confirmed dimensions, and Gs. 150.000 price.
+
+- Item 168 availability confirmation on 2026-09-28: owner instructed it to match Item 119. Item 119 is AVAILABLE NOW, so Item 168 is also AVAILABLE NOW (IMMEDIATE), no longer UNLISTED/needs-review for availability.
+
+## Current merchandising launch-readiness snapshot — 2026-09-28
+- Incomplete and intentionally not publishable yet: Item 056 TP-Link MC111CS V4.0 media converter. It has no attached photos in source, is UNLISTED/needs-review, still expects exactly 2 Volume 4 photos, and its old Gs. 120.000 draft price still requires final owner reconfirmation.
+- Incomplete and intentionally not publishable yet: Item 163 dark-gray folding side tables. Two units at Gs. 70.000 each, later pickup, but no photos are attached; it remains UNLISTED/needs-review until owner supplies the photos.
+- Item 106 is otherwise NOMINAL but still has the wrong third photo (IMG_8353.JPG). Replace only that third photo once the owner supplies the correct open-back photo; preserve IMG_7915.JPG and IMG_7917.JPG.
+- Item 086 is currently NOMINAL and publishable with its existing photos/content. Owner expects approximately 2 additional photos later; those are additive follow-up, not a launch blocker.
+- Item 119 sewing machine is AVAILABLE NOW at Gs. 345.000 with only its first 8 sewing-machine photos. It is not sold.
+- Item 168 rolling bag is AVAILABLE NOW at Gs. 150.000 with 15 bag photos and confirmed dimensions.
+- Intentional hidden records 096, 111, 118, 128, 132, and 137 remain hidden for duplicate/given-away reasons and are not launch blockers.
+- Before production publish/closeout: perform the batched local refresh/recheck, finish required original-catalog production/admin reconciliation (including Item 054 live override data), merge/deploy, and run production regression.
+
+- Item 106 replacement-photo identification on 2026-09-28: owner identified the correct replacement third photo as `IMG_8372` in Volume 2A. The asset is not yet present in the GitHub branch/tree as of this check, so do not replace `IMG_8353.JPG` until the actual `IMG_8372` file (with confirmed extension/path) appears. Once present, replace only the third Item 106 photo and preserve `IMG_7915.JPG` and `IMG_7917.JPG`.
+
+- Item 056 photo update on 2026-09-28: owner supplied three Volume 2A filenames, `IMG_8128`, `PXL_20260913_152523154`, and `IMG_8127`, superseding the earlier expectation of exactly two photos. At the time of the GitHub check none of those assets were yet visible in the branch/tree, so Item 056 remains UNLISTED until the files land and the final price is reconfirmed.
+
+- Item 086 additional-photo identification on 2026-09-28: owner supplied three Volume 2A filenames for the Oster blender: `IMG_8150`, `IMG_8154`, and `IMG_8152`. These are additive to the existing Item 086 photos and must not replace or remove `IMG_7855.JPG`, `PXL_20260927_183702612.jpg`, or `PXL_20260927_185617763.jpg`. At the time of the GitHub check, the three new assets were not yet visible in the branch/tree, so attach them once the actual files appear.
+
+- Workflow discovery on 2026-09-28: adding image files to the owner's local `images/volume-2a` folder does not automatically sync those files to GitHub. The automatic deployment path is GitHub `main` -> Netlify, not local folder -> GitHub. Therefore newly supplied photo filenames may exist locally before they are visible to GitHub-based assistant checks. Future photo batches should be added/committed/pushed together in a single sensible Git sync, then product mappings/listings should be finalized against the confirmed repository filenames/extensions. This affects the currently pending photos for Items 056, 086, 106, and 163.
+
+- Owner workflow clarification on 2026-09-28: for routine, predictable, known-safe terminal/Git workflows, provide the entire sequence at once with expected results. Do not make the owner return to chat to say “continue” after each successful command. Stop only when the next step genuinely depends on inspecting exact output, a conflict/divergence appears, or a destructive/uncertain operation requires confirmation.
+
+- Owner terminal/Git formatting clarification on 2026-09-28: provide the whole safe sequence in one assistant reply, but put every command in its own separate code block so each can be copied with one click. Do not combine routine commands into one block unless the owner explicitly asks for a combined block. Include the expected result after each command. Do not require “continue” between expected successful steps.
+
+- Photo batch integration completed after the 2026-09-28 local-to-GitHub sync:
+  - Item 086 now has 6 photos total; existing cover `IMG_7855.JPG` and prior two PXL photos preserved, with additive `IMG_8150.JPG`, `IMG_8154.JPG`, and `IMG_8152.JPG`.
+  - Item 106 wrong third photo `IMG_8353.JPG` replaced with owner-confirmed `IMG_8372.jpg`; original `IMG_7915.JPG` and `IMG_7917.JPG` preserved.
+  - Item 163 now has its 3 owner-confirmed photos and is no longer UNLISTED/needs-review for missing photos; remains Gs. 70.000 each, quantity 2, delayed pickup.
+  - Item 056 now has its 3 owner-confirmed photos attached: `IMG_8128.JPG`, `PXL_20260913_152523154.jpg`, and `IMG_8127.JPG`. Owner subsequently confirmed Gs. 120.000 as the final sale price, so Item 056 is publishable.
+  - The image map now contains all 10 newly uploaded Volume 2A assets.
+
+- Item 056 final confirmation on 2026-09-28: owner confirmed the sale price at Gs. 120.000. With its 3 Volume 2A photos already attached, Item 056 is now AVAILABLE/publishable and no longer UNLISTED or needs-review for price/photo readiness.

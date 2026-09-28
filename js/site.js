@@ -85,6 +85,35 @@ function getEmbeddedProduct(field, value) {
 }
 
 
+function publicConditionText(value) {
+  const text = String(value || '').trim();
+
+  if (
+    !text ||
+    /estado visual\s+seg[uú]n\s+(?:las\s+)?fotograf[ií]as?/i.test(text)
+  ) {
+    return '';
+  }
+
+  return text;
+}
+
+
+function publicKnownDefectText(value) {
+  const text = String(value || '').trim();
+
+  if (
+    !text ||
+    /^(ninguno|ninguna|sin defectos conocidos)$/i.test(text) ||
+    /no se (?:han )?informado defectos/i.test(text)
+  ) {
+    return '';
+  }
+
+  return text;
+}
+
+
 function renderProductDetail(product) {
   const main = document.querySelector('main');
 
@@ -99,11 +128,23 @@ function renderProductDetail(product) {
   const balance = product.askingPricePYG - dueNow;
 
   const statusText =
-    product.status !== 'AVAILABLE'
-      ? 'NO DISPONIBLE'
-      : product.saleMode === 'DELAYED'
-        ? 'RETIRO 9–12 DIC.'
-        : 'DISPONIBLE AHORA';
+    product.status === 'SOLD' || product.status === 'PICKED_UP'
+      ? 'VENDIDO'
+      : product.status !== 'AVAILABLE'
+        ? 'NO DISPONIBLE'
+        : product.saleMode === 'DELAYED'
+          ? 'RETIRO 9–12 DIC.'
+          : 'DISPONIBLE AHORA';
+
+  const conditionText =
+    publicConditionText(
+      product.condition
+    );
+
+  const knownDefectText =
+    publicKnownDefectText(
+      product.knownDefects
+    );
 
   const gallery = (product.images || [])
     .map((image, index) => {
@@ -214,10 +255,6 @@ function renderProductDetail(product) {
               : ''
           }
 
-          <span class="condition-pill">
-            ${escapeHtml(product.condition)}
-          </span>
-
           <p class="lead">
             ${escapeHtml(product.description).replace(/\\n/g, '<br>')}
           </p>
@@ -279,11 +316,13 @@ function renderProductDetail(product) {
               ${product.status !== 'AVAILABLE' ? 'disabled' : ''}
             >
               ${
-                product.status !== 'AVAILABLE'
-                  ? 'No disponible'
-                  : product.saleMode === 'DELAYED'
-                    ? 'Reservar este artículo'
-                    : 'Agregar al carrito'
+                product.status === 'SOLD' || product.status === 'PICKED_UP'
+                  ? 'Vendido'
+                  : product.status !== 'AVAILABLE'
+                    ? 'No disponible'
+                    : product.saleMode === 'DELAYED'
+                      ? 'Reservar este artículo'
+                      : 'Agregar al carrito'
               }
             </button>
 
@@ -362,10 +401,16 @@ function renderProductDetail(product) {
             <dd>Item ${String(product.itemNumber).padStart(3, '0')}</dd>
           </div>
 
-          <div>
-            <dt>Estado</dt>
-            <dd>${escapeHtml(product.condition)}</dd>
-          </div>
+          ${
+            conditionText
+              ? `
+                <div>
+                  <dt>Estado</dt>
+                  <dd>${escapeHtml(conditionText)}</dd>
+                </div>
+              `
+              : ''
+          }
 
           ${
             Number(product.itemNumber) <= 57 && product.conditionNotes
@@ -379,11 +424,11 @@ function renderProductDetail(product) {
           }
 
           ${
-            Number(product.itemNumber) <= 57 && product.knownDefects
+            knownDefectText
               ? `
                 <div>
                   <dt>Defectos conocidos</dt>
-                  <dd>${escapeHtml(product.knownDefects)}</dd>
+                  <dd>${escapeHtml(knownDefectText)}</dd>
                 </div>
               `
               : ''

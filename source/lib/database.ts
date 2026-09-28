@@ -690,7 +690,7 @@ async function applySellerCorrections(db: Database): Promise<void> {
   if (item44 && !await db.prepare('SELECT 1 AS present FROM products WHERE item_number = 54').first()) {
     const p = mapAdminProduct(item44);
     await productInsert(db, { ...p, id: 'real-20260912-54', itemNumber: 54, slug: 'mesa-auxiliar-plegable-blanca-marmolada',
-      title: 'Mesa auxiliar plegable blanca marmolada', description: 'Versión blanca o clara marmolada. Registro separado de la versión gris oscuro.',
+      title: 'Mesa auxiliar plegable blanca marmolada', description: 'Versión blanca o clara marmolada. Registro separado de la versión gris oscuro.\nMedidas: 48 cm de ancho × 38 cm de profundidad × 65 cm de alto.',
       images: ['/api/media/real-20260912-54/0', '/api/media/real-20260912-54/1'], status: 'NEEDS_REVIEW', needsReview: true,
       quantityTotal: 1, quantityRemaining: 1, quantityHeld: 0, quantitySold: 0,
       internalNotes: 'NEEDS_REVIEW | PRICE RESEARCH / REVIEW NEEDED | Fotos separadas desde Item 044 según secuencia existente.' }, now).run();

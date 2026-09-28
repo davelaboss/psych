@@ -134,6 +134,10 @@ Do not expose internal/reviewer/TODO material publicly.
 
 The user is not a programmer.
 
+When available tools/connectors can make the repository change directly, make the change yourself and have the owner verify/test it. Do not hand the owner code to paste for changes you can safely apply yourself.
+
+Photo-preservation rule: when adding new product photos, preserve all existing product photos by default. Do not remove, replace, or detach an existing product photo unless the owner explicitly instructs that photo to be removed/replaced, or the photo is being intentionally reassigned as part of an explicitly approved split/duplicate correction. Treat new photos as additive unless clearly told otherwise.
+
 Do not make the user manually splice JavaScript functions, braces, handlers, or large code fragments.
 
 Do not create ZIP bundles.
@@ -188,21 +192,22 @@ Never commit:
 - generated debugging debris;
 - secrets.
 
-For routine, known-safe Git workflows, give the user the FULL command sequence at once and briefly state what should be expected after each command.
+For routine, known-safe terminal/Git workflows, give the user the FULL command sequence for the current task in ONE assistant response, but put EACH command in its OWN separate code block so the owner can use the copy button for each command individually. State what result to expect after each command. Do not combine multiple commands into one code block unless the owner explicitly asks for a combined block. Do not make the user return to chat just to say "continue" between predictable safe steps.
 
-The user will stop and report back if the actual result materially differs.
+For workflows where a later command genuinely depends on inspecting the exact output of an earlier command, stop only at that dependency point.
 
-Use one-command-at-a-time mode only when:
+If the result matches the stated expectation, the user may continue through the provided sequence without pasting the output back into chat. Ask the user to paste output only when:
 
-- the next command depends on the exact previous output;
-- merge/rebase conflicts are possible;
-- the working tree is unexpectedly dirty;
+- the result materially differs from the expectation;
+- the next command genuinely depends on exact output;
+- a merge/rebase conflict or unexpected dirty state appears;
 - local and remote history have diverged;
-- restore/reset/stash operations are involved;
-- another chat may have uncommitted work;
-- a command could overwrite, discard, or complicate existing work.
+- restore/reset/stash or another potentially destructive operation is involved;
+- explicit verification of a specific value is required.
 
-Safe read-only diagnostics may be batched.
+Safe read-only diagnostics may still be batched when that materially reduces unnecessary work, but keep the copy/paste experience simple and clearly separated.
+
+For local Netlify testing, do not assume an already-running `npx netlify dev` process will reload newly pulled changes to `netlify/functions` or source modules imported by those functions. After pulling changes that affect Netlify functions or their imported source/data modules, explicitly stop and restart `npx netlify dev` before judging the result in the browser. A browser hard refresh alone is not sufficient for this class of change.
 
 Do not run `git pull`, reset, rebase, restore, or stash blindly when the working tree is dirty.
 
@@ -268,9 +273,7 @@ After the task is successfully implemented and the user confirms it is NOMINAL:
 6. Push it.
 7. Verify that local `main` is synchronized with `origin/main` and the working tree is clean.
 
-For a routine, known-safe checkpoint, provide the full Git command sequence together and briefly state the expected result after each command.
-
-Switch to one-command-at-a-time mode only when one of the Git-risk conditions in Section 7 applies.
+For a routine, known-safe checkpoint, provide the full safe command sequence for that checkpoint in one response, with each command in its own separate code block and the expected result immediately after that command. Do not require the user to return between predictable steps. Request pasted output only when Section 7 says it is actually needed.
 
 Do not mark failed or untested work as completed.
 
@@ -320,3 +323,9 @@ Do not change code until you have read both files and checked the current reposi
 That short bootstrap is sufficient when the repository is accessible.
 
 No giant cross-chat handoff should normally be necessary.
+
+- Local verification batching rule: do not make the owner stop/restart Netlify Dev, fetch, pull, and hard-refresh after every small repository change. Track all unverified changes in the current testing batch and ask for one local update/restart only at a sensible checkpoint, unless a particular change must be validated immediately before further work can safely continue. After the batch refresh, explicitly list every item/change that still needs rechecking so nothing is missed.
+
+- Sold-item public-copy rule: SOLD/PICKED_UP status is metadata, not product-description content. Do not append phrases such as “Artículo vendido” to buyer-facing descriptions. On product detail pages, sold items should show a clear `VENDIDO` status rather than the generic `NO DISPONIBLE`; purchase controls must remain disabled.
+
+- Local photo-folder synchronization rule: placing new image files into the local repository folder (for example `images/volume-2a`) does NOT automatically upload them to GitHub. GitHub -> Netlify deployment is automatic from `main`, but local filesystem -> GitHub requires normal Git add/commit/push. When the owner adds a batch of product photos locally, batch those image files into one sensible Git sync instead of asking for a separate commit/push per photo. Do not assume a filename is available to repository code until the actual file is confirmed in GitHub or in the checked local Git working tree.
