@@ -176,6 +176,22 @@ function normalizeVolume2(item) {
     quantityTotal:
       Number(item.quantityTotal || 1),
 
+    quantityRemaining:
+      (item.status || 'AVAILABLE') === 'AVAILABLE'
+        ? Number(item.quantityTotal || 1)
+        : 0,
+
+    quantitySold:
+      (item.status === 'SOLD' || item.status === 'PICKED_UP')
+        ? Number(item.quantityTotal || 1)
+        : 0,
+
+    status:
+      item.status || 'AVAILABLE',
+
+    needsReview:
+      Boolean(item.needsReview),
+
     requiresVehicle:
       Boolean(item.requiresVehicle),
 
@@ -198,6 +214,17 @@ function normalizeVolume2(item) {
       item.functionality || null,
 
     sellerConfirmedFields: [],
+  };
+}
+
+
+function normalizeSupplemental(item) {
+  return {
+    ...normalizeVolume2(item),
+    batchId:
+      SALE_READINESS_SUPPLEMENTAL_BATCH_ID,
+    batchName:
+      SALE_READINESS_SUPPLEMENTAL_BATCH_NAME,
   };
 }
 
@@ -415,7 +442,7 @@ export default async function handler(request) {
         normalizeVolume2
       ),
       ...SALE_READINESS_SUPPLEMENTAL_ITEMS.map(
-        normalizeVolume2
+        normalizeSupplemental
       ),
     ].map(
       (product) => {
