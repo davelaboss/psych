@@ -26,7 +26,7 @@ function removeUsedWords(value) {
     .replace(/\b(usado|usada|usados|usadas)\b/gi, '')
     .replace(/\s{2,}/g, ' ')
     .replace(/\s+([,.;:])/g, '$1')
-    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, '')
+    .replace(/^[,.;:\s-]+/g, '')
     .trim();
 }
 
@@ -81,32 +81,87 @@ function publicFunctionality(item) {
 }
 
 
+function joinDescriptionParts(parts) {
+  return parts
+    .filter(Boolean)
+    .map((part) => String(part).trim())
+    .reduce((text, part) => {
+      if (!text) {
+        return part;
+      }
+
+      return /[.!?]$/.test(text)
+        ? `${text} ${part}`
+        : `${text}. ${part}`;
+    }, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+
 function cleanDescription(item) {
-  const parts = [
-    cleanPublicText(item.description),
-  ];
+  const description =
+    cleanPublicText(item.description);
 
   const measurements =
     publicMeasurements(item);
 
-  if (measurements) {
-    parts.push(`Medidas: ${measurements}`);
-  }
-
   const functionality =
     publicFunctionality(item);
 
-  if (functionality) {
+  const normalizedDescription =
+    description
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+
+  const normalizedMeasurements =
+    measurements
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+
+  const normalizedFunctionality =
+    functionality
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+
+  const parts = [description];
+
+  if (
+    measurements &&
+    !(
+      normalizedMeasurements &&
+      normalizedDescription.includes(
+        normalizedMeasurements
+      )
+    )
+  ) {
+    parts.push(`Medidas: ${measurements}`);
+  }
+
+  if (
+    functionality &&
+    !(
+      normalizedFunctionality &&
+      normalizedDescription.includes(
+        normalizedFunctionality
+      )
+    )
+  ) {
     parts.push(
       `Funcionamiento: ${functionality}`
     );
   }
 
-  return parts
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  return joinDescriptionParts(parts);
 }
 
 
