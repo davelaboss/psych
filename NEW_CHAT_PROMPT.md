@@ -192,7 +192,7 @@ Never commit:
 - generated debugging debris;
 - secrets.
 
-For routine, known-safe terminal/Git workflows, give the user the FULL command sequence for the current task at once, preferably as one compact copy-and-paste block or clearly ordered commands. State what result to expect after each command or logical stage. Do not make the user return to chat just to say "continue" between predictable safe steps.
+For routine, known-safe terminal/Git workflows, give the user the FULL command sequence for the current task in ONE assistant response, but put EACH command in its OWN separate code block so the owner can use the copy button for each command individually. State what result to expect after each command. Do not combine multiple commands into one code block unless the owner explicitly asks for a combined block. Do not make the user return to chat just to say "continue" between predictable safe steps.
 
 For workflows where a later command genuinely depends on inspecting the exact output of an earlier command, stop only at that dependency point.
 
@@ -273,7 +273,7 @@ After the task is successfully implemented and the user confirms it is NOMINAL:
 6. Push it.
 7. Verify that local `main` is synchronized with `origin/main` and the working tree is clean.
 
-For a routine, known-safe checkpoint, provide the full safe command sequence for that checkpoint at once and state the expected result after each command or logical stage. Do not require the user to return between each predictable step. Request pasted output only when Section 7 says it is actually needed.
+For a routine, known-safe checkpoint, provide the full safe command sequence for that checkpoint in one response, with each command in its own separate code block and the expected result immediately after that command. Do not require the user to return between predictable steps. Request pasted output only when Section 7 says it is actually needed.
 
 Do not mark failed or untested work as completed.
 
