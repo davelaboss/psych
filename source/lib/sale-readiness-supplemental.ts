@@ -76,7 +76,7 @@ export const SALE_READINESS_SUPPLEMENTAL_ITEMS: Volume2BatchItem[] = [
     description: 'Convertidor de medio de fibra óptica TP-Link modelo MC111CS V4.0.',
     status: 'UNLISTED',
     needsReview: true,
-    flag: 'Restaurar como Item 056. Espera exactamente 2 fotos del próximo Volumen 4 y reconfirmación final del precio antes de publicar.',
+    flag: 'Restaurar como Item 056. El propietario ahora confirmó 3 fotos para Volume 2A: IMG_8128, PXL_20260913_152523154 e IMG_8127. Adjuntarlas cuando los archivos reales aparezcan en el repositorio. Reconfirmar precio final antes de publicar.',
   }),
   build({
     itemNumber: 159,
