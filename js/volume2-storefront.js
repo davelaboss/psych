@@ -476,7 +476,17 @@
   }
 
   function conditionBucket(product) {
-    const text = normalize(`${product.condition || ''} ${product.conditionNotes || ''}`);
+    const raw = `${product.condition || ''} ${product.conditionNotes || ''}`.trim();
+
+    if (
+      !raw ||
+      /estado visual\s+seg[uú]n\s+(?:las\s+)?fotograf[ií]as?/i.test(raw)
+    ) {
+      return '';
+    }
+
+    const text = normalize(raw);
+
     if (text.includes('excelente') || text.includes('como nuevo')) return 'EXCELLENT';
     if (text.includes('muy buen') || text.includes('poco uso')) return 'VERY_GOOD';
     if (
