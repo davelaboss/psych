@@ -1,4 +1,4 @@
-import type { SaleMode } from './types';
+import type { InventoryStatus, SaleMode } from './types';
 
 export const VOLUME2_BATCH_ID = 'volume2-2026-09';
 export const VOLUME2_BATCH_NAME = 'Volumen 2 · venta de mudanza · septiembre 2026';
@@ -33,6 +33,8 @@ export type Volume2BatchItem = {
   requiresLoadingHelp: boolean;
   flag: string;
   research: string;
+  status: InventoryStatus;
+  needsReview: boolean;
 };
 
 type Spec = {
@@ -55,6 +57,8 @@ type Spec = {
   confidence?: 'Alta' | 'Media' | 'Baja';
   market?: [number, number];
   research?: string;
+  status?: InventoryStatus;
+  needsReview?: boolean;
 };
 
 const weak = 'No se localizó un comparable local suficientemente similar; precio provisional y confianza baja.';
@@ -68,7 +72,7 @@ const s = (title: string, category: string, photos: string[], asking: number, ex
 const specs: Spec[] = [
   s('Congeladora vertical Tokyo CGTOK157L', 'Electrodomésticos', ['IMG_7782.JPG','IMG_7783.JPG'], 1300000, { delayed:true, vehicle:true, help:true, description:'Congeladora vertical Tokyo modelo CGTOK157L, de frío húmedo, con 3 niveles de temperatura, 5 cajones, puerta reversible e interior de alta resistencia.', functionality:'Funcionamiento confirmado por el vendedor.', included:['5 cajones'], flag:'' }),
   s('Sofá La-Z-Boy con 2 almohadones', 'Muebles', ['IMG_7790.JPG'], 750000, { delayed:true, vehicle:true, help:true, description:'Sofá La-Z-Boy rojo con 2 almohadones incluidos.', included:['2 almohadones'], excluded:'Cortinas y demás muebles del ambiente no incluidos.', flag:'' }),
-  s('Juego de cortinas grises, 2 paneles', 'Hogar', ['IMG_7792.JPG','IMG_7794.JPG','IMG_7797.JPG'], 190000, { description:'Juego de 2 paneles de cortina grises. Cada panel mide aproximadamente 135 cm de ancho por 250 cm de alto.', included:['2 paneles de cortina','Cortinas de encaje blancas'], excluded:'Barral no incluido.', quantity:2, structure:'Precio por juego; 2 juegos idénticos en total. Un juego disponible ahora y el segundo con retiro posterior.', measurements:'Cada panel: 135 cm de ancho × 250 cm de alto.', flag:'' }),
+  s('Juego de cortinas grises, 2 paneles', 'Hogar', ['IMG_7792.JPG','IMG_7794.JPG','IMG_7797.JPG'], 190000, { description:'Juego de 2 paneles de cortina grises. Cada panel mide aproximadamente 135 cm de ancho por 250 cm de alto.', included:['2 paneles de cortina','Cortinas de encaje blancas'], excluded:'Barral no incluido.', structure:'Un juego disponible ahora. El segundo juego idéntico se publica por separado con retiro posterior.', measurements:'Cada panel: 135 cm de ancho × 250 cm de alto.', flag:'' }),
   s('Hervidor eléctrico Philips', 'Electrodomésticos', ['IMG_7800.JPG'], 120000, { functionality:'No verificado.', flag:'Confirmar modelo, capacidad y funcionamiento.' }),
   s('Máquina de pan', 'Electrodomésticos', ['IMG_7803.JPG','IMG_7804.JPG'], 300000, { functionality:'No verificado.', flag:'Confirmar marca, modelo, funcionamiento e inclusiones internas.' }),
   s('Campana extractora Electrolux', 'Electrodomésticos', ['PXL_20260926_175430734.jpg','PXL_20260926_175421487.MP.jpg','PXL_20260926_175350038.jpg'], 450000, { vehicle:true, description:'Campana extractora Electrolux. Medidas aproximadas: 90 × 14 × 50 cm.', measurements:'90 × 14 × 50 cm.', flag:'' }),
@@ -89,7 +93,7 @@ const specs: Spec[] = [
   s('Caja de herramientas Truper naranja', 'Herramientas', ['IMG_7841.JPG'], 50000, { flag:'' }),
   s('Martillo de uña', 'Herramientas', ['IMG_7842.JPG'], 20000, { measurements:'Peso aproximado: 841 g.', flag:'' }),
   s('Lote de herramientas manuales para electricidad', 'Herramientas', ['IMG_7846a.jpg','IMG_7846b.jpg','IMG_7846c.jpg'], 60000, { description:'Lote pequeño de herramientas manuales para electricidad: un tester funcional, dos destornilladores básicos y un destornillador tester sencillo.', included:['Tester','2 destornilladores','Destornillador tester'], functionality:'El tester funciona según confirmación del vendedor.', flag:'' }),
-  s('Lote de herramientas de medición', 'Herramientas', ['IMG_7847a.jpg','IMG_7847b.jpg'], 100000, { included:['Regla plegable y escuadra combinada visibles'], flag:'Confirmar venta conjunta y estado de graduaciones.' }),
+  s('Escuadra metálica para medición y trazado', 'Herramientas', ['IMG_7847a.jpg'], 15000, { description:'Escuadra metálica sencilla para trabajos de medición, marcado y trazado en carpintería, bricolaje y trabajos generales.', structure:'Una herramienta. La escuadra combinada se publica por separado.', flag:'' }),
   s('Extensión eléctrica de 28 m', 'Electrónica', ['IMG_7848.JPG'], 90000, { delayed:true, description:'Extensión eléctrica doméstica de aproximadamente 28 metros.', measurements:'Longitud aproximada: 28 m.', flag:'' }),
   s('Banquito plegable', 'Muebles', ['IMG_7850.JPG'], 70000, { quantity:2, structure:'Precio por unidad; 2 unidades aparentemente intercambiables.', functionality:'Mecanismo y estabilidad no verificados.', flag:'Confirmar que ambas unidades son iguales y el precio por unidad.' }),
   s('Banqueta alta', 'Muebles', ['IMG_7851.JPG'], 70000, { quantity:2, structure:'Precio por unidad; 2 unidades disponibles.', flag:'' }),
@@ -104,7 +108,7 @@ const specs: Spec[] = [
   s('Repisa de pared para especias', 'Hogar', ['IMG_7874.JPG','IMG_7875.JPG'], 90000, { measurements:'32 × 67 × 11 cm.', flag:'' }),
   s('Alfombra de cocina', 'Hogar', ['IMG_7870.JPG'], 60000, { flag:'Confirmar medidas y estado de la cara inferior.' }),
   s('Juego de 4 moldes de pizza', 'Cocina', ['IMG_7879.JPG'], 120000, { included:['Cuatro moldes visibles'], structure:'Un juego de 4 piezas.' }),
-  s('Tabla de cortar blanca', 'Cocina', ['IMG_7880.JPG','IMG_7881.JPG'], 40000, { quantity:2, structure:'Precio por unidad; 2 unidades aparentemente intercambiables.', flag:'Confirmar que ambas unidades se venden por separado y sus medidas.' }),
+  s('Tabla de cortar blanca', 'Hogar', ['IMG_7881.JPG'], 40000, { quantity:2, status:'UNLISTED', needsReview:false, description:'Retirada del inventario: entregada/regalada.', flag:'' }),
   s('Canasta para parrilla', 'Hogar', ['IMG_7882.JPG'], 60000, { flag:'' }),
   s('Juego de 2 bandejas de servir', 'Hogar', ['IMG_7883.JPG'], 48000, { flag:'' }),
   s('Rodillo de cocina', 'Cocina', ['IMG_7885.JPG'], 40000),
@@ -119,15 +123,15 @@ const specs: Spec[] = [
   s('Basurero blanco con pedal', 'Hogar', ['IMG_7920.JPG','IMG_7921.JPG','IMG_7922.JPG'], 60000, { flag:'' }),
   s('Escalera plegable', 'Herramientas', ['PXL_20260904_150223112.jpg','PXL_20260904_150302054.jpg','PXL_20260904_150327502.jpg','PXL_20260904_150336957.jpg'], 350000, { vehicle:true, functionality:'Bisagras, seguros y estabilidad no verificados.', flag:'Confirmar marca, altura, carga máxima y estado de peldaños/seguros.' }),
   s('Barrera para niño o mascota', 'Hogar', ['PXL_20260904_150442302.jpg','PXL_20260904_150515511.jpg','PXL_20260904_150542073.jpg'], 90000, { description:'Barrera ajustable para limitar el paso de niños o mascotas. Se vende como barrera doméstica, sin afirmaciones de certificación de seguridad.', flag:'' }),
-  s('Sillón individual a juego', 'Muebles', ['IMG_7926.JPG'], 450000, { quantity:2, structure:'Precio por unidad; 2 sillones aparentemente intercambiables.', delayed:true, vehicle:true, help:true, flag:'Confirmar que ambas unidades son equivalentes, medidas, firmeza y estado del tapizado.' }),
+  s('Sillón individual a juego', 'Muebles', ['PXL_20260904_151050915.jpg'], 450000, { status:'UNLISTED', description:'Registro duplicado de Item 045; no publicar por separado.', flag:'' }),
   s('Pizarra blanca', 'Oficina', ['PXL_20260904_151947425.jpg','PXL_20260904_152040829.jpg','PXL_20260904_152119885.jpg'], 65000, { flag:'' }),
   s('Reloj de pared redondo ornamentado', 'Decoración', ['PXL_20260904_152406140.jpg','PXL_20260904_152417383.jpg'], 100000, { flag:'' }),
   s('Mesa plegable', 'Muebles', ['PXL_20260904_152912764.jpg','PXL_20260904_153111732.jpg','PXL_20260904_153310244.jpg','PXL_20260904_153441367.jpg','PXL_20260904_153501340.jpg'], 400000, { delayed:true, vehicle:true, description:'Mesa plegable de aproximadamente 3 años.', measurements:'180 × 75 × 72 cm.', flag:'' }),
   s('Televisor Matsui MT-DSLE32 con control', 'Electrónica', ['PXL_20260904_153620324.jpg','PXL_20260904_153648324.jpg','PXL_20260904_154740822.jpg','PXL_20260904_154752181.jpg','PXL_20260904_154801469.jpg'], 550000, { delayed:true, functionality:'No verificado.', included:['Televisor y control remoto visibles'], flag:'Confirmar encendido, imagen, sonido, entradas, tamaño y estado del control.' }),
-  s('Gabinete de madera', 'Muebles', ['PXL_20260904_153749620.jpg','PXL_20260904_153833085.jpg','PXL_20260904_153845563.jpg','PXL_20260904_153907638.jpg','PXL_20260904_153923279.jpg','PXL_20260904_153938481.jpg','PXL_20260904_154119882.jpg','PXL_20260904_154136039.jpg'], 450000, { vehicle:true, description:'Gabinete de madera.', flag:'' }),
+  s('Gabinete de madera', 'Muebles', ['PXL_20260904_153833085.jpg','PXL_20260904_153845563.jpg','PXL_20260904_153907638.jpg','PXL_20260904_153923279.jpg','PXL_20260904_153938481.jpg','PXL_20260904_154119882.jpg','PXL_20260904_154136039.jpg'], 450000, { vehicle:true, description:'Gabinete de madera.', flag:'' }),
   s('Juego de cortinas marrones', 'Hogar', ['PXL_20260904_155201528.jpg'], 90000, { delayed:true, description:'Juego de cortinas marrones. La imagen fue ajustada para mostrar ambos paneles con largo consistente.', excluded:'Barral no incluido.', flag:'' }),
-  s('Mesa auxiliar plegable', 'Muebles', ['PXL_20260904_160005510.NIGHT.jpg','PXL_20260904_160055504.jpg'], 180000, { functionality:'Mecanismo y estabilidad no verificados.', flag:'Confirmar medidas y estado del mecanismo.' }),
-  s('Máquina de coser Singer con bolso rodante', 'Electrodomésticos', ['PXL_20260904_205620170.jpg','PXL_20260904_205644324.jpg','PXL_20260904_205655910.jpg','PXL_20260904_205731270.jpg','PXL_20260904_205748260.jpg','PXL_20260904_205819231.jpg','PXL_20260904_205833394.jpg','PXL_20260904_210026385.jpg','PXL_20260904_210310279.jpg','PXL_20260904_210319849.jpg','PXL_20260904_210327829.jpg','PXL_20260904_210340018.jpg','PXL_20260904_210405823.jpg','PXL_20260904_210414517.jpg','PXL_20260904_210426648.jpg','PXL_20260904_210437854.jpg','PXL_20260904_210548036.jpg','PXL_20260904_210557880.jpg','PXL_20260904_210611395.jpg','PXL_20260904_210621040.jpg','PXL_20260904_210631335.jpg','PXL_20260904_210708822.jpg','PXL_20260904_210808221.jpg'], 1200000, { delayed:true, functionality:'No verificado.', included:['Máquina, bolso/carro y piezas visibles; alcance exacto sujeto a confirmación'], flag:'Confirmar modelo, funcionamiento, pedal, cable, accesorios, bolso, funda y mesa/extensión.', research:singer, market:[800000,1800000] }),
+  s('Mesa auxiliar plegable', 'Muebles', ['PXL_20260904_205620170.jpg'], 180000, { status:'UNLISTED', description:'Registro duplicado de Item 054; no publicar por separado.', flag:'' }),
+  s('Máquina de coser Singer con bolso rodante', 'Electrodomésticos', ['PXL_20260904_205644324.jpg','PXL_20260904_205731270.jpg'], 345000, { delayed:true, status:'SOLD', description:'Máquina de coser Singer con bolso rodante. Artículo vendido.', included:['Bolso rodante'], flag:'' }),
   s('Monitor curvo Samsung C27F390FHL', 'Electrónica', ['PXL_20260904_220508771.jpg','PXL_20260904_220516622.jpg','PXL_20260904_220528534.jpg','PXL_20260904_220559935.jpg','PXL_20260904_220721049.jpg','PXL_20260904_221105864.jpg','PXL_20260904_221111959.jpg'], 750000, { functionality:'No verificado.', included:['Monitor y base visibles'], excluded:'Computadora y demás objetos del escritorio no incluidos.', flag:'Confirmar pantalla, entradas, cable de alimentación y cable de video.', research:samsung, market:[650000,1000000], confidence:'Media' }),
   s('UPS APC BV650I-MS 650 VA / 375 W', 'Electrónica', ['PXL_20260904_220904034.jpg','PXL_20260904_220935207.jpg','PXL_20260904_220951412.jpg','PXL_20260904_221013513.jpg'], 300000, { functionality:'No verificado.', flag:'Probar batería bajo carga y confirmar cableado.', research:apc, market:[250000,380000], confidence:'Media' }),
   s('Escritorio de madera con bandejas deslizables e iluminación LED', 'Oficina', ['PXL_20260904_221622453.jpg','PXL_20260904_221637837.jpg','PXL_20260904_221654796.jpg','PXL_20260904_221717989.jpg','PXL_20260904_221827240.jpg','PXL_20260904_221849556.jpg','PXL_20260904_221919343.jpg'], 240000, { delayed:true, vehicle:true, description:'Escritorio de madera con iluminación LED inferior y dos bandejas deslizables: una para teclado y otra para mouse o accesorios.', measurements:'103 × 79 × 55 cm.', flag:'' }),
@@ -136,16 +140,16 @@ const specs: Spec[] = [
   s('Binoculares Bushnell con estuche', 'Accesorios', ['IMG_7931.JPG'], 35000, { included:['Estuche'], flag:'' }),
   s('Mortero con mano', 'Hogar', ['IMG_7932.JPG'], 50000, { flag:'' }),
   s('Fuente rectangular de vidrio', 'Hogar', ['IMG_7933.JPG'], 70000, { measurements:'32 × 25 cm.', flag:'' }),
-  s('Juego de fuentes redondas de vidrio', 'Cocina', ['IMG_7934.JPG'], 100000, { included:['Dos fuentes anidadas visibles'], structure:'Un juego de 2 piezas.', flag:'Confirmar conteo, medidas y ausencia de astillas.' }),
+  s('Juego de fuentes redondas de vidrio', 'Hogar', ['IMG_7934.JPG'], 100000, { status:'UNLISTED', description:'Registro duplicado absorbido por Item 129; no publicar por separado.', flag:'' }),
   s('Fuente ovalada con tapa blanca', 'Hogar', ['IMG_7935.JPG'], 70000, { measurements:'35 × 25 cm, forma ovalada.', flag:'' }),
   s('Fuente rectangular de vidrio', 'Hogar', ['IMG_7937.JPG'], 60000, { measurements:'30 × 22 cm.', flag:'' }),
   s('Fuente ovalada de vidrio', 'Hogar', ['IMG_7938.JPG'], 55000, { measurements:'30 × 21 cm, forma ovalada.', flag:'' }),
-  s('Vaso térmico de viaje', 'Cocina', ['IMG_7939.JPG'], 50000, { functionality:'Cierre y retención térmica no verificados.', flag:'Confirmar capacidad y pérdidas.' }),
+  s('Vaso térmico de viaje', 'Hogar', ['IMG_7939~2.JPG'], 50000, { status:'UNLISTED', description:'Retirado del inventario: entregado/regalado.', flag:'' }),
   s('Recipiente morado con tapa', 'Cocina', ['IMG_7940.JPG','IMG_7941.JPG'], 60000, { included:['Recipiente y tapa visibles'], flag:'Confirmar capacidad y cierre.' }),
   s('Juego de 3 abanicos decorativos', 'Decoración', ['IMG_7942.JPG'], 22000, { flag:'' }),
   s('Lote de bordado y manualidades', 'Manualidades', ['IMG_7943.JPG','IMG_7944.JPG'], 55000, { flag:'Contenido exacto del lote no reconfirmado.' }),
   s('Juego Connect 4', 'Juegos', ['IMG_7946.JPG'], 48000, { flag:'' }),
-  s('Kit de cuentas y manualidades 7 en 1', 'Juegos', ['IMG_7947.JPG'], 100000, { functionality:'Integridad no verificada.', flag:'Confirmar contenido y piezas completas.' }),
+  s('Kit de cuentas y manualidades 7 en 1', 'Manualidades', ['IMG_7947.JPG'], 100000, { status:'UNLISTED', description:'Retirado del inventario: entregado/regalado.', flag:'' }),
   s('Juego de cartas UNO', 'Juegos', ['IMG_7948.JPG'], 18000, { flag:'' }),
   s('Organizador circular para cartas y juegos', 'Juegos', ['IMG_7954.JPG'], 60000, { flag:'' }),
   s('Lote de 3 mazos de naipes', 'Juegos', ['IMG_7955.JPG'], 75000, { description:'Lote de 3 mazos de naipes: 2 mazos en caja negra y un tercer mazo separado.', included:['3 mazos de naipes'], flag:'' }),
@@ -158,9 +162,9 @@ const specs: Spec[] = [
   s('Juego de 4 ruedas giratorias Fascy de 1 pulgada', 'Herramientas', ['IMG_7973.JPG'], 60000, { included:['Cuatro ruedas visibles'], structure:'Un juego de 4 piezas.', functionality:'Giro y rodamiento no verificados.' }),
   s('Portavela decorativo', 'Decoración', ['IMG_7975.JPG'], 40000, { excluded:'Vela no confirmada como incluida.', flag:'Confirmar si incluye vela.' }),
   s('Reloj de pared marrón', 'Decoración', ['IMG_7976.JPG'], 70000, { flag:'' }),
-  s('Armario de madera', 'Muebles', ['IMG_7647~2-EDIT.jpg','IMG_7649~2.JPG','IMG_7648~2.JPG'], 1000000, { delayed:true, vehicle:true, help:true, excluded:'Ropa y objetos interiores no incluidos.', flag:'La foto IMG_7798.JPG estaba vacía/corrupta y fue excluida. Confirmar medidas, material, llaves, herrajes e interior.' }),
+  s('Armario de madera', 'Muebles', ['IMG_7647~2-EDIT.jpg','IMG_7649~2.JPG','IMG_7648~2.JPG'], 1500000, { delayed:true, vehicle:true, help:true, status:'SOLD', description:'Armario de madera. Artículo vendido.', excluded:'Ropa y objetos interiores no incluidos.', flag:'La foto IMG_7798.JPG estaba vacía/corrupta y permanece excluida.' }),
   s('Televisor JVC LT-65KM858 QLED Pro 65 4K Google TV', 'Electrónica', ['PXL_20260926_182112288.jpg','PXL_20260926_182042688.jpg','PXL_20260926_182002882.jpg'], 2000000, { delayed:true, vehicle:true, description:'Televisor JVC modelo LT-65KM858, QLED Pro de 65 pulgadas, 4K con Google TV. Aproximadamente 6 meses.', flag:'' }),
-  s('Gancho transparente con ventosa', 'Hogar', ['IMG_7814~2.JPG'], 12000, { quantity:7, description:'Gancho transparente con ventosa, vendido por unidad.', structure:'Precio por unidad; 7 unidades en total. 4 disponibles ahora y 3 con retiro posterior.', measurements:'Ventosa de aproximadamente 6 cm de diámetro; altura total aproximada 12 cm.', flag:'' }),
+  s('Gancho transparente con ventosa', 'Hogar', ['IMG_7814~2.JPG'], 12000, { quantity:4, description:'Gancho transparente con ventosa, vendido por unidad.', structure:'Precio por unidad; 4 unidades disponibles ahora. Otras 3 unidades se publican por separado con retiro posterior.', measurements:'Ventosa de aproximadamente 6 cm de diámetro; altura total aproximada 12 cm.', flag:'' }),
   s('Dispensador de jabón gris', 'Hogar', ['IMG_7817~2.JPG'], 40000, { functionality:'Bomba no verificada.', flag:'Confirmar capacidad y funcionamiento.' }),
   s('UPS Forza', 'Electrónica', ['IMG_7819~2.JPG','IMG_7821~2.JPG'], 250000, { functionality:'No verificado.', flag:'Modelo y capacidad no legibles; probar batería bajo carga.', research:forza, market:[180000,320000] }),
   s('Maza corta de 1,719 kg', 'Herramientas', ['IMG_7842~2.JPG'], 50000, { measurements:'Peso aproximado: 1.719 g.', flag:'' }),
@@ -207,6 +211,8 @@ function item(spec: Spec, index: number): Volume2BatchItem {
     requiresLoadingHelp: Boolean(spec.help),
     flag: spec.flag ?? 'Confirmar medidas y estado antes de publicar.',
     research: spec.research ?? weak,
+    status: spec.status ?? 'AVAILABLE',
+    needsReview: Boolean(spec.needsReview),
   };
 }
 
