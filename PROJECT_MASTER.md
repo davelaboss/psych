@@ -1375,3 +1375,12 @@ Format:
 - Source consistency validation before owner testing: the Volume 2 source still contains exactly 101 immutable Items 058–158; the supplemental source contains 10 records (Item 056 plus Items 159–167); Volume 2 status counts are 93 available, 2 sold, and 6 unlisted; all 232 referenced product-photo filenames resolve through the image map to files that exist in the branch; remaining gross asking-price math reconciles to Gs. 30.200.000 when the pending dark-gray tables are included and Item 056 is excluded, or Gs. 30.320.000 if Item 056 ultimately retains its old Gs. 120.000 draft price.
 - Regression/production verification: pending until local owner testing and the complete merchandising batch are merged/deployed.
 - Remaining follow-up: finish source/admin reconciliation, create the required companion/new listings without reusing retired Item IDs, incorporate Item 056 and dark-gray-table photos when supplied, run regression, obtain owner NOMINAL confirmation, then close this workstream.
+
+
+## 2026-09-28 — Terminal command handoff preference
+
+- Owner/chat: Product merchandising / sale-readiness completion.
+- Permanent workflow rule: future programming chats should give terminal/Git instructions one copy-and-paste command or compact command block at a time, followed immediately by the expected result.
+- Owner interaction rule: if the result matches the stated expectation, the owner may continue without pasting the output back. Request pasted output only when the result differs materially, exact output is needed for the next step, or a risky/conflicted Git state requires inspection.
+- Canonical instruction updated: `NEW_CHAT_PROMPT.md`.
+- Remaining follow-up: none; this rule applies to future website programming chats.
