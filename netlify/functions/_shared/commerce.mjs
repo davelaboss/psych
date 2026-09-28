@@ -275,24 +275,7 @@ export function salesAreOpen(request) {
 }
 
 
-export async function loadCatalog(origin) {
-  const response = await fetch(
-    new URL('/', origin),
-    {
-      headers: {
-        accept: 'text/html',
-      },
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      'No se pudo cargar el catálogo.'
-    );
-  }
-
-  const html = await response.text();
-
+function parseEmbeddedCatalog(html) {
   const marker = '\\"products\\":[';
   const markerIndex = html.indexOf(marker);
 
@@ -358,39 +341,35 @@ export async function loadCatalog(origin) {
     );
   }
 
-  const overrides =
-    await listProductOverrides();
+  return products;
+}
 
-  const overrideById =
-    new Map(
-      overrides.map(
-        (override) => [
-          override.productId,
-          override,
-        ]
-      )
+
+export async function loadBaseCatalog(origin) {
+  const response = await fetch(
+    new URL('/', origin),
+    {
+      headers: {
+        accept: 'text/html',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      'No se pudo cargar el catálogo.'
     );
+  }
+
+  const html = await response.text();
 
   const staticProducts =
-    products.map(
-      (product) =>
-        applyProductOverride(
-          product,
-          overrideById.get(product.id)
-        )
-    );
+    parseEmbeddedCatalog(html);
 
   const merchandisingProducts =
-    volume2Products().map(
-      (product) =>
-        applyProductOverride(
-          product,
-          overrideById.get(product.id)
-        )
-    );
+    volume2Products();
 
-  const byId =
-    new Map();
+  const byId = new Map();
 
   for (const product of [
     ...staticProducts,
@@ -409,6 +388,38 @@ export async function loadCatalog(origin) {
     );
 }
 
+
+export async function loadCatalog(origin) {
+  const products =
+    await loadBaseCatalog(origin);
+
+  const overrides =
+    await listProductOverrides();
+
+  const overrideById =
+    new Map(
+      overrides.map(
+        (override) => [
+          override.productId,
+          override,
+        ]
+      )
+    );
+
+  return products
+    .map(
+      (product) =>
+        applyProductOverride(
+          product,
+          overrideById.get(product.id)
+        )
+    )
+    .sort(
+      (a, b) =>
+        Number(a.itemNumber) -
+        Number(b.itemNumber)
+    );
+}
 
 // File: netlify/functions/_shared/commerce.mjs
 
