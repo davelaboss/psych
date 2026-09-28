@@ -1609,6 +1609,21 @@ function renderLegacyProductDetail(
               <p>
                 Este artículo debe reconciliarse antes de cerrar este trabajo o pasar a otro workstream.
               </p>
+
+              ${
+                (product.sourceMismatchFields || [])
+                  .some((field) => field !== 'images')
+                  ? `
+                    <button
+                      type="button"
+                      class="primary-action"
+                      data-sync-source
+                    >
+                      Sincronizar producción con fuente
+                    </button>
+                  `
+                  : ''
+              }
             </div>
           `
           : ''
@@ -2308,6 +2323,37 @@ function bindAdminProductEditor(
         publicForm.hidden = false;
       }
     );
+  editor
+    .querySelector(
+      '[data-sync-source]'
+    )
+    ?.addEventListener(
+      'click',
+      async () => {
+        if (
+          !window.confirm(
+            '¿Sincronizar los campos públicos distintos con la fuente confirmada del sitio?'
+          )
+        ) {
+          return;
+        }
+
+        try {
+          await syncAdminProductSource(
+            product.id
+          );
+
+          await refreshAdminProduct(
+            product.id
+          );
+        } catch (error) {
+          showProductEditorError(
+            editor,
+            error
+          );
+        }
+      }
+    );
 
   editor
     .querySelector(
@@ -2765,6 +2811,27 @@ async function saveAdminProduct(
         JSON.stringify({
           productId,
           ...fields,
+        }),
+    }
+  );
+}
+
+async function syncAdminProductSource(
+  productId
+) {
+  return adminFetch(
+    '/.netlify/functions/admin-sync-product-source',
+    {
+      method: 'POST',
+
+      headers: {
+        'content-type':
+          'application/json',
+      },
+
+      body:
+        JSON.stringify({
+          productId,
         }),
     }
   );
