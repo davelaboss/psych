@@ -1458,3 +1458,23 @@ Format:
   - The image map now contains all 10 newly uploaded Volume 2A assets.
 
 - Item 056 final confirmation on 2026-09-28: owner confirmed the sale price at Gs. 120.000. With its 3 Volume 2A photos already attached, Item 056 is now AVAILABLE/publishable and no longer UNLISTED or needs-review for price/photo readiness.
+
+## 2026-09-28 — Original catalog source/live drift guard
+
+- Trigger: final merchandising production review found Items 019, 020, 045, 047, 052, 054, and 057 still showing stale original-catalog production data even though their owner-approved merchandising changes were already recorded as pending.
+- Root cause: original Items 001–057 have two authoring layers. The committed embedded base catalog is deployed from GitHub, while Netlify Blob public-field/image overrides remain higher runtime authority. In addition, several of these seven owner-approved facts had never been written into the committed base catalog, so the workstream had a source gap as well as a live/admin gap.
+- Permanent fix in progress on branch `original-catalog-sync-guard-2026-09-28`:
+  - correct the committed base catalog for the seven affected original items;
+  - preserve Blob override precedence;
+  - expose a source-versus-production drift check in the owner admin for Items 001–057, including the mismatched field names;
+  - add an admin overview count for source/live drift;
+  - establish a permanent two-phase closeout gate: deploy the committed original-catalog source change, then immediately reconcile production/admin data before moving to another workstream or closing; do not defer the live reconciliation to a later production spot check.
+- Owner-confirmed intended facts for this correction:
+  - Item 019: Gs. 120.000 each, quantity 2.
+  - Item 020: Gs. 42.000.
+  - Item 045: preserve the two matching chairs and absorb the Item 111 photo `/images/volume-2a/IMG_7926.JPG`.
+  - Item 047: title `Repisas macizas`; Gs. 75.000 each; quantity 3; dimensions 100 × 3,7 × 29,3 cm; each shelf includes 3 rear/support metal brackets; black horizontal bar/hooks excluded; no `flotante/flotantes` wording.
+  - Item 052: Gs. 42.000.
+  - Item 054: Gs. 90.000; delayed pickup December 9–12, 2026; 48 × 38 × 65 cm; remains wrapped in its original protective plastic without calling it new.
+  - Item 057: Gs. 60.000 each; quantity 2; delayed pickup December 9–12, 2026; the two units have their own wear and the photos show one unit.
+- Runtime production reconciliation for these seven items is still required through the supported `/admin` workflow after this guard/source update is deployed. Do not close the merchandising workstream until that reconciliation and production regression are NOMINAL.

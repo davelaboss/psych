@@ -363,6 +363,12 @@ function buildAdminStats(
         !product.published
     ).length;
 
+  const sourceDrift =
+    products.filter(
+      (product) =>
+        product.sourceSyncRequired
+    ).length;
+
   const volume2 =
     products.filter(
       (product) =>
@@ -411,6 +417,8 @@ function buildAdminStats(
     published,
 
     review,
+
+    sourceDrift,
 
     volume2,
 
@@ -683,6 +691,12 @@ function renderOverviewTab() {
           'Publicados',
           stats.published,
           'Artículos encontrados en el catálogo público actual.'
+        )}
+
+        ${statCard(
+          'Fuente ≠ producción',
+          stats.sourceDrift,
+          'Items 001–057 cuyo catálogo base no coincide con los datos públicos activos.'
         )}
 
         ${statCard(
@@ -1322,6 +1336,15 @@ function renderLegacyProductRow(
         </span>
       `;
 
+  const syncState =
+    product.sourceSyncRequired
+      ? `
+        <span class="admin-pill is-review">
+          Fuente ≠ producción
+        </span>
+      `
+      : '';
+
   const livePrice =
     product.live
       ?.askingPricePYG != null
@@ -1349,6 +1372,7 @@ function renderLegacyProductRow(
 
         <div>
           ${publicState}
+          ${syncState}
 
           <h3>
             ${adminEscape(
@@ -1566,6 +1590,30 @@ function renderLegacyProductDetail(
         )
       }"
     >
+      ${
+        product.sourceSyncRequired
+          ? `
+            <div class="admin-error-card">
+              <strong>
+                Fuente y producción no coinciden
+              </strong>
+
+              <p>
+                Campos distintos:
+                ${adminEscape(
+                  (product.sourceMismatchFields || [])
+                    .join(', ')
+                )}
+              </p>
+
+              <p>
+                Este artículo debe reconciliarse antes de cerrar este trabajo o pasar a otro workstream.
+              </p>
+            </div>
+          `
+          : ''
+      }
+
       <section class="admin-photo-editor">
         <header class="admin-editor-heading">
           <div>
