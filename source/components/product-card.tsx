@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { PublicProduct } from '@/lib/types';
-import { formatItemNumber, formatPickupWindow, formatPYG, publicStatusLabel } from '@/lib/types';
+import { formatItemNumber, formatPickupWindow, formatPYG, publicConditionText, publicStatusLabel } from '@/lib/types';
 import { useCart } from './cart-provider';
 import { ImageLightbox } from './image-lightbox';
 
@@ -12,6 +12,7 @@ export function ProductCard({ product, compact = false }: { product: PublicProdu
   const purchasable = product.status === 'AVAILABLE';
   const sold = product.status === 'SOLD' || product.status === 'PICKED_UP';
   const reduced = product.originalPricePYG && product.originalPricePYG > product.askingPricePYG;
+  const conditionText = publicConditionText(product.condition);
   const rememberCatalogPosition = () => {
     sessionStorage.setItem('mudanza-catalog-scroll', String(window.scrollY));
   };
@@ -39,7 +40,11 @@ export function ProductCard({ product, compact = false }: { product: PublicProdu
         {reduced ? <del>{formatPYG(product.originalPricePYG!)}</del> : null}
         <strong className="price">{formatPYG(product.askingPricePYG)}{(product.quantityTotal ?? 1) > 1 ? ' por unidad' : ''}</strong>
         {(product.quantityTotal ?? 1) > 1 ? <p>{product.quantityRemaining} unidades disponibles</p> : null}
-        <p>{product.saleMode === 'DELAYED' ? `Reserva ${product.depositPercent}% · Retiro ${formatPickupWindow(product.pickupWindowStart, product.pickupWindowEnd, product.pickupAvailableDate)}` : product.condition}</p>
+        {product.saleMode === 'DELAYED'
+          ? <p>{`Reserva ${product.depositPercent}% · Retiro ${formatPickupWindow(product.pickupWindowStart, product.pickupWindowEnd, product.pickupAvailableDate)}`}</p>
+          : conditionText
+            ? <p>{conditionText}</p>
+            : null}
         <div className="card-actions">
           <a href={`/producto/${product.slug}`} onClick={rememberCatalogPosition}>Ver detalle</a>
           <button type="button" disabled={!purchasable || cart.has(product.id)} onClick={() => cart.add(product.id)}>
