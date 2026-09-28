@@ -1409,3 +1409,17 @@ Format:
 
 
 - Item 119 availability correction on 2026-09-28: prior buyer reneged. Item 119 sewing machine is no longer SOLD and is available now at the existing Gs. 345.000 price. Keep only the first 8 sewing-machine photos. The rolling bag remains a separate pending Item 168; owner will provide its price next. Item 118 remains hidden as the duplicate of Item 054.
+
+- Owner-confirmed dimensions/accessories batch on 2026-09-28:
+  - Item 122: 103 cm wide × 55 cm deep × 79 cm high.
+  - Item 168 rolling bag (pending unpublished companion listing): 48 cm wide × 30 cm deep; 43 cm high to top of bag; 51 cm high to top of closed handle; 95 cm high with handle fully extended. Price still pending before Item 168 is created/published.
+  - Item 054: 48 cm wide × 38 cm deep × 65 cm high. Source fallback updated; production/admin override must also be updated during live publish if it supersedes source.
+  - Item 117: each curtain panel 107 cm wide × 157 cm high.
+  - Item 161 curtain rod: 180 cm long and adjustable; includes mounting brackets.
+  - Mounting brackets also added to companion curtain-rod Item 160, interpreting the owner's “all curtains include the mounting brackets” statement as applying to the curtain rods, not the fabric curtain sets.
+  - Item 116: 100 cm wide × 37 cm deep × 85 cm high.
+  - Item 113: 46 cm diameter.
+  - Item 112: 59.5 cm wide × 45 cm high; includes accessories not pictured.
+  - Item 110: fully open 111 cm wide × 59 cm high; slid/compressed closed width 60 cm.
+  - Item 109: closed height 132 cm, width 45 cm; when open, top step height 70.5 cm.
+- Recheck queue after next batched local refresh now includes Items 109, 110, 112, 113, 116, 117, 122, 160, 161, Item 054 dimensions, Item 119 availability/split, plus prior pending Item 106 replacement photo and Item 086 additional photos. Item 168 remains pending price and therefore is not yet published.
