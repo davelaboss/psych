@@ -1427,3 +1427,13 @@ Format:
 - Item 168 price confirmation on 2026-09-28: owner set the rolling bag at USD 25 using Gs. 6.000/USD. Exact result is Gs. 150.000, so no rounding was needed. Item 168 now matches Item 119 availability: AVAILABLE NOW / immediate pickup, with 15 bag photos, confirmed dimensions, and Gs. 150.000 price.
 
 - Item 168 availability confirmation on 2026-09-28: owner instructed it to match Item 119. Item 119 is AVAILABLE NOW, so Item 168 is also AVAILABLE NOW (IMMEDIATE), no longer UNLISTED/needs-review for availability.
+
+## Current merchandising launch-readiness snapshot — 2026-09-28
+- Incomplete and intentionally not publishable yet: Item 056 TP-Link MC111CS V4.0 media converter. It has no attached photos in source, is UNLISTED/needs-review, still expects exactly 2 Volume 4 photos, and its old Gs. 120.000 draft price still requires final owner reconfirmation.
+- Incomplete and intentionally not publishable yet: Item 163 dark-gray folding side tables. Two units at Gs. 70.000 each, later pickup, but no photos are attached; it remains UNLISTED/needs-review until owner supplies the photos.
+- Item 106 is otherwise NOMINAL but still has the wrong third photo (IMG_8353.JPG). Replace only that third photo once the owner supplies the correct open-back photo; preserve IMG_7915.JPG and IMG_7917.JPG.
+- Item 086 is currently NOMINAL and publishable with its existing photos/content. Owner expects approximately 2 additional photos later; those are additive follow-up, not a launch blocker.
+- Item 119 sewing machine is AVAILABLE NOW at Gs. 345.000 with only its first 8 sewing-machine photos. It is not sold.
+- Item 168 rolling bag is AVAILABLE NOW at Gs. 150.000 with 15 bag photos and confirmed dimensions.
+- Intentional hidden records 096, 111, 118, 128, 132, and 137 remain hidden for duplicate/given-away reasons and are not launch blockers.
+- Before production publish/closeout: perform the batched local refresh/recheck, finish required original-catalog production/admin reconciliation (including Item 054 live override data), merge/deploy, and run production regression.
