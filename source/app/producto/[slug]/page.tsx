@@ -43,7 +43,6 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         {product.originalPricePYG ? <del>{formatPYG(product.originalPricePYG)}</del> : null}
         <strong className="detail-price">{formatPYG(product.askingPricePYG)}{(product.quantityTotal ?? 1) > 1 ? ' por unidad' : ''}</strong>
         {(product.quantityTotal ?? 1) > 1 ? <p>{product.quantityRemaining} unidades disponibles</p> : null}
-        {conditionText ? <span className="condition-pill">{conditionText}</span> : null}
         <p className="lead">{product.description}</p>
 
         <div className="payment-breakdown">
