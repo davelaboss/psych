@@ -1424,4 +1424,6 @@ Format:
   - Item 109: closed height 132 cm, width 45 cm; when open, top step height 70.5 cm.
 - Recheck queue after next batched local refresh now includes Items 109, 110, 112, 113, 116, 117, 122, 160, 161, Item 054 dimensions, Item 119 availability/split, plus prior pending Item 106 replacement photo and Item 086 additional photos. Item 168 remains pending price and therefore is not yet published.
 
-- Item 168 price confirmation on 2026-09-28: owner set the rolling bag at USD 25 using Gs. 6.000/USD. Exact result is Gs. 150.000, so no rounding was needed. Item 168 draft now exists with 15 bag photos and confirmed dimensions, but remains UNLISTED until owner confirms whether it is available now or for Dec. 9–12 pickup.
+- Item 168 price confirmation on 2026-09-28: owner set the rolling bag at USD 25 using Gs. 6.000/USD. Exact result is Gs. 150.000, so no rounding was needed. Item 168 now matches Item 119 availability: AVAILABLE NOW / immediate pickup, with 15 bag photos, confirmed dimensions, and Gs. 150.000 price.
+
+- Item 168 availability confirmation on 2026-09-28: owner instructed it to match Item 119. Item 119 is AVAILABLE NOW, so Item 168 is also AVAILABLE NOW (IMMEDIATE), no longer UNLISTED/needs-review for availability.
