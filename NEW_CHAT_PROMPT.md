@@ -323,3 +323,5 @@ Do not change code until you have read both files and checked the current reposi
 That short bootstrap is sufficient when the repository is accessible.
 
 No giant cross-chat handoff should normally be necessary.
+
+- Local verification batching rule: do not make the owner stop/restart Netlify Dev, fetch, pull, and hard-refresh after every small repository change. Track all unverified changes in the current testing batch and ask for one local update/restart only at a sensible checkpoint, unless a particular change must be validated immediately before further work can safely continue. After the batch refresh, explicitly list every item/change that still needs rechecking so nothing is missed.
