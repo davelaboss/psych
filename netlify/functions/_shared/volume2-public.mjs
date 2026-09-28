@@ -3,6 +3,10 @@ import {
 } from '../../../source/lib/volume2-batch.ts';
 
 import {
+  SALE_READINESS_SUPPLEMENTAL_ITEMS,
+} from '../../../source/lib/sale-readiness-supplemental.ts';
+
+import {
   VOLUME2_IMAGE_MAP,
 } from '../../../source/lib/volume2-image-map.mjs';
 
@@ -27,8 +31,8 @@ function removeUsedWords(value) {
 }
 
 
-function cleanDescription(item) {
-  let value = removeUsedWords(item.description);
+function cleanPublicText(value) {
+  let next = removeUsedWords(value);
 
   const privatePhrases = [
     'No se identificaron otros objetos visibles que deban considerarse incluidos.',
@@ -37,17 +41,78 @@ function cleanDescription(item) {
   ];
 
   for (const phrase of privatePhrases) {
-    value = value.replace(phrase, '');
+    next = next.replace(phrase, '');
   }
 
-  return value
+  return next
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+
+function publicMeasurements(item) {
+  const value = cleanPublicText(item.measurements);
+
+  if (
+    !value ||
+    /no disponibles/i.test(value) ||
+    /medir antes de publicar/i.test(value)
+  ) {
+    return '';
+  }
+
+  return value;
+}
+
+
+function publicFunctionality(item) {
+  const value = cleanPublicText(item.functionality);
+
+  if (
+    !value ||
+    /no verificado/i.test(value) ||
+    /no aplica o no requiere/i.test(value) ||
+    /estado estructural no verificado/i.test(value)
+  ) {
+    return '';
+  }
+
+  return value;
+}
+
+
+function cleanDescription(item) {
+  const parts = [
+    cleanPublicText(item.description),
+  ];
+
+  const measurements =
+    publicMeasurements(item);
+
+  if (measurements) {
+    parts.push(`Medidas: ${measurements}`);
+  }
+
+  const functionality =
+    publicFunctionality(item);
+
+  if (functionality) {
+    parts.push(
+      `Funcionamiento: ${functionality}`
+    );
+  }
+
+  return parts
+    .filter(Boolean)
+    .join(' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
 
 
 function publicCondition(item) {
-  const value = removeUsedWords(item.condition);
+  const value =
+    cleanPublicText(item.condition);
 
   if (
     !value ||
@@ -60,81 +125,112 @@ function publicCondition(item) {
 }
 
 
-function publicConditionNotes() {
-  // Volume 2's current conditionNotes are review instructions,
-  // not buyer-facing product facts.
-  return '';
-}
+function publicProduct(item) {
+  const quantityTotal =
+    Number(item.quantityTotal || 1);
 
+  const status =
+    item.status || 'AVAILABLE';
 
-function publicKnownDefects() {
-  // Volume 2's current knownDefects field is mostly composed of
-  // internal verification tasks ("Confirmar...", "Revisar...", etc.).
-  // Confirmed defects can be added later through Admin.
-  return '';
-}
+  const available =
+    status === 'AVAILABLE';
 
+  const sold =
+    status === 'SOLD' ||
+    status === 'PICKED_UP';
 
-export function volume2Products() {
-  return VOLUME2_BATCH_ITEMS.map(
-    (item) => ({
-      id: item.id,
-      itemNumber: item.itemNumber,
-      slug: `${slugify(item.title)}-${item.itemNumber}`,
-      title: removeUsedWords(item.title),
-      category: item.category,
-      tags: [
-        item.category.toLowerCase(),
-        'venta de mudanza',
-        'volumen 2',
-      ],
-      description: cleanDescription(item),
-      condition: publicCondition(item),
-      conditionNotes: publicConditionNotes(item),
-      knownDefects: publicKnownDefects(item),
-      images: (item.photos || [])
+  return {
+    id: item.id,
+    itemNumber: item.itemNumber,
+    slug:
+      `${slugify(item.title)}-${item.itemNumber}`,
+    title:
+      cleanPublicText(item.title),
+    category: item.category,
+    tags: [
+      item.category.toLowerCase(),
+      'venta de mudanza',
+      item.itemNumber >= 58 &&
+      item.itemNumber <= 158
+        ? 'volumen 2'
+        : 'complementos',
+    ],
+    description:
+      cleanDescription(item),
+    condition:
+      publicCondition(item),
+    conditionNotes: '',
+    knownDefects: '',
+    images:
+      (item.photos || [])
         .map(
           (name) =>
             VOLUME2_IMAGE_MAP[name] || ''
         )
         .filter(Boolean),
-      askingPricePYG: Number(item.asking || 0),
-      originalPricePYG: null,
-      saleMode: item.saleMode,
-      pickupAvailableDate: item.pickupDate,
-      pickupWindowStart: item.pickupWindowStart,
-      pickupWindowEnd: item.pickupWindowEnd,
-      depositPercent:
-        item.saleMode === 'DELAYED'
-          ? 25
-          : 100,
-      requiresVehicle:
-        Boolean(item.requiresVehicle),
-      requiresLoadingHelp:
-        Boolean(item.requiresLoadingHelp),
-      logisticsNotes: [
-        item.requiresVehicle
-          ? 'Requiere vehículo adecuado.'
-          : '',
-        item.requiresLoadingHelp
-          ? 'El comprador debe traer ayuda para cargar.'
-          : '',
-      ].filter(Boolean),
-      includedAccessories:
-        item.includedAccessories || [],
-      sellerConfirmedFields: [],
-      status: 'AVAILABLE',
-      featured: false,
-      dateListed: '2026-09-23',
-      lastPriceChange: null,
-      isDemo: false,
-      needsReview: false,
-      quantityTotal:
-        Number(item.quantityTotal || 1),
-      quantityRemaining:
-        Number(item.quantityTotal || 1),
-      quantityHeld: 0,
-      quantitySold: 0,
-    })
-  );
+    askingPricePYG:
+      Number(item.asking || 0),
+    originalPricePYG: null,
+    saleMode: item.saleMode,
+    pickupAvailableDate:
+      item.pickupDate,
+    pickupWindowStart:
+      item.pickupWindowStart,
+    pickupWindowEnd:
+      item.pickupWindowEnd,
+    depositPercent:
+      item.saleMode === 'DELAYED'
+        ? 25
+        : 100,
+    requiresVehicle:
+      Boolean(item.requiresVehicle),
+    requiresLoadingHelp:
+      Boolean(item.requiresLoadingHelp),
+    logisticsNotes: [
+      item.requiresVehicle
+        ? 'Requiere vehículo adecuado.'
+        : '',
+      item.requiresLoadingHelp
+        ? 'El comprador debe traer ayuda para cargar.'
+        : '',
+    ].filter(Boolean),
+    includedAccessories:
+      item.includedAccessories || [],
+    sellerConfirmedFields: [],
+    status,
+    featured: false,
+    dateListed: '2026-09-23',
+    lastPriceChange: null,
+    isDemo: false,
+    needsReview:
+      Boolean(item.needsReview),
+    quantityTotal,
+    quantityRemaining:
+      available
+        ? quantityTotal
+        : 0,
+    quantityHeld: 0,
+    quantitySold:
+      sold
+        ? quantityTotal
+        : 0,
+  };
+}
+
+
+export function volume2Products() {
+  return [
+    ...VOLUME2_BATCH_ITEMS,
+    ...SALE_READINESS_SUPPLEMENTAL_ITEMS,
+  ]
+    .map(publicProduct)
+    .filter(
+      (product) =>
+        product.status !== 'UNLISTED'
+    )
+    .sort(
+      (a, b) =>
+        Number(a.itemNumber) -
+        Number(b.itemNumber)
+    );
 }
