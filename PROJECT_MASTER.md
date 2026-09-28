@@ -1388,3 +1388,5 @@ Format:
 - Remaining follow-up: none; this rule applies to future website programming chats.
 
 - Permanent workflow clarification from owner on 2026-09-28: when the assistant has tool/connector access to make a safe repository change directly, the assistant should make the change and the owner should verify/test it. Do not hand the owner source code to paste for changes the assistant can apply itself.
+
+- Local test workflow correction from owner on 2026-09-28: a previous fetch + fast-forward pull + browser Ctrl+F5 did not expose the new catalog/function behavior while `npx netlify dev` was already running. For changes under `netlify/functions` or imported source/data modules, restart the Netlify dev process after pulling before browser verification; do not rely on Ctrl+F5 alone.
