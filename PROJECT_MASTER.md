@@ -1386,3 +1386,5 @@ Format:
 - Owner interaction rule: if the result matches the stated expectation, the owner may continue without pasting the output back. Request pasted output only when the result differs materially, exact output is needed for the next step, or a risky/conflicted Git state requires inspection.
 - Canonical instruction updated: `NEW_CHAT_PROMPT.md`.
 - Remaining follow-up: none; this rule applies to future website programming chats.
+
+- Permanent workflow clarification from owner on 2026-09-28: when the assistant has tool/connector access to make a safe repository change directly, the assistant should make the change and the owner should verify/test it. Do not hand the owner source code to paste for changes the assistant can apply itself.
