@@ -1412,7 +1412,7 @@ Format:
 
 - Owner-confirmed dimensions/accessories batch on 2026-09-28:
   - Item 122: 103 cm wide × 55 cm deep × 79 cm high.
-  - Item 168 rolling bag (pending unpublished companion listing): 48 cm wide × 30 cm deep; 43 cm high to top of bag; 51 cm high to top of closed handle; 95 cm high with handle fully extended. Price still pending before Item 168 is created/published.
+  - Item 168 rolling bag: 48 cm wide × 30 cm deep; 43 cm high to top of bag; 51 cm high to top of closed handle; 95 cm high with handle fully extended. Price confirmed at Gs. 150.000 (USD 25 × Gs. 6.000 exactly). Draft listing created with its 15 bag photos; remains UNLISTED only because availability timing is still pending confirmation.
   - Item 054: 48 cm wide × 38 cm deep × 65 cm high. Source fallback updated; production/admin override must also be updated during live publish if it supersedes source.
   - Item 117: each curtain panel 107 cm wide × 157 cm high.
   - Item 161 curtain rod: 180 cm long and adjustable; includes mounting brackets.
@@ -1423,3 +1423,5 @@ Format:
   - Item 110: fully open 111 cm wide × 59 cm high; slid/compressed closed width 60 cm.
   - Item 109: closed height 132 cm, width 45 cm; when open, top step height 70.5 cm.
 - Recheck queue after next batched local refresh now includes Items 109, 110, 112, 113, 116, 117, 122, 160, 161, Item 054 dimensions, Item 119 availability/split, plus prior pending Item 106 replacement photo and Item 086 additional photos. Item 168 remains pending price and therefore is not yet published.
+
+- Item 168 price confirmation on 2026-09-28: owner set the rolling bag at USD 25 using Gs. 6.000/USD. Exact result is Gs. 150.000, so no rounding was needed. Item 168 draft now exists with 15 bag photos and confirmed dimensions, but remains UNLISTED until owner confirms whether it is available now or for Dec. 9–12 pickup.
