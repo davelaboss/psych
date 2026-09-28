@@ -116,9 +116,9 @@ function publicCondition(item) {
 
   if (
     !value ||
-    /estado visual según fotografías/i.test(value)
+    /estado visual\s+seg[uú]n\s+(?:las\s+)?fotograf[ií]as?/i.test(value)
   ) {
-    return 'Estado visual según fotografías';
+    return '';
   }
 
   return value;
