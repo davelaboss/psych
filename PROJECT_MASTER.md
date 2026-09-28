@@ -1478,3 +1478,5 @@ Format:
   - Item 054: Gs. 90.000; delayed pickup December 9–12, 2026; 48 × 38 × 65 cm; remains wrapped in its original protective plastic without calling it new.
   - Item 057: Gs. 60.000 each; quantity 2; delayed pickup December 9–12, 2026; the two units have their own wear and the photos show one unit.
 - Runtime production reconciliation for these seven items is still required through the supported `/admin` workflow after this guard/source update is deployed. Do not close the merchandising workstream until that reconciliation and production regression are NOMINAL.
+
+- Follow-up improvement on 2026-09-28: the owner admin now provides a supported one-click `Sincronizar producción con fuente` action for Items 001–057 whenever non-image public fields differ from the committed base catalog. The action updates only the mismatched authoring/public fields through the normal authenticated admin/Blob pathway, preserves internal fields, does not alter operational sold/held quantities, and does not automatically replace photos. This makes stale Blob reconciliation explicit and repeatable instead of requiring manual field-by-field re-entry.
