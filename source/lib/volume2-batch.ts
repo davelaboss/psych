@@ -160,7 +160,7 @@ const specs: Spec[] = [
   s('Sombrero de sol tejido', 'Accesorios', ['IMG_7969.JPG'], 54000, { flag:'' }),
   s('Juego de 5 abanicos decorativos', 'Decoración', ['IMG_7972.JPG','IMG_7974.JPG'], 90000, { flag:'' }),
   s('Juego de 4 ruedas giratorias Fascy de 1 pulgada', 'Herramientas', ['IMG_7973.JPG'], 60000, { included:['Cuatro ruedas visibles'], structure:'Un juego de 4 piezas.', functionality:'Giro y rodamiento no verificados.' }),
-  s('Portavela decorativo', 'Decoración', ['IMG_7975.JPG'], 40000, { excluded:'Vela no confirmada como incluida.', flag:'Confirmar si incluye vela.' }),
+  s('Portavela decorativo', 'Decoración', ['IMG_7975.JPG'], 40000, { flag:'' }),
   s('Reloj de pared marrón', 'Decoración', ['IMG_7976.JPG'], 70000, { flag:'' }),
   s('Armario de madera', 'Muebles', ['IMG_7647~2-EDIT.jpg','IMG_7649~2.JPG','IMG_7648~2.JPG'], 1500000, { delayed:true, vehicle:true, help:true, status:'SOLD', description:'Armario de madera.', excluded:'Ropa y objetos interiores no incluidos.', flag:'La foto IMG_7798.JPG estaba vacía/corrupta y permanece excluida.' }),
   s('Televisor JVC LT-65KM858 QLED Pro 65 4K Google TV', 'Electrónica', ['PXL_20260926_182112288.jpg','PXL_20260926_182042688.jpg','PXL_20260926_182002882.jpg','IMG_7789~2.jpg'], 2000000, { delayed:true, vehicle:true, description:'Televisor JVC modelo LT-65KM858, QLED Pro de 65 pulgadas, 4K con Google TV. Aproximadamente 6 meses.', flag:'' }),
