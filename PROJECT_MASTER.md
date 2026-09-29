@@ -1480,3 +1480,19 @@ Format:
 - Runtime production reconciliation for these seven items is still required through the supported `/admin` workflow after this guard/source update is deployed. Do not close the merchandising workstream until that reconciliation and production regression are NOMINAL.
 
 - Follow-up improvement on 2026-09-28: the owner admin now provides a supported one-click `Sincronizar producción con fuente` action for Items 001–057 whenever non-image public fields differ from the committed base catalog. The action updates only the mismatched authoring/public fields through the normal authenticated admin/Blob pathway, preserves internal fields, does not alter operational sold/held quantities, and does not automatically replace photos. This makes stale Blob reconciliation explicit and repeatable instead of requiring manual field-by-field re-entry.
+
+## 2026-09-28 — Product merchandising / sale-readiness closed
+
+- Final owner production verification completed.
+- New merchandising items 056, 086, 106, 117, 119, 163, and 168 were confirmed NOMINAL on production.
+- The original-catalog production review initially exposed stale source/live divergence for Items 019, 020, 025, 045, 047, 052, 054, and 057 across the committed-source / Blob-override architecture.
+- Permanent prevention added:
+  - owner admin now detects Items 001–057 whose committed base catalog differs from resolved production and shows `Fuente ≠ producción`;
+  - owner admin includes a supported authenticated `Sincronizar producción con fuente` action for non-image public-field drift;
+  - original-catalog work now follows a two-phase closeout gate: deploy source, immediately reconcile production/admin, require zero intended source/live drift before moving on or closing.
+- Source deployment directly resolved Items 045, 047, 052, 054, and 057.
+- Remaining stale production overrides for Items 019, 020, and 025 were reconciled through the supported admin source-sync action.
+- Owner confirmed the admin `Fuente ≠ producción` count reached **0**.
+- This confirms the resolved production catalog and committed base catalog now agree across the tracked public fields/images for Items 001–057.
+- Product merchandising / sale-readiness workstream status: **COMPLETE AND CLOSED**.
+- Any future product-to-product navigation work is a separate workstream and must not reopen this merchandising reconciliation unless new specific product-data evidence appears.
