@@ -1,6 +1,6 @@
 # Psych Website — Project Master
 
-Last updated: 2026-09-25
+Last updated: 2026-09-29
 
 This file is the authoritative human-readable project record for the Psych website.
 
@@ -369,9 +369,9 @@ Volume 2 contains:
 
 101 products
 
-Current final-regression storefront total:
+Current verified storefront total (2026-09-29):
 
-153 articles
+158 articles
 
 The item-number range and number of currently sellable cards are not assumed to be identical.
 
@@ -1032,7 +1032,7 @@ Do not assume the completed Items 001–057 cleanup automatically covered Volume
 
 STATUS:
 
-Needs verification/completion in a separate workstream.
+COMPLETE AND CLOSED on 2026-09-29. All 101 source records were audited against the 95 listed live products; six records remain intentionally unlisted. The three previously known boilerplate examples were already suppressed by the public transform. This pass corrected Item 153's unverified pump wording and removed Item 148's speculative candle note after owner confirmation. The live public catalog was verified after deployment.
 
 ---
 
@@ -1223,6 +1223,7 @@ No giant cross-chat historical handoff should normally be required after this sy
 ## Completed
 
 - Unified override-aware public catalog.
+- Volume 2 Items 058–158 public-copy hygiene audit completed and production verified on 2026-09-29.
 - Original inventory public-data hygiene cleanup.
 - Prohibited original-inventory `usado/usada/usados/usadas` wording removed.
 - Original public reviewer/TODO/verification leakage removed.
@@ -1259,9 +1260,8 @@ The owner must explicitly assign the next workstream.
 
 Separate future chats may address, when explicitly assigned:
 
-1. Volume 2 public-copy hygiene audit.
-2. Product-to-product navigation on detail pages.
-3. Approved-payment pickup scheduling/calendar.
+1. Product-to-product navigation on detail pages.
+2. Approved-payment pickup scheduling/calendar.
 
 ## Engineering cautions retained
 
@@ -1496,3 +1496,12 @@ Format:
 - This confirms the resolved production catalog and committed base catalog now agree across the tracked public fields/images for Items 001–057.
 - Product merchandising / sale-readiness workstream status: **COMPLETE AND CLOSED**.
 - Any future product-to-product navigation work is a separate workstream and must not reopen this merchandising reconciliation unless new specific product-data evidence appears.
+
+## 2026-09-29 — Volume 2 public-copy hygiene completed
+
+- Owner/chat: Volume 2 public-copy hygiene, Items 058–158.
+- Files changed: `netlify/functions/_shared/volume2-public.mjs` and `source/lib/volume2-batch.ts`; this coordination entry in `PROJECT_MASTER.md`.
+- Result: Audited all 101 Volume 2 source records and all 95 listed products against the live public catalog. Six records were intentionally unlisted. The existing public transform already suppressed the known generic reviewer/photo boilerplate. Broadened its unverified-functionality filter so Item 153 no longer displays `Bomba no verificada`; removed Item 148's speculative candle exclusion and internal confirmation flag after the owner confirmed its only photo shows the holder without a candle. Internal verification notes on other products remain private. No other buyer-facing fields changed.
+- Regression performed: JavaScript syntax and `git diff --check`; source/live public-field comparison before deployment; owner confirmation NOMINAL; after merge, live catalog comparison showed exactly two changed fields, the descriptions for Items 148 and 153. Live catalog remained 158 total products with 95 listed Volume 2 products. Item 090's confirmed burner defect remained visible, and no targeted reviewer/TODO phrases remained in listed Volume 2 public fields.
+- Commit: Buyer-facing source merged via PR #4 as `3507e65bb4044d3543452e45089cad1fc5b09b8c`; this documentation entry is in the subsequent closeout checkpoint.
+- Remaining follow-up: None for this workstream. Blob overrides retain runtime priority; the production comparison found no conflicting Volume 2 public-field overrides for the audited fields.
