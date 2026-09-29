@@ -70,7 +70,7 @@ function publicFunctionality(item) {
 
   if (
     !value ||
-    /no verificado/i.test(value) ||
+    /no verificad[oa]s?/i.test(value) ||
     /no aplica o no requiere/i.test(value) ||
     /estado estructural no verificado/i.test(value)
   ) {
