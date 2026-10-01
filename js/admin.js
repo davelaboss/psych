@@ -3821,6 +3821,9 @@ function renderAdminOrderDetail(
       order.status
     );
 
+  const canCancel = !order.initialPaymentConfirmedAt &&
+    ['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(order.status);
+
   target.innerHTML = `
     <section class="admin-order-detail-v2">
       <span class="section-kicker">
@@ -3927,7 +3930,17 @@ function renderAdminOrderDetail(
         </div>
       </div>
 
+      ${order.status === 'CANCELLED' ? '<p role="status"><strong>Pedido cancelado</strong>. Los artículos fueron liberados y volvieron a estar disponibles. El pedido se conserva para consulta.</p>' : ''}
+
       <div class="order-detail-actions">
+        ${canCancel ? `
+          <div>
+            <button class="secondary-action" type="button" data-cancel-order>
+              CANCELAR PEDIDO Y LIBERAR ARTÍCULOS
+            </button>
+            <p>No se puede usar después de confirmar el pago.</p>
+          </div>
+        ` : ''}
         ${
           order.receipt
             ? `
@@ -4003,6 +4016,24 @@ function renderAdminOrderDetail(
         );
       }
     );
+
+  target.querySelector('[data-cancel-order]')?.addEventListener('click', async function (event) {
+    if (!window.confirm('¿Cancelar este pedido y volver a poner los artículos disponibles? No se puede usar después de confirmar el pago.')) return;
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const result = await adminFetch('/api/admin/cancel-order', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderId: order.id }),
+      });
+      ADMIN_STATE.orders = ADMIN_STATE.orders.map(item => item.id === order.id ? result.order : item);
+      ADMIN_STATE.stats = buildAdminStats(ADMIN_STATE.orders, ADMIN_STATE.inventory);
+      renderOrdersTab();
+      await openAdminOrder(order.id);
+    } catch (error) {
+      button.disabled = false;
+      alert(error instanceof Error ? error.message : 'No se pudo cancelar el pedido.');
+    }
+  });
 }
 
 
@@ -4219,6 +4250,7 @@ function adminStatus(
   status
 ) {
   const labels = {
+    CANCELLED: 'Pedido cancelado',
     AWAITING_INITIAL_PAYMENT:
       'Esperando transferencia',
 

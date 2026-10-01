@@ -449,7 +449,7 @@ export async function loadCatalog(origin) {
 export {
   claimCartLease, updateCartLease, releaseCartLease, getCartLeaseStatus,
   transitionCartLeaseToOrder, getCartCheckoutAttempt, recordOrderReceipt,
-  commitInventoryHold, updateProductCapacity,
+  commitInventoryHold, updateProductCapacity, cancelOrder,
 } from './inventory-database.mjs';
 import { listOrderSnapshots, readCommittedInventory } from './inventory-database.mjs';
 import { recoverOrderBlob, readRecoverableOrder } from './order-recovery.mjs';

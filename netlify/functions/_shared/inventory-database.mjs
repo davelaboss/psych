@@ -78,6 +78,7 @@ export async function getCartLeaseStatus(sessionId) {
     if (!status.lease) {
       const pending = (await client.query(`SELECT a.order_id FROM checkout_attempts a
         WHERE a.session_id=$1 AND a.cart_generation=$2 AND a.committed_at IS NULL
+          AND a.order_snapshot->>'status' <> 'CANCELLED'
           AND (a.expires_at IS NULL OR a.expires_at>clock_timestamp())`, [sessionId, session.generation])).rows[0];
       if (pending) status.pendingOrderId = pending.order_id;
     }
@@ -208,7 +209,7 @@ export async function recordOrderReceipt(orderId, receipt) {
     if (!locked) return false;
     const { row, rows } = locked;
     const timestamp = await now(client);
-    if (!rows.length || row.committed_at || (row.expires_at && ms(row.expires_at) <= timestamp)) return false;
+    if (row.order_snapshot.status === 'CANCELLED' || !rows.length || row.committed_at || (row.expires_at && ms(row.expires_at) <= timestamp)) return false;
     if (row.order_snapshot.receipt) return false;
     const snapshot = { ...row.order_snapshot, receipt, status: 'RECEIPT_RECEIVED', holdExpiresAt: null, updatedAt: timestamp };
     await client.query("UPDATE inventory_reservations SET expires_at=NULL,updated_at=clock_timestamp() WHERE order_id=$1 AND phase='ORDER'", [orderId]);
@@ -222,6 +223,7 @@ export async function commitInventoryHold(orderId) {
     const locked = await orderLock(client, orderId);
     if (!locked) return false;
     const { row, rows } = locked;
+    if (row.order_snapshot.status === 'CANCELLED') return false;
     if (row.committed_at) return true;
     if (!rows.length || !row.order_snapshot.receipt) return false;
     const timestamp = await now(client);
@@ -237,6 +239,26 @@ export async function commitInventoryHold(orderId) {
     return true;
   });
 }
+export async function cancelOrder(orderId) {
+  return inventoryTransaction(async client => {
+    const locked = await orderLock(client, orderId);
+    if (!locked) throw Object.assign(new Error('Pedido no encontrado en el inventario de pedidos.'), { status: 404 });
+    const { row } = locked;
+    if (row.committed_at || row.order_snapshot.initialPaymentConfirmedAt ||
+        !['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT', 'CANCELLED'].includes(row.order_snapshot.status)) {
+      throw fail('No se puede cancelar un pedido después de confirmar el pago.');
+    }
+    if (row.order_snapshot.status === 'CANCELLED') return row.order_snapshot;
+    const timestamp = await now(client);
+    const snapshot = { ...row.order_snapshot, status: 'CANCELLED', cancelledAt: timestamp,
+      cancelledBy: 'ADMIN', inventoryReleasedAt: timestamp, holdExpiresAt: null, updatedAt: timestamp };
+    await client.query("DELETE FROM inventory_reservations WHERE order_id=$1 AND phase='ORDER'", [orderId]);
+    await client.query('UPDATE checkout_attempts SET order_snapshot=$2,expires_at=$3,projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1',
+      [orderId, JSON.stringify(snapshot), new Date(timestamp)]);
+    return snapshot;
+  });
+}
+
 export async function listOrderSnapshots() {
   return (await database().pool.query('SELECT order_snapshot FROM checkout_attempts ORDER BY created_at DESC')).rows.map(row => row.order_snapshot);
 }

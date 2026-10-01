@@ -752,6 +752,28 @@ function displayOrder(
   const main =
     document.querySelector('main');
 
+  if (order.status === 'CANCELLED') {
+    main.innerHTML = `
+      <section class="order-shell">
+        <div class="page-heading">
+          <span class="section-kicker">MI PEDIDO</span>
+          <h1>Pedido cancelado</h1>
+          <p>${escapeHtml(order.id)}</p>
+        </div>
+        <section class="checkout-card" role="status">
+          <p>Este pedido fue cancelado por el vendedor. Los artículos fueron liberados y ya no están reservados para este pedido.</p>
+          <p>No realices una transferencia ni subas un comprobante para este pedido. Si ya transferiste, contactá al vendedor.</p>
+          <h2>Artículos del pedido cancelado</h2>
+          <ul>${order.items.map(item => `<li>${item.quantity} × ${escapeHtml(item.title)}</li>`).join('')}</ul>
+          <a class="secondary-action" href="/">Volver al catálogo</a>
+          <a class="secondary-action" href="https://wa.me/595972588347?text=${encodeURIComponent(`Hola, quisiera consultar por mi pedido cancelado ${order.id}.`)}" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>
+        </section>
+      </section>
+    `;
+    injectCheckoutStyles();
+    return;
+  }
+
   const status =
     orderStatusLabel(
       order.status
@@ -1082,10 +1104,14 @@ function renderBankSection(
 
       <form
         id="receipt-form"
+        class="receipt-upload-highlight"
+        aria-labelledby="receipt-upload-heading"
       >
+        <h3 id="receipt-upload-heading">Después de transferir, subí tu comprobante aquí</h3>
+        <p>Necesitamos que cargues el comprobante en esta página para poder verificar tu pago. No lo envíes solamente por WhatsApp.</p>
         <label>
           <span>
-            Subí tu comprobante
+            Elegí el archivo de tu comprobante
           </span>
 
           <input
@@ -1114,6 +1140,7 @@ function renderBankSection(
           JPEG, PNG, WebP o PDF.
           Máximo 3 MB.
         </small>
+        <p class="receipt-verification-note">Subir el comprobante no confirma el pago. El vendedor debe verificar que los fondos hayan ingresado.</p>
       </form>
     </div>
   `;
@@ -1239,6 +1266,7 @@ function setupReceiptUpload(
 
 function orderStatusLabel(status) {
   const labels = {
+    CANCELLED: 'Pedido cancelado',
     AWAITING_INITIAL_PAYMENT:
       'Esperando transferencia',
 
@@ -1374,6 +1402,38 @@ function injectCheckoutStyles() {
       display: grid;
       gap: 14px;
     }
+
+    #receipt-form.receipt-upload-highlight {
+      margin-top: 20px;
+      padding: 22px;
+      border: 2px solid var(--forest);
+      border-radius: 14px;
+      background: #edf5ef;
+      box-shadow: 0 5px 18px rgba(23, 62, 46, .10);
+    }
+
+    #receipt-form h3 {
+      margin: 0;
+      font-size: 1.4rem;
+      line-height: 1.3;
+      color: var(--forest-dark);
+    }
+
+    #receipt-form p { margin: 0; line-height: 1.5; }
+    #receipt-form label > span { font-weight: 700; }
+    #receipt-form input[type="file"] { border: 2px solid var(--forest); }
+    #receipt-form input[type="file"]::file-selector-button {
+      padding: 10px 12px;
+      margin-right: 10px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--forest);
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #receipt-form .primary-action { width: 100%; min-height: 50px; font-weight: 700; }
+    #receipt-form .receipt-verification-note { font-size: .9rem; }
 
     .checkout-item,
     .order-item {
