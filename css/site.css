@@ -35,3 +35,5 @@
 .product-card .card-actions{margin-top:0;padding-top:14px}
 .product-card .card-actions button{display:flex;align-items:center;justify-content:center;text-align:center;padding:0 12px}
 .product-card .card-availability{flex:none;align-content:flex-start}
+
+.cart-lease-countdown{margin:12px 0;padding:11px 13px;border-radius:7px;background:#263d32;color:#fff;font-size:12px;font-weight:700}.cart-lease-countdown strong{float:right;font-variant-numeric:tabular-nums;font-size:16px}

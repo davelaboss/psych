@@ -1,15 +1,16 @@
+import { createHash } from 'node:crypto';
 import {
   INITIAL_HOLD_MS,
+  cartSessionIdFromRequest,
+  getCartCheckoutAttempt,
   getOrder,
   hashAccessToken,
   jsonResponse,
   loadCatalog,
   makeOrderId,
   publicOrder,
-  randomAccessToken,
-  releaseInventoryHold,
-  reserveInventoryHold,
   salesAreOpen,
+  transitionCartLeaseToOrder,
   writeNewOrder,
 } from './_shared/commerce.mjs';
 
@@ -47,6 +48,13 @@ export default async function handler(request) {
       String(body?.buyer?.email || '')
         .trim()
         .toLowerCase();
+    const cartSessionId = cartSessionIdFromRequest(request) || '';
+    const checkoutId = String(body?.checkoutId || '');
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cartSessionId)
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(checkoutId)) {
+      throw new Error('No encontramos la reserva de este carrito. Volvé al catálogo y agregá los artículos nuevamente.');
+    }
 
     if (name.length < 2) {
       throw new Error(
@@ -60,6 +68,21 @@ export default async function handler(request) {
       throw new Error(
         'Ingresá un número de WhatsApp válido.'
       );
+    }
+
+    const accessTokenFor = (orderId) => createHash('sha256')
+      .update(`psych-cart-order-access:${cartSessionId}:${orderId}`)
+      .digest('hex');
+    const existingAttempt = await getCartCheckoutAttempt(cartSessionId, checkoutId, body.items);
+    if (existingAttempt) {
+      if (existingAttempt.expiresAt != null && existingAttempt.expiresAt <= Date.now()
+        && existingAttempt.orderSnapshot.status === 'AWAITING_INITIAL_PAYMENT') {
+        const error = new Error('La reserva temporal venció y este artículo volvió a estar disponible.');
+        error.status = 409;
+        throw error;
+      }
+      const recovered = await writeNewOrder(existingAttempt.orderSnapshot);
+      return jsonResponse({ ok: true, order: publicOrder(recovered), accessToken: accessTokenFor(existingAttempt.orderId) });
     }
 
     if (!Array.isArray(body.items)) {
@@ -255,9 +278,6 @@ export default async function handler(request) {
         remaining;
     }
 
-    const accessToken =
-      randomAccessToken();
-
     let orderId =
       makeOrderId();
 
@@ -273,14 +293,9 @@ export default async function handler(request) {
     const holdExpiresAt =
       now + INITIAL_HOLD_MS;
 
-    await reserveInventoryHold({
-      orderId,
-      items: holdItems,
-      availability,
-      expiresAt: holdExpiresAt,
-    });
-
-    const order = {
+    const accessToken = accessTokenFor(orderId);
+    const orderSnapshot = {
+      buyer: { name, phone, email },
       id: orderId,
 
       accessTokenHash:
@@ -291,12 +306,6 @@ export default async function handler(request) {
 
       status:
         'AWAITING_INITIAL_PAYMENT',
-
-      buyer: {
-        name,
-        phone,
-        email,
-      },
 
       items: orderItems,
 
@@ -313,15 +322,17 @@ export default async function handler(request) {
       pickup: null,
     };
 
-    try {
-      await writeNewOrder(order);
-    } catch (error) {
-      await releaseInventoryHold(
-        orderId
-      );
-
-      throw error;
-    }
+    const attempt = await transitionCartLeaseToOrder({
+      cartSessionId,
+      checkoutId,
+      orderId,
+      items: holdItems,
+      availability,
+      expiresAt: holdExpiresAt,
+      orderSnapshot,
+    });
+    const finalAccessToken = accessTokenFor(attempt.orderId);
+    const order = await writeNewOrder(attempt.orderSnapshot);
 
     return jsonResponse(
       {
@@ -330,7 +341,7 @@ export default async function handler(request) {
         order:
           publicOrder(order),
 
-        accessToken,
+        accessToken: finalAccessToken,
       },
       201
     );

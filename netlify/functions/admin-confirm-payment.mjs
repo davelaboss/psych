@@ -3,7 +3,6 @@ import {
   commitInventoryHold,
   getOrder,
   jsonResponse,
-  mutateOrder,
 } from './_shared/commerce.mjs';
 
 
@@ -48,6 +47,8 @@ export default async function handler(request) {
       ![
         'RECEIPT_RECEIVED',
         'VERIFYING_PAYMENT',
+        'PAYMENT_CONFIRMED',
+        'DEPOSIT_CONFIRMED',
       ].includes(order.status)
     ) {
       return jsonResponse(
@@ -74,34 +75,7 @@ export default async function handler(request) {
       );
     }
 
-    const hasDelayedItems =
-      (order.items || []).some(
-        (item) =>
-          item.saleMode ===
-          'DELAYED'
-      );
-
-    const nextStatus =
-      hasDelayedItems
-        ? 'DEPOSIT_CONFIRMED'
-        : 'PAYMENT_CONFIRMED';
-
-    const updated =
-      await mutateOrder(
-        orderId,
-        (current) => ({
-          ...current,
-
-          status:
-            nextStatus,
-
-          updatedAt:
-            Date.now(),
-
-          initialPaymentConfirmedAt:
-            Date.now(),
-        })
-      );
+    const updated = await getOrder(orderId);
 
     const safeOrder = {
       ...updated,

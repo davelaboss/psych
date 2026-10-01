@@ -79,14 +79,6 @@ function ordersStore() {
 }
 
 
-function inventoryStore() {
-  return getStore({
-    name: 'mudanza-inventory',
-    consistency: 'strong',
-  });
-}
-
-
 function productOverrideStore() {
   return getStore({
     name: 'mudanza-product-overrides',
@@ -201,6 +193,12 @@ export function jsonResponse(data, status = 200) {
 
 export function randomAccessToken() {
   return randomBytes(32).toString('base64url');
+}
+
+export function cartSessionIdFromRequest(request) {
+  const cookie = request.headers.get('cookie') || '';
+  const value = cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith('psych_cart_session='))?.slice('psych_cart_session='.length);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '') ? value : null;
 }
 
 
@@ -421,197 +419,27 @@ export async function loadCatalog(origin) {
     );
 }
 
-// File: netlify/functions/_shared/commerce.mjs
-
-async function getActiveHolds() {
-  const store = inventoryStore();
-
-  const result = await store.list({
-    prefix: 'hold:',
-  });
-
-  const holds = [];
-
-  for (const blob of result.blobs) {
-    const hold = await store.get(blob.key, {
-      type: 'json',
-      consistency: 'strong',
-    });
-
-    if (!hold) {
-      continue;
-    }
-
-    if (
-      !hold.locked &&
-      Number(hold.expiresAt || 0) <= Date.now()
-    ) {
-      await store.delete(blob.key);
-      continue;
-    }
-
-    holds.push(hold);
-  }
-
-  return holds;
-}
-
-
-function heldQuantity(
-  holds,
-  productId,
-  excludeOrderId = null
-) {
-  let quantity = 0;
-
-  for (const hold of holds) {
-    if (hold.orderId === excludeOrderId) {
-      continue;
-    }
-
-    for (const item of hold.items || []) {
-      if (item.productId === productId) {
-        quantity += Number(item.quantity || 0);
-      }
-    }
-  }
-
-  return quantity;
-}
-
-
-export async function reserveInventoryHold({
-  orderId,
-  items,
-  availability,
-  expiresAt,
-}) {
-  const store = inventoryStore();
-
-  const holds = await getActiveHolds();
-
-  for (const item of items) {
-    const sourceQuantity =
-      Number(availability[item.productId] || 0);
-
-    const held =
-  heldQuantity(
-    holds,
-    item.productId,
-    orderId
-  );
-
-const committed =
-  await committedQuantity(
-    item.productId
-  );
-
-const available =
-  sourceQuantity -
-  held -
-  committed;
-
-    if (available < item.quantity) {
-      const error = new Error(
-        'Uno de los artículos ya no tiene la cantidad solicitada disponible.'
-      );
-
-      error.status = 409;
-      throw error;
-    }
-  }
-
-  const hold = {
-    orderId,
-    createdAt: Date.now(),
-    expiresAt,
-    locked: false,
-    items,
-  };
-
-  await store.setJSON(
-    `hold:${orderId}`,
-    hold
-  );
-}
-
-
-export async function releaseInventoryHold(
-  orderId
-) {
-  await inventoryStore().delete(
-    `hold:${orderId}`
-  );
-}
-
-
-export async function lockInventoryHold(
-  orderId
-) {
-  const store = inventoryStore();
-
-  const key = `hold:${orderId}`;
-
-  const hold = await store.get(
-    key,
-    {
-      type: 'json',
-      consistency: 'strong',
-    }
-  );
-
-  if (!hold) {
-    return false;
-  }
-
-  if (
-    !hold.locked &&
-    Number(hold.expiresAt || 0) <= Date.now()
-  ) {
-    await store.delete(key);
-    return false;
-  }
-
-  hold.locked = true;
-  hold.expiresAt = null;
-
-  await store.setJSON(
-    key,
-    hold
-  );
-
-  return true;
-}
-
+export {
+  claimCartLease, updateCartLease, releaseCartLease, getCartLeaseStatus,
+  transitionCartLeaseToOrder, getCartCheckoutAttempt, recordOrderReceipt,
+  commitInventoryHold, updateProductCapacity,
+} from './inventory-database.mjs';
+import { listOrderSnapshots } from './inventory-database.mjs';
+import { recoverOrderBlob, readRecoverableOrder } from './order-recovery.mjs';
 
 export async function writeNewOrder(order) {
-  const result =
-    await ordersStore().setJSON(
-      order.id,
-      order,
-      {
-        onlyIfNew: true,
-      }
-    );
-
-  if (!result.modified) {
-    throw new Error(
-      'No se pudo crear el número de pedido.'
-    );
+  try {
+    const recovered = await recoverOrderBlob(order.id);
+    if (!recovered) throw new Error('No encontramos la reserva del pedido.');
+    return recovered;
+  } catch (error) {
+    const failure = new Error('El pedido quedó reservado y se puede recuperar reintentando la compra.');
+    failure.status = 503;
+    throw failure;
   }
 }
 
-
-export async function getOrder(orderId) {
-  return ordersStore().get(
-    orderId,
-    {
-      type: 'json',
-      consistency: 'strong',
-    }
-  );
-}
-
+export async function getOrder(orderId) { return readRecoverableOrder(orderId); }
 
 export async function getAuthorizedOrder(
   orderId,
@@ -632,52 +460,6 @@ export async function getAuthorizedOrder(
   }
 
   return order;
-}
-
-
-export async function mutateOrder(
-  orderId,
-  mutator
-) {
-  const store = ordersStore();
-
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const entry =
-      await store.getWithMetadata(
-        orderId,
-        {
-          type: 'json',
-          consistency: 'strong',
-        }
-      );
-
-    if (!entry) {
-      return null;
-    }
-
-    const order =
-      structuredClone(entry.data);
-
-    const updated =
-      await mutator(order);
-
-    const result =
-      await store.setJSON(
-        orderId,
-        updated,
-        {
-          onlyIfMatch: entry.etag,
-        }
-      );
-
-    if (result.modified) {
-      return updated;
-    }
-  }
-
-  throw new Error(
-    'El pedido cambió mientras intentábamos actualizarlo.'
-  );
 }
 
 
@@ -759,6 +541,11 @@ export async function listOrders() {
     }
   }
 
+  const snapshots = await listOrderSnapshots();
+  const byId = new Map(orders.map(order => [order.id, order]));
+  for (const snapshot of snapshots) byId.set(snapshot.id, snapshot);
+  orders.splice(0, orders.length, ...byId.values());
+
   orders.sort(
     (a, b) =>
       Number(b.createdAt || 0) -
@@ -766,62 +553,4 @@ export async function listOrders() {
   );
 
   return orders;
-}
-
-
-async function committedQuantity(productId) {
-  const record = await inventoryStore().get(
-    `committed:${productId}`,
-    {
-      type: 'json',
-      consistency: 'strong',
-    }
-  );
-
-  return Number(
-    record?.quantity || 0
-  );
-}
-
-
-export async function commitInventoryHold(
-  orderId
-) {
-  const store = inventoryStore();
-
-  const key = `hold:${orderId}`;
-
-  const hold = await store.get(
-    key,
-    {
-      type: 'json',
-      consistency: 'strong',
-    }
-  );
-
-  if (!hold) {
-    return false;
-  }
-
-  for (const item of hold.items || []) {
-    const committed =
-      await committedQuantity(
-        item.productId
-      );
-
-    await store.setJSON(
-      `committed:${item.productId}`,
-      {
-        quantity:
-          committed +
-          Number(item.quantity || 0),
-
-        updatedAt: Date.now(),
-      }
-    );
-  }
-
-  await store.delete(key);
-
-  return true;
 }

@@ -12,3 +12,4 @@
 /checkout               /index.html                            200
 /pedido/*               /index.html                            200
 /admin                  /index.html                            200
+/api/cart/reservation   /.netlify/functions/cart-reservation    200

@@ -3,6 +3,7 @@ import {
   getProductOverride,
   jsonResponse,
   saveProductOverride,
+  updateProductCapacity,
 } from './_shared/commerce.mjs';
 
 
@@ -106,6 +107,12 @@ export default async function handler(request) {
         ),
       },
     };
+
+    const capacity = next.publicFields.quantityRemaining ?? next.publicFields.quantityTotal;
+    if (Object.hasOwn(body.publicFields || {}, 'quantityRemaining') || Object.hasOwn(body.publicFields || {}, 'quantityTotal')) {
+      if (!Number.isInteger(Number(capacity)) || Number(capacity) < 0) throw new Error('Cantidad inválida.');
+      await updateProductCapacity(productId, Number(capacity));
+    }
 
     const saved =
       await saveProductOverride(

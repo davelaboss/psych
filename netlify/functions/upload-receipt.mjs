@@ -1,8 +1,8 @@
 import {
   getAuthorizedOrder,
   jsonResponse,
-  lockInventoryHold,
-  mutateOrder,
+  recordOrderReceipt,
+  getOrder,
   publicOrder,
   receiptStore,
 } from './_shared/commerce.mjs';
@@ -120,55 +120,14 @@ export default async function handler(request) {
       }
     );
 
-    const holdLocked =
-      await lockInventoryHold(
-        orderId
-      );
-
+    const holdLocked = await recordOrderReceipt(orderId, {
+      storageKey: receiptKey, fileName: file.name, contentType: file.type, uploadedAt: Date.now(),
+    });
     if (!holdLocked) {
-      await receiptStore().delete(
-        receiptKey
-      );
-
-      return jsonResponse(
-        {
-          error:
-            'La reserva temporal venció antes de recibir el comprobante. Volvé al carrito para verificar disponibilidad.',
-        },
-        409
-      );
+      await receiptStore().delete(receiptKey);
+      return jsonResponse({ error: 'La reserva temporal venció antes de recibir el comprobante. Volvé al carrito para verificar disponibilidad.' }, 409);
     }
-
-    const updatedOrder =
-      await mutateOrder(
-        orderId,
-        (current) => ({
-          ...current,
-
-          status:
-            'RECEIPT_RECEIVED',
-
-          updatedAt:
-            Date.now(),
-
-          holdExpiresAt:
-            null,
-
-          receipt: {
-            storageKey:
-              receiptKey,
-
-            fileName:
-              file.name,
-
-            contentType:
-              file.type,
-
-            uploadedAt:
-              Date.now(),
-          },
-        })
-      );
+    const updatedOrder = await getOrder(orderId);
 
     return jsonResponse({
       ok: true,

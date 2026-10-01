@@ -183,7 +183,7 @@
     grid.addEventListener('click', handleProductCardClick);
   }
 
-  function handleProductCardClick(event) {
+  async function handleProductCardClick(event) {
     const card = event.target.closest('.product-card');
     if (!card) return;
 
@@ -197,9 +197,10 @@
       event.stopPropagation();
       if (product.status !== 'AVAILABLE') return;
       if (typeof window.addStaticCartItem === 'function') {
-        window.addStaticCartItem(product.id);
-        cartButton.textContent = 'En carrito';
         cartButton.disabled = true;
+        const added = await window.addStaticCartItem(product.id);
+        if (added) cartButton.textContent = 'En carrito';
+        else cartButton.disabled = false;
       }
       return;
     }

@@ -2,14 +2,16 @@
 
 const STATIC_CART_KEY = 'mudanza-demo-cart';
 const DELAYED_FINAL_PAYMENT_WINDOW = '1–8 diciembre 2026';
+window.__staticCartReady = syncStaticCartFromServer({ migrateLegacy: true });
 
-window.addEventListener('load', function () {
+window.addEventListener('load', async function () {
+  await window.__staticCartReady;
   updateStaticCartCount();
 
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
 
   if (path === '/carrito') {
-    renderCartPage();
+    await renderCartPage();
     return;
   }
 
@@ -486,13 +488,14 @@ function renderProductDetail(product) {
 }
 
 
-function renderCartPage() {
+async function renderCartPage() {
   const main = document.querySelector('main');
 
   if (!main) {
     return;
   }
 
+  await syncStaticCartFromServer();
   document.title = 'Carrito | Venta de Mudanza';
 
   const cart = getStaticCart();
@@ -572,6 +575,8 @@ function renderCartPage() {
 
         <h2>Lo que vas a pagar</h2>
 
+        ${cart.expiresAt ? '<div class="cart-lease-countdown" id="cart-lease-countdown" role="status">Reserva temporal · <strong></strong></div>' : ''}
+
         <dl>
           <div>
             <dt>Valor total de los artículos</dt>
@@ -635,7 +640,7 @@ function renderCartPage() {
 
         <small>
           En el siguiente paso confirmaremos tus datos y la forma de pago.
-          Los artículos todavía no quedan reservados en esta etapa.
+          Cada artículo queda reservado durante 20 minutos desde que lo agregás.
         </small>
       </aside>
 
@@ -644,7 +649,29 @@ function renderCartPage() {
   `;
 
   setupCartPageEvents(hasUnavailable);
+  startCartCountdown(cart.expiresAt);
   updateStaticCartCount();
+}
+
+
+function startCartCountdown(expiresAt) {
+  clearInterval(startCartCountdown.timer);
+  if (!expiresAt) return;
+  const update = async () => {
+    const remaining = Number(expiresAt) - Date.now();
+    const target = document.querySelector('#cart-lease-countdown strong');
+    if (!target) return;
+    if (remaining <= 0) {
+      clearInterval(startCartCountdown.timer);
+      await syncStaticCartFromServer();
+      await renderCartPage();
+      return;
+    }
+    const seconds = Math.ceil(remaining / 1000);
+    target.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  };
+  void update();
+  startCartCountdown.timer = setInterval(update, 1000);
 }
 
 
@@ -789,34 +816,37 @@ function setupCartPageEvents(hasUnavailable) {
   document
     .querySelectorAll('[data-cart-remove]')
     .forEach((button) => {
-      button.addEventListener('click', function () {
-        removeStaticCartItem(
+      button.addEventListener('click', async function () {
+        button.disabled = true;
+        await removeStaticCartItem(
           button.getAttribute('data-cart-remove')
         );
 
-        renderCartPage();
+        await renderCartPage();
       });
     });
 
   document
     .querySelectorAll('[data-cart-quantity]')
     .forEach((select) => {
-      select.addEventListener('change', function () {
-        setStaticCartQuantity(
+      select.addEventListener('change', async function () {
+        select.disabled = true;
+        await setStaticCartQuantity(
           select.getAttribute('data-cart-quantity'),
           Number(select.value)
         );
 
-        renderCartPage();
+        await renderCartPage();
       });
     });
 
   const clearButton = document.getElementById('clear-cart');
 
   if (clearButton) {
-    clearButton.addEventListener('click', function () {
-      clearStaticCart();
-      renderCartPage();
+    clearButton.addEventListener('click', async function () {
+      clearButton.disabled = true;
+      await clearStaticCart();
+      await renderCartPage();
     });
   }
 
@@ -870,9 +900,14 @@ function setupCatalogCartButtons() {
 
     refreshCatalogButton();
 
-    actionButton.addEventListener('click', function () {
-      addStaticCartItem(product.id);
-      refreshCatalogButton();
+    actionButton.addEventListener('click', async function () {
+      actionButton.disabled = true;
+      const added = await addStaticCartItem(product.id);
+      if (added) {
+        actionButton.textContent = 'En carrito';
+      } else {
+        actionButton.disabled = false;
+      }
     });
   });
 }
@@ -895,9 +930,11 @@ function setupProductCartButton(product) {
 
   refreshButton();
 
-  button.addEventListener('click', function () {
-    addStaticCartItem(product.id);
-    refreshButton();
+  button.addEventListener('click', async function () {
+    button.disabled = true;
+    const added = await addStaticCartItem(product.id);
+    if (added) button.textContent = 'Ya está en el carrito';
+    else button.disabled = false;
   });
 }
 
@@ -911,6 +948,7 @@ function getStaticCart() {
 
     if (Array.isArray(stored)) {
       return {
+        expiresAt: null,
         ids: stored.filter(
           (id) => typeof id === 'string'
         ),
@@ -923,6 +961,7 @@ function getStaticCart() {
     }
 
     return {
+      expiresAt: Number(stored.expiresAt || 0) || null,
       ids: Array.isArray(stored.ids)
         ? stored.ids
         : [],
@@ -935,11 +974,120 @@ function getStaticCart() {
     };
   } catch {
     return {
+      expiresAt: null,
       ids: [],
       quantities: {},
     };
   }
 }
+
+
+function setStaticCartFromLease(lease) {
+  if (getStaticCart().expiresAt !== lease.expiresAt) localStorage.removeItem('mudanza-cart-checkout-id');
+  saveStaticCart({
+    expiresAt: lease.expiresAt,
+    ids: Object.keys(lease.items || {}),
+    quantities: lease.items || {},
+  });
+  clearTimeout(setStaticCartFromLease.expiryTimer);
+  setStaticCartFromLease.expiryTimer = setTimeout(
+    () => void syncStaticCartFromServer(),
+    Math.max(0, Number(lease.expiresAt) - Date.now() + 50)
+  );
+}
+
+
+async function syncStaticCartFromServer({ migrateLegacy = false } = {}) {
+  const local = getStaticCart();
+  try {
+    const response = await fetch('/api/cart/reservation', { cache: 'no-store' });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'No se pudo consultar la reserva.');
+    window.__checkoutRecovery = result.checkoutRecovery || null;
+    if (result.checkoutRecovery) {
+      localStorage.setItem('mudanza-last-order', JSON.stringify({ id: result.checkoutRecovery.orderId, access: result.checkoutRecovery.accessToken }));
+      saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
+      localStorage.removeItem('mudanza-cart-checkout-id');
+      if (typeof installMyOrderLink === 'function') installMyOrderLink();
+      return null;
+    }
+    if (result.lease) {
+      setStaticCartFromLease(result.lease);
+      return result.lease;
+    }
+    if (result.expiredAt) {
+      saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
+      showCartNotice('La reserva temporal venció y este artículo volvió a estar disponible.');
+      return null;
+    }
+    if (migrateLegacy && local.ids.length) {
+      try {
+        for (const productId of local.ids) {
+          const claim = await postCartReservation('claim', {
+            productId,
+            quantity: Number(local.quantities[productId] || 1),
+          });
+          if (!claim.ok) throw new Error(claim.error || 'No se pudo reservar el artículo.');
+        }
+      } catch (error) {
+        await postCartReservation('release-all').catch(() => {});
+        saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
+        throw error;
+      }
+      const refreshed = await fetch('/api/cart/reservation', { cache: 'no-store' });
+      const current = await refreshed.json();
+      if (current.lease) {
+        setStaticCartFromLease(current.lease);
+        return current.lease;
+      }
+    }
+    if (local.ids.length) saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
+    return null;
+  } catch (error) {
+    showCartNotice(error instanceof Error ? error.message : 'No se pudo consultar la reserva.');
+    return null;
+  }
+}
+
+
+async function postCartReservation(action, payload = {}) {
+  const response = await fetch('/api/cart/reservation', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const result = await response.json();
+  return { ...result, ok: response.ok };
+}
+
+
+function showCartNotice(message) {
+  let notice = document.getElementById('cart-notice');
+  if (!notice) {
+    notice = document.createElement('div');
+    notice.id = 'cart-notice';
+    notice.setAttribute('role', 'alert');
+    notice.setAttribute('aria-live', 'assertive');
+    Object.assign(notice.style, {
+      position: 'fixed', bottom: '18px', left: '50%', transform: 'translateX(-50%)',
+      zIndex: '10000', width: 'min(92vw, 620px)', padding: '14px 18px',
+      borderRadius: '10px', background: '#263d32', color: '#fff', boxShadow: '0 8px 24px #0003',
+      fontSize: '14px', fontWeight: '700', textAlign: 'center',
+    });
+    document.body.appendChild(notice);
+  }
+  notice.textContent = message;
+  clearTimeout(showCartNotice.timer);
+  showCartNotice.timer = setTimeout(() => notice.remove(), 6000);
+}
+
+
+window.addEventListener('storage', function (event) {
+  if (event.key !== STATIC_CART_KEY) return;
+  void syncStaticCartFromServer();
+  updateStaticCartCount();
+  if ((window.location.pathname.replace(/\/+$/, '') || '/') === '/carrito') void renderCartPage();
+});
 
 
 function saveStaticCart(cart) {
@@ -952,43 +1100,48 @@ function saveStaticCart(cart) {
 }
 
 
-function addStaticCartItem(productId) {
+async function addStaticCartItem(productId) {
   const cart = getStaticCart();
-
-  if (!cart.ids.includes(productId)) {
-    cart.ids.push(productId);
-  }
-
-  if (!cart.quantities[productId]) {
-    cart.quantities[productId] = 1;
-  }
-
+  if (cart.ids.includes(productId)) return true;
   saveStaticCart(cart);
+  try {
+    const result = await postCartReservation('claim', { productId, quantity: 1 });
+    if (!result.ok) throw new Error(result.error || 'No se pudo reservar el artículo.');
+    setStaticCartFromLease(result.lease);
+    return true;
+  } catch (error) {
+    showCartNotice(error instanceof Error ? error.message : 'No se pudo reservar el artículo.');
+    return false;
+  }
 }
 
 
-function removeStaticCartItem(productId) {
+async function removeStaticCartItem(productId) {
   const cart = getStaticCart();
-
-  cart.ids = cart.ids.filter(
-    (id) => id !== productId
-  );
-
-  delete cart.quantities[productId];
-
-  saveStaticCart(cart);
+  try {
+    const result = await postCartReservation('release', { productId });
+    if (!result.ok) throw new Error(result.error || 'No se pudo liberar el artículo.');
+    if (result.lease) setStaticCartFromLease(result.lease);
+    else saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
+  } catch (error) {
+    showCartNotice(error instanceof Error ? error.message : 'No se pudo liberar el artículo.');
+  }
 }
 
 
-function clearStaticCart() {
-  saveStaticCart({
-    ids: [],
-    quantities: {},
-  });
+async function clearStaticCart() {
+  const cart = getStaticCart();
+  try {
+    const result = await postCartReservation('release-all');
+    if (!result.ok) throw new Error(result.error || 'No se pudo liberar el carrito.');
+    saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
+  } catch (error) {
+    showCartNotice(error instanceof Error ? error.message : 'No se pudo liberar el carrito.');
+  }
 }
 
 
-function setStaticCartQuantity(productId, quantity) {
+async function setStaticCartQuantity(productId, quantity) {
   const cart = getStaticCart();
   const product = getEmbeddedProductById(productId);
 
@@ -1001,12 +1154,18 @@ function setStaticCartQuantity(productId, quantity) {
     Number(product.quantityRemaining || 1)
   );
 
-  cart.quantities[productId] = Math.min(
+  const nextQuantity = Math.min(
     maxQuantity,
     Math.max(1, Math.floor(quantity))
   );
-
-  saveStaticCart(cart);
+  try {
+    const result = await postCartReservation('quantity', { productId, quantity: nextQuantity });
+    if (!result.ok) throw new Error(result.error || 'No se pudo actualizar la cantidad.');
+    if (result.lease) setStaticCartFromLease(result.lease);
+  } catch (error) {
+    showCartNotice(error instanceof Error ? error.message : 'No se pudo actualizar la cantidad.');
+    await syncStaticCartFromServer();
+  }
 }
 
 

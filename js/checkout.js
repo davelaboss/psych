@@ -6,6 +6,9 @@ const CHECKOUT_CART_KEY =
 const LAST_ORDER_KEY =
   'mudanza-last-order';
 
+const CHECKOUT_ID_KEY =
+  'mudanza-cart-checkout-id';
+
 
 window.addEventListener(
   'load',
@@ -137,6 +140,13 @@ async function renderCheckoutPage() {
     return;
   }
 
+  if (window.__staticCartReady) await window.__staticCartReady;
+  if (window.__checkoutRecovery) {
+    const recovered = window.__checkoutRecovery;
+    window.location.replace(`/pedido/${encodeURIComponent(recovered.orderId)}?access=${encodeURIComponent(recovered.accessToken)}`);
+    return;
+  }
+
   try {
     const response = await fetch('/.netlify/functions/volume2-catalog', { cache: 'no-store' });
     if (!response.ok) throw new Error('No se pudo cargar el catálogo.');
@@ -154,6 +164,13 @@ async function renderCheckoutPage() {
 
   const cart =
     getCheckoutCart();
+
+  let leaseExpiresAt = 0;
+  try {
+    leaseExpiresAt = Number(JSON.parse(localStorage.getItem(CHECKOUT_CART_KEY) || '{}').expiresAt || 0);
+  } catch {
+    leaseExpiresAt = 0;
+  }
 
   const products =
     cart.ids
@@ -300,6 +317,7 @@ async function renderCheckoutPage() {
           artículos mientras realizás
           la transferencia.
         </p>
+        ${leaseExpiresAt ? `<p class="cart-lease-countdown" id="checkout-lease-countdown" data-expires-at="${leaseExpiresAt}">Tu carrito queda reservado por <strong></strong>.</p>` : ''}
       </div>
 
       <div class="checkout-grid">
@@ -444,6 +462,8 @@ async function renderCheckoutPage() {
 
   injectCheckoutStyles();
 
+  startCheckoutLeaseCountdown();
+
   document
     .getElementById(
       'checkout-form'
@@ -477,6 +497,11 @@ async function renderCheckoutPage() {
         errorBox.hidden = true;
 
         try {
+          let checkoutId = localStorage.getItem(CHECKOUT_ID_KEY);
+          if (!checkoutId) {
+            checkoutId = crypto.randomUUID();
+            localStorage.setItem(CHECKOUT_ID_KEY, checkoutId);
+          }
           const response =
             await fetch(
               '/api/orders/create',
@@ -506,6 +531,8 @@ async function renderCheckoutPage() {
                           'email'
                         ),
                     },
+
+                    checkoutId,
 
                     items:
                       items.map(
@@ -549,6 +576,7 @@ async function renderCheckoutPage() {
           localStorage.removeItem(
             CHECKOUT_CART_KEY
           );
+          localStorage.removeItem(CHECKOUT_ID_KEY);
 
           if (
             typeof updateStaticCartCount ===
@@ -1199,6 +1227,30 @@ function orderStatusLabel(status) {
     labels[status] ||
     status
   );
+}
+
+
+function startCheckoutLeaseCountdown() {
+  const target = document.querySelector('#checkout-lease-countdown strong');
+  const wrapper = document.getElementById('checkout-lease-countdown');
+  if (!target || !wrapper) return;
+  const expiresAt = Number(wrapper.dataset.expiresAt || 0);
+  clearInterval(startCheckoutLeaseCountdown.timer);
+  const update = () => {
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) {
+      target.textContent = 'vencida';
+      const button = document.querySelector('#checkout-form button[type="submit"]');
+      if (button) button.disabled = true;
+      wrapper.textContent = 'La reserva temporal venció y este artículo volvió a estar disponible.';
+      clearInterval(startCheckoutLeaseCountdown.timer);
+      return;
+    }
+    const seconds = Math.ceil(remaining / 1000);
+    target.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  };
+  update();
+  startCheckoutLeaseCountdown.timer = setInterval(update, 1000);
 }
 
 
