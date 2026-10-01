@@ -129,11 +129,23 @@ function getCheckoutCart() {
 }
 
 
-function renderCheckoutPage() {
+async function renderCheckoutPage() {
   const main =
     document.querySelector('main');
 
   if (!main) {
+    return;
+  }
+
+  try {
+    const response = await fetch('/.netlify/functions/volume2-catalog', { cache: 'no-store' });
+    if (!response.ok) throw new Error('No se pudo cargar el catálogo.');
+    const data = await response.json();
+    if (!Array.isArray(data.products)) throw new Error('El catálogo no tiene el formato esperado.');
+    window.__catalogProducts = data.products;
+  } catch (error) {
+    console.error('Checkout:', error);
+    main.innerHTML = '<section class="empty-cart"><h1>No se pudo cargar el catálogo.</h1><p>Intentá nuevamente en unos minutos.</p></section>';
     return;
   }
 

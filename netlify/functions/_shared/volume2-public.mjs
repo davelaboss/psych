@@ -7,6 +7,10 @@ import {
 } from '../../../source/lib/sale-readiness-supplemental.ts';
 
 import {
+  VOLUME3_ITEMS,
+} from '../../../source/lib/volume3-batch.mjs';
+
+import {
   VOLUME2_IMAGE_MAP,
 } from '../../../source/lib/volume2-image-map.mjs';
 
@@ -173,6 +177,10 @@ function publicKnownDefects(item) {
     return '';
   }
 
+  if (item.itemNumber >= 169) {
+    return value;
+  }
+
   return value
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
@@ -217,6 +225,7 @@ function publicProduct(item) {
     id: item.id,
     itemNumber: item.itemNumber,
     slug:
+      item.slug ||
       `${slugify(item.title)}-${item.itemNumber}`,
     title:
       cleanPublicText(item.title),
@@ -224,10 +233,12 @@ function publicProduct(item) {
     tags: [
       item.category.toLowerCase(),
       'venta de mudanza',
-      item.itemNumber >= 58 &&
-      item.itemNumber <= 158
-        ? 'volumen 2'
-        : 'complementos',
+      item.itemNumber >= 169
+        ? 'volumen 3'
+        : item.itemNumber >= 58 &&
+          item.itemNumber <= 158
+          ? 'volumen 2'
+          : 'complementos',
     ],
     description:
       cleanDescription(item),
@@ -240,7 +251,9 @@ function publicProduct(item) {
       (item.photos || [])
         .map(
           (name) =>
-            VOLUME2_IMAGE_MAP[name] || ''
+            name.startsWith('/images/')
+              ? name
+              : VOLUME2_IMAGE_MAP[name] || ''
         )
         .filter(Boolean),
     askingPricePYG:
@@ -274,7 +287,7 @@ function publicProduct(item) {
     sellerConfirmedFields: [],
     status,
     featured: false,
-    dateListed: '2026-09-23',
+    dateListed: item.dateListed || '2026-09-23',
     lastPriceChange: null,
     isDemo: false,
     needsReview:
@@ -293,10 +306,11 @@ function publicProduct(item) {
 }
 
 
-export function volume2Products() {
+export function catalogBatchProducts() {
   return [
     ...VOLUME2_BATCH_ITEMS,
     ...SALE_READINESS_SUPPLEMENTAL_ITEMS,
+    ...VOLUME3_ITEMS,
   ]
     .map(publicProduct)
     .filter(

@@ -1,4 +1,4 @@
-import { volume2Products } from './volume2-public.mjs';
+import { catalogBatchProducts } from './volume2-public.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
 
@@ -65,7 +65,7 @@ export const PICKUP_RULES = Object.freeze({
 
   delayedPickup: {
     startDate: '2026-12-09',
-    endDate: '2026-12-13',
+    endDate: '2026-12-12',
     mode: 'OPEN_DAY',
   },
 });
@@ -367,7 +367,7 @@ export async function loadBaseCatalog(origin) {
     parseEmbeddedCatalog(html);
 
   const merchandisingProducts =
-    volume2Products();
+    catalogBatchProducts();
 
   const byId = new Map();
 
