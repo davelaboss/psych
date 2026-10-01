@@ -970,6 +970,7 @@ function displayOrder(
   injectCheckoutStyles();
 
   if (awaitingPayment) {
+    setupBankAliasCopy(order.bank?.alias);
     setupReceiptUpload(
       order,
       access
@@ -1006,15 +1007,6 @@ function renderBankSection(
 
       <dl>
         <div>
-          <dt>Banco</dt>
-          <dd>
-            ${escapeHtml(
-              order.bank.bankName
-            )}
-          </dd>
-        </div>
-
-        <div>
           <dt>Titular</dt>
           <dd>
             ${escapeHtml(
@@ -1024,7 +1016,25 @@ function renderBankSection(
         </div>
 
         <div>
-          <dt>Cuenta</dt>
+          <dt>CI</dt>
+          <dd>
+            ${escapeHtml(
+              order.bank.identification
+            )}
+          </dd>
+        </div>
+
+        <div>
+          <dt>Entidad</dt>
+          <dd>
+            ${escapeHtml(
+              order.bank.bankName
+            )}
+          </dd>
+        </div>
+
+        <div>
+          <dt>N° de cuenta</dt>
           <dd>
             ${escapeHtml(
               order.bank.accountNumber
@@ -1032,21 +1042,34 @@ function renderBankSection(
           </dd>
         </div>
 
-        ${
-          order.bank.identification
-            ? `
-              <div>
-                <dt>Documento</dt>
-                <dd>
-                  ${escapeHtml(
-                    order.bank.identification
-                  )}
-                </dd>
-              </div>
-            `
-            : ''
-        }
+        <div>
+          <dt>Moneda</dt>
+          <dd>
+            ${escapeHtml(
+              order.bank.currency
+            )}
+          </dd>
+        </div>
       </dl>
+
+      <div class="bank-alias">
+        <div>
+          <span>Alias</span>
+          <input
+            id="bank-alias-value"
+            type="text"
+            readonly
+            value="${escapeHtml(order.bank.alias)}"
+            aria-label="Alias bancario"
+          >
+        </div>
+        <button
+          class="secondary-action"
+          id="copy-bank-alias"
+          type="button"
+        >Copiar alias</button>
+        <small id="bank-alias-copy-status" role="status" aria-live="polite"></small>
+      </div>
 
       <p>
         Transferí exactamente
@@ -1094,6 +1117,33 @@ function renderBankSection(
       </form>
     </div>
   `;
+}
+
+
+function setupBankAliasCopy(alias) {
+  const button =
+    document.getElementById('copy-bank-alias');
+
+  if (!button || !alias) {
+    return;
+  }
+
+  button.addEventListener('click', async function () {
+    const status =
+      document.getElementById('bank-alias-copy-status');
+
+    try {
+      await navigator.clipboard.writeText(alias);
+      status.textContent = 'Alias copiado';
+    } catch {
+      const aliasValue =
+        document.getElementById('bank-alias-value');
+
+      aliasValue.focus();
+      aliasValue.select();
+      status.textContent = 'Alias seleccionado; copiálo.';
+    }
+  });
 }
 
 
@@ -1379,6 +1429,50 @@ function injectCheckoutStyles() {
       display: flex;
       justify-content: space-between;
       gap: 18px;
+    }
+
+    .bank-alias {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      padding: 14px;
+      border: 1px solid var(--forest);
+      border-radius: 10px;
+      background: #f1f7f3;
+    }
+
+    .bank-alias > div {
+      display: grid;
+      gap: 3px;
+      margin-right: auto;
+    }
+
+    .bank-alias > div span {
+      color: var(--muted);
+      font-size: .82rem;
+    }
+
+    .bank-alias > div input {
+      min-width: min(22rem, 100%);
+      min-height: 42px;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--forest-dark);
+      font-size: 1.15rem;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .bank-alias button {
+      min-height: 42px;
+      cursor: pointer;
+    }
+
+    .bank-alias small {
+      flex-basis: 100%;
     }
 
     @media (max-width: 760px) {

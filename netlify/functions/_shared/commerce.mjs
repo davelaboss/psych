@@ -231,6 +231,12 @@ export function bankInstructions() {
   const identification =
     process.env.BANK_IDENTIFICATION || '';
 
+  const currency =
+    process.env.BANK_CURRENCY || '';
+
+  const alias =
+    process.env.BANK_ALIAS || '';
+
   const configured =
     Boolean(
       bankName &&
@@ -244,6 +250,8 @@ export function bankInstructions() {
     accountName,
     accountNumber,
     identification,
+    currency,
+    alias,
   };
 }
 
