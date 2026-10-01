@@ -412,13 +412,32 @@ export async function loadCatalog(origin) {
       )
     );
 
+  const committedInventory = await readCommittedInventory();
+
   return products
     .map(
-      (product) =>
-        applyProductOverride(
+      (product) => {
+        const source = applyProductOverride(
           product,
           overrideById.get(product.id)
-        )
+        );
+        const inventory = committedInventory.get(product.id);
+        if (!inventory) return source;
+        const remaining = Math.max(0,
+          Math.min(Number(source.quantityRemaining ?? source.quantityTotal ?? 1), inventory.capacity)
+            - inventory.committed_quantity);
+        return {
+          ...source,
+          description: inventory.committed_quantity > 0 && typeof source.description === 'string'
+            ? source.description.replace(/\bHay \d+ unidades disponibles\b/i,
+              remaining > 0 ? `Hay ${remaining} unidades disponibles` : 'No quedan unidades disponibles')
+            : source.description,
+          quantityRemaining: remaining,
+          quantitySold: Math.max(Number(source.quantitySold || 0),
+            Number(source.quantityTotal ?? 1) - remaining),
+          status: source.status === 'AVAILABLE' && remaining === 0 ? 'SOLD' : source.status,
+        };
+      }
     )
     .sort(
       (a, b) =>
@@ -432,7 +451,7 @@ export {
   transitionCartLeaseToOrder, getCartCheckoutAttempt, recordOrderReceipt,
   commitInventoryHold, updateProductCapacity,
 } from './inventory-database.mjs';
-import { listOrderSnapshots } from './inventory-database.mjs';
+import { listOrderSnapshots, readCommittedInventory } from './inventory-database.mjs';
 import { recoverOrderBlob, readRecoverableOrder } from './order-recovery.mjs';
 
 export async function writeNewOrder(order) {

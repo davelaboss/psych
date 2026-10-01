@@ -241,6 +241,13 @@ export async function listOrderSnapshots() {
   return (await database().pool.query('SELECT order_snapshot FROM checkout_attempts ORDER BY created_at DESC')).rows.map(row => row.order_snapshot);
 }
 
+export async function readCommittedInventory() {
+  const rows = (await database().pool.query(
+    'SELECT product_id,capacity,committed_quantity FROM operational_inventory'
+  )).rows;
+  return new Map(rows.map(row => [row.product_id, row]));
+}
+
 export async function updateProductCapacity(productId, capacity) {
   return inventoryTransaction(async client => {
     await productLocks(client, [productId], { [productId]: capacity });
