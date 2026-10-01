@@ -3803,11 +3803,9 @@ function renderAdminOrderDetail(
       .map(
         (item) => `
           <li>
-            ${item.quantity}
-            ×
-            ${adminEscape(
-              item.title
-            )}
+            <strong>${adminEscape(adminFormatItem(item.itemNumber))} · ${adminEscape(item.title)}</strong>
+            <br>
+            <span>Cantidad: ${item.quantity}</span>
           </li>
         `
       )
@@ -3823,6 +3821,9 @@ function renderAdminOrderDetail(
 
   const canCancel = !order.initialPaymentConfirmedAt &&
     ['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(order.status);
+
+  const canUploadReceipt = !order.receipt && !order.initialPaymentConfirmedAt &&
+    order.status === 'AWAITING_INITIAL_PAYMENT';
 
   target.innerHTML = `
     <section class="admin-order-detail-v2">
@@ -3944,15 +3945,31 @@ function renderAdminOrderDetail(
         ${
           order.receipt
             ? `
-              <button
-                class="secondary-action"
-                type="button"
-                data-view-receipt
-              >
-                Ver comprobante
-              </button>
+              <div>
+                <button
+                  class="secondary-action"
+                  type="button"
+                  data-view-receipt
+                >
+                  Ver comprobante
+                </button>
+                ${order.receipt.uploadedBy === 'ADMIN' ? '<p><strong>Comprobante cargado por el vendedor</strong></p>' : ''}
+              </div>
             `
-            : `
+            : canUploadReceipt
+              ? `
+                <form data-admin-receipt-upload>
+                  <label>
+                    <span>Subir comprobante recibido</span>
+                    <input type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" required>
+                  </label>
+                  <small>JPEG, PNG, WebP o PDF. Máximo 3 MB.</small>
+                  <p>La carga registra el comprobante, pero no confirma el pago.</p>
+                  <p class="form-error" data-admin-receipt-error hidden></p>
+                  <button class="primary-action" type="submit">Cargar comprobante por el cliente</button>
+                </form>
+              `
+              : `
               <span>
                 Todavía no hay comprobante.
               </span>
@@ -4016,6 +4033,28 @@ function renderAdminOrderDetail(
         );
       }
     );
+
+  target.querySelector('[data-admin-receipt-upload]')?.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    const errorBox = form.querySelector('[data-admin-receipt-error]');
+    button.disabled = true;
+    errorBox.hidden = true;
+    try {
+      const data = new FormData(form);
+      data.set('orderId', order.id);
+      const result = await adminFetch('/api/admin/upload-receipt', { method: 'POST', body: data });
+      ADMIN_STATE.orders = ADMIN_STATE.orders.map(item => item.id === order.id ? result.order : item);
+      ADMIN_STATE.stats = buildAdminStats(ADMIN_STATE.orders, ADMIN_STATE.inventory);
+      renderOrdersTab();
+      await openAdminOrder(order.id);
+    } catch (error) {
+      button.disabled = false;
+      errorBox.textContent = error instanceof Error ? error.message : 'No se pudo cargar el comprobante.';
+      errorBox.hidden = false;
+    }
+  });
 
   target.querySelector('[data-cancel-order]')?.addEventListener('click', async function (event) {
     if (!window.confirm('¿Cancelar este pedido y volver a poner los artículos disponibles? No se puede usar después de confirmar el pago.')) return;

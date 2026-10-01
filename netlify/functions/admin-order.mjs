@@ -62,6 +62,9 @@ export default async function handler(request) {
       uploadedAt:
         safeOrder.receipt.uploadedAt,
 
+      uploadedBy:
+        safeOrder.receipt.uploadedBy,
+
       available: true,
     };
   }

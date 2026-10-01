@@ -764,7 +764,7 @@ function displayOrder(
           <p>Este pedido fue cancelado por el vendedor. Los artículos fueron liberados y ya no están reservados para este pedido.</p>
           <p>No realices una transferencia ni subas un comprobante para este pedido. Si ya transferiste, contactá al vendedor.</p>
           <h2>Artículos del pedido cancelado</h2>
-          <ul>${order.items.map(item => `<li>${item.quantity} × ${escapeHtml(item.title)}</li>`).join('')}</ul>
+          <ul>${order.items.map(item => `<li><strong>${orderItemLabel(item)}</strong><br><span>Cantidad: ${item.quantity}</span></li>`).join('')}</ul>
           <a class="secondary-action" href="/">Volver al catálogo</a>
           <a class="secondary-action" href="https://wa.me/595972588347?text=${encodeURIComponent(`Hola, quisiera consultar por mi pedido cancelado ${order.id}.`)}" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>
         </section>
@@ -799,9 +799,7 @@ function displayOrder(
 
             <div>
               <strong>
-                ${escapeHtml(
-                  item.title
-                )}
+                ${orderItemLabel(item)}
               </strong>
 
               <span>
@@ -1305,6 +1303,14 @@ function orderStatusLabel(status) {
     labels[status] ||
     status
   );
+}
+
+
+function orderItemLabel(item) {
+  const number = item.itemNumber == null
+    ? ''
+    : `Item ${String(item.itemNumber).padStart(3, '0')} · `;
+  return `${escapeHtml(number)}${escapeHtml(item.title)}`;
 }
 
 

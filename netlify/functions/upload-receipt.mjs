@@ -1,23 +1,9 @@
 import {
   getAuthorizedOrder,
   jsonResponse,
-  recordOrderReceipt,
-  getOrder,
   publicOrder,
-  receiptStore,
 } from './_shared/commerce.mjs';
-
-
-const MAX_FILE_SIZE =
-  3_000_000;
-
-const ALLOWED_TYPES =
-  new Set([
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-    'application/pdf',
-  ]);
+import { attachOrderReceipt } from './_shared/receipt-upload.mjs';
 
 
 export default async function handler(request) {
@@ -74,60 +60,11 @@ export default async function handler(request) {
       );
     }
 
-    if (!(file instanceof File)) {
-      throw new Error(
-        'Seleccioná el comprobante.'
-      );
-    }
-
-    if (
-      !ALLOWED_TYPES.has(
-        file.type
-      )
-    ) {
-      throw new Error(
-        'El comprobante debe ser JPEG, PNG, WebP o PDF.'
-      );
-    }
-
-    if (
-      file.size <= 0 ||
-      file.size > MAX_FILE_SIZE
-    ) {
-      throw new Error(
-        'El comprobante debe pesar menos de 3 MB.'
-      );
-    }
-
-    const receiptKey =
-      `${orderId}/${crypto.randomUUID()}`;
-
-    const bytes =
-      Buffer.from(
-        await file.arrayBuffer()
-      );
-
-    await receiptStore().set(
-      receiptKey,
-      bytes.toString('base64'),
-      {
-        metadata: {
-          fileName: file.name,
-          contentType: file.type,
-          uploadedAt:
-            String(Date.now()),
-        },
-      }
-    );
-
-    const holdLocked = await recordOrderReceipt(orderId, {
-      storageKey: receiptKey, fileName: file.name, contentType: file.type, uploadedAt: Date.now(),
+    const updatedOrder = await attachOrderReceipt({
+      orderId,
+      file,
+      uploadedBy: 'CUSTOMER',
     });
-    if (!holdLocked) {
-      await receiptStore().delete(receiptKey);
-      return jsonResponse({ error: 'La reserva temporal venció antes de recibir el comprobante. Volvé al carrito para verificar disponibilidad.' }, 409);
-    }
-    const updatedOrder = await getOrder(orderId);
 
     return jsonResponse({
       ok: true,
@@ -143,7 +80,7 @@ export default async function handler(request) {
             ? error.message
             : 'No se pudo cargar el comprobante.',
       },
-      400
+      Number(error?.status || 400)
     );
   }
 }
