@@ -447,8 +447,8 @@ export const VOLUME3_ITEMS = Object.freeze([
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
-      "/images/volume-3/IMG_7983.JPG",
-      "/images/volume-3/IMG_8574.JPG"
+      "/images/volume-3/IMG_8574.JPG",
+      "/images/volume-3/IMG_7983.JPG"
     ],
     "asking": 48000,
     "saleMode": "IMMEDIATE",
@@ -947,7 +947,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
-      "/images/volume-3/IMG_8035_left90.jpg",
+      "/images/volume-3/IMG_8035_rotated_right.jpg",
       "/images/volume-3/IMG_8029.JPG",
       "/images/volume-3/IMG_8031.JPG",
       "/images/volume-3/IMG_8033.JPG"
@@ -1304,8 +1304,8 @@ export const VOLUME3_ITEMS = Object.freeze([
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
-      "/images/volume-3/IMG_8067.JPG",
       "/images/volume-3/IMG_8068.JPG",
+      "/images/volume-3/IMG_8067.JPG",
       "/images/volume-3/IMG_8562.JPG"
     ],
     "asking": 100000,
@@ -1745,8 +1745,8 @@ export const VOLUME3_ITEMS = Object.freeze([
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
-      "/images/volume-3/IMG_8167.JPG",
-      "/images/volume-3/IMG_8168.JPG"
+      "/images/volume-3/IMG_8168.JPG",
+      "/images/volume-3/IMG_8167.JPG"
     ],
     "asking": 75000,
     "saleMode": "IMMEDIATE",
@@ -3105,8 +3105,8 @@ export const VOLUME3_ITEMS = Object.freeze([
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
-      "/images/volume-3/IMG_8324.JPG",
-      "/images/volume-3/IMG_8325.JPG"
+      "/images/volume-3/IMG_8325.JPG",
+      "/images/volume-3/IMG_8324.JPG"
     ],
     "asking": 72000,
     "saleMode": "DELAYED",
@@ -3577,12 +3577,12 @@ export const VOLUME3_ITEMS = Object.freeze([
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
+      "/images/volume-3/PXL_20260927_152553450~2.jpg",
       "/images/volume-3/PXL_20260927_153127519~2.jpg",
       "/images/volume-3/PXL_20260927_153352411~2.jpg",
       "/images/volume-3/PXL_20260927_153515220~2.jpg",
       "/images/volume-3/PXL_20260927_153743619.jpg",
-      "/images/volume-3/PXL_20260927_153925623~2.jpg",
-      "/images/volume-3/PXL_20260927_152553450~2.jpg"
+      "/images/volume-3/PXL_20260927_153925623~2.jpg"
     ],
     "asking": 240000,
     "saleMode": "IMMEDIATE",
@@ -3624,7 +3624,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "pickupWindowStart": "2026-12-09",
     "pickupWindowEnd": "2026-12-12",
     "quantityTotal": 1,
-    "status": "AVAILABLE",
+    "status": "SOLD",
     "needsReview": false,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
@@ -3767,8 +3767,8 @@ export const VOLUME3_ITEMS = Object.freeze([
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
-      "/images/volume-3/PXL_20260926_194623392.jpg",
       "/images/volume-3/PXL_20260926_194643111.jpg",
+      "/images/volume-3/PXL_20260926_194623392.jpg",
       "/images/volume-3/PXL_20260926_194656936.jpg",
       "/images/volume-3/PXL_20260926_194713942.jpg",
       "/images/volume-3/PXL_20260926_195013425.jpg",

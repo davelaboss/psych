@@ -71,7 +71,7 @@ export const SALE_READINESS_SUPPLEMENTAL_ITEMS: Volume2BatchItem[] = [
     itemNumber: 56,
     title: 'Convertidor de medio de fibra óptica TP-Link MC111CS V4.0',
     category: 'Electrónica',
-    photos: ['IMG_8128.JPG', 'PXL_20260913_152523154.jpg', 'IMG_8127.JPG'],
+    photos: ['IMG_8127.JPG', 'IMG_8128.JPG', 'PXL_20260913_152523154.jpg'],
     asking: 120000,
     description: 'Convertidor de medio de fibra óptica TP-Link modelo MC111CS V4.0.',
   }),
