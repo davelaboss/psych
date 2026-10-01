@@ -1,6 +1,6 @@
 # Psych Website — Project Master
 
-Last updated: 2026-09-29
+Last updated: 2026-10-01
 
 This file is the authoritative human-readable project record for the Psych website.
 
@@ -1505,3 +1505,13 @@ Format:
 - Regression performed: JavaScript syntax and `git diff --check`; source/live public-field comparison before deployment; owner confirmation NOMINAL; after merge, live catalog comparison showed exactly two changed fields, the descriptions for Items 148 and 153. Live catalog remained 158 total products with 95 listed Volume 2 products. Item 090's confirmed burner defect remained visible, and no targeted reviewer/TODO phrases remained in listed Volume 2 public fields.
 - Commit: Buyer-facing source merged via PR #4 as `3507e65bb4044d3543452e45089cad1fc5b09b8c`; this documentation entry is in the subsequent closeout checkpoint.
 - Remaining follow-up: None for this workstream. Blob overrides retain runtime priority; the production comparison found no conflicting Volume 2 public-field overrides for the audited fields.
+
+## Current launch catalog baseline — 2026-10-01
+
+- Current launch-integration regression expectation: **305 total catalog products**, including **148 Volume 3 products**. The 306-product total is the historical baseline before the final merchandising removal of Item 017. SOLD listings remain included in the catalog total; the total is not a count of available stock.
+- Item 017 (`real-20260828-17`, Licuadora Oster de vaso de vidrio) was intentionally removed in the original merchandising commit `5d9ea54687dd132b991cec3d89160d51ef784a3d`, incorporated into launch-integration as `f5fa765ce5e0edfa02953b229fd5b432d451a921`. The change removes the main card, delayed-product card, and embedded catalog record together. The owner's earlier integration instruction explicitly required 305 products and Item 17 absent. Do not restore it or invent a replacement solely to reach the old total.
+- Items 151 (`real-202609-volume2-151`) and 308 (`real-202610-volume3-308`) remain present as SOLD and are included in the 305 total.
+- Older Item 017 copy/UX entries and dated September catalog totals above are historical records, not instructions to republish that listing or regression expectations for the current launch build.
+- Integrated application checkpoint: `d251b5fda9fe93b68d8c2fafc3f9ecf5c2e98f13`. Catalog membership and the six-field payment page were preserved during cart integration. Postgres remains authoritative for reservations, order snapshots, and committed inventory; receipt upload does not confirm payment.
+- Validation environment: the separate `psych-cart-holds-staging` Netlify project, with isolated Postgres and fake bank/order/receipt fixtures. No production data changes or production deployment are part of this baseline correction.
+- Combined regression gate with the corrected 305 baseline: PASS. Rechecked catalog identities, the absence of Item 017, SOLD Items 151/308, all 305 product routes and 605 images, 148 Volume 3 products, quantity races with direct SQL inspection, 20-minute reservations, release/expiration, checkout transitions and failure retries, receipt/payment separation, idempotent seller confirmation, committed-stock availability, delayed pickup, and database invariants. Browser verification of search, filters, sorting, detail/lightbox, cart, private checkout, all six bank fields, alias copy, and receipt flow was performed against the identical application checkpoint; the current rendered catalog was also rechecked at 305. Disposable staging operational records were reset and directly verified empty afterward. Application code remains unchanged by this baseline correction.
