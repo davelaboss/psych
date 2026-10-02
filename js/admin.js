@@ -3588,12 +3588,20 @@ function renderOrdersTab() {
                 </div>
 
                 <div>
-                  <strong>
-                    ${adminMoney(
-                      order.totals
-                        ?.dueNowPYG
-                    )}
-                  </strong>
+                  <span>
+                    Total del pedido:
+                    <strong>${adminMoney(order.totals?.totalPYG)}</strong>
+                  </span>
+
+                  <span>
+                    Pagado:
+                    <strong>${adminMoney(order.paidAmountPYG || 0)}</strong>
+                  </span>
+
+                  <span>
+                    Saldo:
+                    <strong>${adminMoney(order.remainingBalancePYG ?? order.totals?.totalPYG ?? 0)}</strong>
+                  </span>
 
                   <span>
                     ${adminStatus(

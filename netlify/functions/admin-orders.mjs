@@ -53,6 +53,12 @@ export default async function handler(request) {
         totals:
           order.totals,
 
+        paidAmountPYG:
+          order.paidAmountPYG,
+
+        remainingBalancePYG:
+          order.remainingBalancePYG,
+
         itemCount:
           (order.items || []).reduce(
             (sum, item) =>
