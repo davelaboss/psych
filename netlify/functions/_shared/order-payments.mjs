@@ -8,7 +8,9 @@ const CONFIRMED_STATUSES = new Set([
 ]);
 
 export function orderPayments(order) {
-  if (Array.isArray(order?.payments)) return order.payments.map(payment => ({ ...payment }));
+  if (Array.isArray(order?.payments) && (order.payments.length || !order?.receipt)) {
+    return order.payments.map(payment => ({ ...payment }));
+  }
   if (!order?.receipt) return [];
   const confirmed = Boolean(order.initialPaymentConfirmedAt) || CONFIRMED_STATUSES.has(order.status);
   const delayedDeposit = confirmed && order.status === 'DEPOSIT_CONFIRMED';
