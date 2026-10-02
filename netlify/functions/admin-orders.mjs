@@ -62,7 +62,7 @@ export default async function handler(request) {
           ),
 
         hasReceipt:
-          Boolean(order.receipt),
+          order.payments.some(payment => Boolean(payment.receipt)),
       })
     ),
   });

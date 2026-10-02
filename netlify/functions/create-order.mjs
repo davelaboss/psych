@@ -319,6 +319,9 @@ export default async function handler(request) {
       holdExpiresAt,
 
       receipt: null,
+      payments: [],
+      paidAmountPYG: 0,
+      remainingBalancePYG: total,
       pickup: null,
     };
 

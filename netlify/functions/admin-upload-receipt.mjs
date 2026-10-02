@@ -8,15 +8,10 @@ import { attachOrderReceipt } from './_shared/receipt-upload.mjs';
 function safeAdminOrder(order) {
   const safe = { ...order };
   delete safe.accessTokenHash;
-  if (safe.receipt) {
-    safe.receipt = {
-      fileName: safe.receipt.fileName,
-      contentType: safe.receipt.contentType,
-      uploadedAt: safe.receipt.uploadedAt,
-      uploadedBy: safe.receipt.uploadedBy,
-      available: true,
-    };
-  }
+  delete safe.receipt;
+  safe.payments = (safe.payments || []).map(payment => ({ ...payment,
+    receipt: payment.receipt ? { fileName: payment.receipt.fileName, contentType: payment.receipt.contentType,
+      uploadedAt: payment.receipt.uploadedAt, uploadedBy: payment.receipt.uploadedBy, available: true } : null }));
   return safe;
 }
 
@@ -32,8 +27,10 @@ export default async function handler(request) {
 
     const order = await getOrder(orderId);
     if (!order) return jsonResponse({ error: 'Pedido no encontrado.' }, 404);
-    if (order.receipt) return jsonResponse({ error: 'Este pedido ya tiene un comprobante registrado.' }, 409);
-    if (order.status !== 'AWAITING_INITIAL_PAYMENT' || order.initialPaymentConfirmedAt) {
+    if (order.payments.some(payment => payment.verificationStatus === 'PENDING')) {
+      return jsonResponse({ error: 'Este pedido ya tiene un comprobante pendiente de verificación.' }, 409);
+    }
+    if (!['AWAITING_INITIAL_PAYMENT', 'DEPOSIT_CONFIRMED'].includes(order.status) || order.remainingBalancePYG <= 0) {
       return jsonResponse({ error: 'Este pedido no admite la carga de un comprobante.' }, 409);
     }
 

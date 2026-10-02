@@ -32,9 +32,15 @@ export default async function handler(request) {
   const order =
     await getOrder(orderId);
 
+  const paymentId = String(url.searchParams.get('paymentId') || '').trim();
+  const payment = paymentId
+    ? order?.payments?.find(candidate => candidate.id === paymentId)
+    : order?.payments?.find(candidate => candidate.receipt);
+  const receipt = payment?.receipt || order?.receipt;
+
   if (
     !order ||
-    !order.receipt?.storageKey
+    !receipt?.storageKey
   ) {
     return jsonResponse(
       {
@@ -47,7 +53,7 @@ export default async function handler(request) {
 
   const encoded =
     await receiptStore().get(
-      order.receipt.storageKey,
+      receipt.storageKey,
       {
         type: 'text',
         consistency: 'strong',
@@ -77,12 +83,12 @@ export default async function handler(request) {
 
       headers: {
         'content-type':
-          order.receipt.contentType ||
+          receipt.contentType ||
           'application/octet-stream',
 
         'content-disposition':
           `inline; filename="${String(
-            order.receipt.fileName ||
+            receipt.fileName ||
             'comprobante'
           ).replace(/"/g, '')}"`,
 

@@ -47,14 +47,11 @@ export default async function handler(request) {
       );
     }
 
-    if (
-      order.status !==
-      'AWAITING_INITIAL_PAYMENT'
-    ) {
+    if (!['AWAITING_INITIAL_PAYMENT', 'DEPOSIT_CONFIRMED'].includes(order.status)) {
       return jsonResponse(
         {
           error:
-            'Este pedido ya tiene un comprobante registrado.',
+            'Este pedido no admite otro comprobante en este momento.',
         },
         409
       );

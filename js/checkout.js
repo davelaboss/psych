@@ -111,6 +111,15 @@ function getCheckoutCart() {
       );
 
     return {
+      createdAt:
+        Number(stored.createdAt || 0) || null,
+
+      expiresAt:
+        Number(stored.expiresAt || 0) || null,
+
+      extensionUsed:
+        Boolean(stored.extensionUsed),
+
       ids:
         Array.isArray(stored.ids)
           ? stored.ids
@@ -125,6 +134,9 @@ function getCheckoutCart() {
     };
   } catch {
     return {
+      createdAt: null,
+      expiresAt: null,
+      extensionUsed: false,
       ids: [],
       quantities: {},
     };
@@ -165,12 +177,7 @@ async function renderCheckoutPage() {
   const cart =
     getCheckoutCart();
 
-  let leaseExpiresAt = 0;
-  try {
-    leaseExpiresAt = Number(JSON.parse(localStorage.getItem(CHECKOUT_CART_KEY) || '{}').expiresAt || 0);
-  } catch {
-    leaseExpiresAt = 0;
-  }
+  const leaseExpiresAt = Number(cart.expiresAt || 0);
 
   const products =
     cart.ids
@@ -318,6 +325,13 @@ async function renderCheckoutPage() {
           la transferencia.
         </p>
         ${leaseExpiresAt ? `<p class="cart-lease-countdown" id="checkout-lease-countdown" data-expires-at="${leaseExpiresAt}">Tu carrito queda reservado por <strong></strong>.</p>` : ''}
+        ${leaseExpiresAt ? `
+          <div class="pickup-confirm" id="checkout-cart-extension" ${cart.extensionUsed ? '' : 'hidden'}>
+            <strong>${cart.extensionUsed ? 'Reserva extendida' : '¿Necesitás más tiempo?'}</strong>
+            <span>${cart.extensionUsed ? 'Tenés 20 minutos adicionales para terminar tu compra.' : 'Podés extender tu reserva una vez por 20 minutos para terminar de comprar.'}</span>
+            ${cart.extensionUsed ? '' : '<button class="secondary-action" type="button" id="extend-checkout-reservation">Necesito más tiempo (+20 min)</button>'}
+          </div>
+        ` : ''}
       </div>
 
       <div class="checkout-grid">
@@ -463,6 +477,7 @@ async function renderCheckoutPage() {
   injectCheckoutStyles();
 
   startCheckoutLeaseCountdown();
+  setupCheckoutReservationExtension();
 
   document
     .getElementById(
@@ -779,6 +794,10 @@ function displayOrder(
       order.status
     );
 
+  const payments = order.payments || [];
+  const paidAmount = Number(order.paidAmountPYG || 0);
+  const remainingBalance = Number(order.remainingBalancePYG ?? order.totals.totalPYG);
+
   const items =
     order.items
       .map(
@@ -815,8 +834,7 @@ function displayOrder(
               </span>
 
               ${
-                item.futureBalancePYG >
-                0
+                item.futureBalancePYG > 0 && remainingBalance > 0
                   ? `
                     <span>
                       Saldo posterior:
@@ -840,13 +858,16 @@ function displayOrder(
       )
       .join('');
 
-  const awaitingPayment =
-    order.status ===
-    'AWAITING_INITIAL_PAYMENT';
-
-  const receiptReceived =
-    order.status ===
-    'RECEIPT_RECEIVED';
+  const awaitingInitialPayment = order.status === 'AWAITING_INITIAL_PAYMENT';
+  const awaitingFinalPayment = order.status === 'DEPOSIT_CONFIRMED' && remainingBalance > 0;
+  const receiptReceived = ['RECEIPT_RECEIVED', 'FINAL_RECEIPT_RECEIVED'].includes(order.status);
+  const paymentHistory = payments.map((payment, index) => `
+    <article class="payment-history-entry">
+      <strong>Comprobante ${index + 1} · ${paymentTypeLabel(payment.type)}</strong>
+      <span>${payment.amountPYG == null ? 'Pendiente de verificación' : formatPYG(payment.amountPYG)}</span>
+      <span>${payment.verificationStatus === 'CONFIRMED' ? 'Confirmado' : 'Pendiente de verificación'}</span>
+    </article>
+  `).join('');
 
   main.innerHTML = `
     <section
@@ -918,46 +939,47 @@ function displayOrder(
               class="summary-due"
             >
               <dt>
-                A pagar ahora
+                Pagado
               </dt>
 
               <dd>
                 ${formatPYG(
-                  order.totals
-                    .dueNowPYG
+                  paidAmount
                 )}
               </dd>
             </div>
 
             <div>
               <dt>
-                Saldo futuro
+                Saldo pendiente
               </dt>
 
               <dd>
                 ${formatPYG(
-                  order.totals
-                    .futureBalancePYG
+                  remainingBalance
                 )}
               </dd>
             </div>
           </dl>
 
           ${
-            awaitingPayment
+            awaitingInitialPayment || awaitingFinalPayment
               ? renderBankSection(
                   order,
-                  access
+                  access,
+                  awaitingFinalPayment
                 )
               : ''
           }
+
+          ${paymentHistory ? `<section class="payment-history"><h3>Historial de pagos</h3>${paymentHistory}</section>` : ''}
 
           ${
             receiptReceived
               ? `
                 <div class="pickup-confirm">
                   <strong>
-                    Comprobante recibido
+                    ${order.status === 'FINAL_RECEIPT_RECEIVED' ? 'Comprobante del saldo recibido' : 'Comprobante recibido'}
                   </strong>
 
                   <span>
@@ -989,7 +1011,7 @@ function displayOrder(
 
   injectCheckoutStyles();
 
-  if (awaitingPayment) {
+  if (awaitingInitialPayment || awaitingFinalPayment) {
     setupBankAliasCopy(order.bank?.alias);
     setupReceiptUpload(
       order,
@@ -1001,7 +1023,8 @@ function displayOrder(
 
 function renderBankSection(
   order,
-  access
+  access,
+  finalPayment = false
 ) {
   if (!order.bank?.configured) {
     return `
@@ -1021,9 +1044,15 @@ function renderBankSection(
 
   return `
     <div class="bank-details">
-      <h3>
-        Datos para transferencia
-      </h3>
+      <h3>${finalPayment ? 'Pago del saldo' : 'Datos para transferencia'}</h3>
+
+      ${finalPayment ? `
+        <dl>
+          <div><dt>Total del pedido</dt><dd>${formatPYG(order.totals.totalPYG)}</dd></div>
+          <div><dt>Pagado</dt><dd>${formatPYG(order.paidAmountPYG)}</dd></div>
+          <div><dt>Saldo pendiente</dt><dd>${formatPYG(order.remainingBalancePYG)}</dd></div>
+        </dl>
+      ` : ''}
 
       <dl>
         <div>
@@ -1091,21 +1120,19 @@ function renderBankSection(
         <small id="bank-alias-copy-status" role="status" aria-live="polite"></small>
       </div>
 
-      <p>
-        Transferí exactamente
-        <strong>
-          ${formatPYG(
-            order.totals.dueNowPYG
-          )}
-        </strong>.
-      </p>
+      ${finalPayment
+        ? `<p>Transferí el saldo pendiente de <strong>${formatPYG(order.remainingBalancePYG)}</strong>.</p>`
+        : Number(order.totals.futureBalancePYG || 0) > 0
+          ? `<p>Podés transferir la seña de <strong>${formatPYG(order.totals.dueNowPYG)}</strong> o el pago total de <strong>${formatPYG(order.totals.totalPYG)}</strong>. El vendedor registrará el importe verificado.</p>`
+          : `<p>Transferí exactamente <strong>${formatPYG(order.totals.totalPYG)}</strong>.</p>`
+      }
 
       <form
         id="receipt-form"
         class="receipt-upload-highlight"
         aria-labelledby="receipt-upload-heading"
       >
-        <h3 id="receipt-upload-heading">Después de transferir, subí tu comprobante aquí</h3>
+        <h3 id="receipt-upload-heading">${finalPayment ? 'Después de transferir el saldo, subí tu comprobante aquí' : 'Después de transferir, subí tu comprobante aquí'}</h3>
         <p>Necesitamos que cargues el comprobante en esta página para poder verificar tu pago. No lo envíes solamente por WhatsApp.</p>
         <label>
           <span>
@@ -1271,6 +1298,9 @@ function orderStatusLabel(status) {
     RECEIPT_RECEIVED:
       'Comprobante recibido',
 
+    FINAL_RECEIPT_RECEIVED:
+      'Comprobante del saldo recibido',
+
     VERIFYING_PAYMENT:
       'Verificando pago',
 
@@ -1306,6 +1336,16 @@ function orderStatusLabel(status) {
 }
 
 
+function paymentTypeLabel(type) {
+  return ({
+    DEPOSIT: 'Seña',
+    FINAL: 'Pago del saldo',
+    FULL: 'Pago total',
+    PENDING: 'Pendiente de clasificación',
+  })[type] || type || '';
+}
+
+
 function orderItemLabel(item) {
   const number = item.itemNumber == null
     ? ''
@@ -1321,7 +1361,9 @@ function startCheckoutLeaseCountdown() {
   const expiresAt = Number(wrapper.dataset.expiresAt || 0);
   clearInterval(startCheckoutLeaseCountdown.timer);
   const update = () => {
-    const remaining = expiresAt - Date.now();
+    const currentExpiration = Number(wrapper.dataset.expiresAt || expiresAt);
+    const remaining = currentExpiration - Date.now();
+    const extension = document.getElementById('checkout-cart-extension');
     if (remaining <= 0) {
       target.textContent = 'vencida';
       const button = document.querySelector('#checkout-form button[type="submit"]');
@@ -1332,9 +1374,45 @@ function startCheckoutLeaseCountdown() {
     }
     const seconds = Math.ceil(remaining / 1000);
     target.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    if (extension && !extension.dataset.used && remaining <= 10 * 60 * 1000) extension.hidden = false;
   };
   update();
   startCheckoutLeaseCountdown.timer = setInterval(update, 1000);
+}
+
+
+function setupCheckoutReservationExtension() {
+  const button = document.getElementById('extend-checkout-reservation');
+  if (!button) return;
+  button.addEventListener('click', async function () {
+    button.disabled = true;
+    try {
+      const response = await fetch('/api/cart/reservation', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'extend' }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.lease) throw new Error(result.error || 'No se pudo extender la reserva.');
+      if (typeof setStaticCartFromLease === 'function') setStaticCartFromLease(result.lease);
+      const wrapper = document.getElementById('checkout-lease-countdown');
+      if (wrapper) wrapper.dataset.expiresAt = String(result.lease.expiresAt);
+      const extension = document.getElementById('checkout-cart-extension');
+      if (extension) {
+        extension.dataset.used = 'true';
+        extension.hidden = false;
+        extension.innerHTML = '<strong>Reserva extendida</strong><span>Tenés 20 minutos adicionales para terminar tu compra.</span>';
+      }
+      startCheckoutLeaseCountdown();
+    } catch (error) {
+      button.disabled = false;
+      const errorBox = document.getElementById('checkout-error');
+      if (errorBox) {
+        errorBox.textContent = error instanceof Error ? error.message : 'No se pudo extender la reserva.';
+        errorBox.hidden = false;
+      }
+    }
+  });
 }
 
 
@@ -1440,6 +1518,21 @@ function injectCheckoutStyles() {
     }
     #receipt-form .primary-action { width: 100%; min-height: 50px; font-weight: 700; }
     #receipt-form .receipt-verification-note { font-size: .9rem; }
+
+    .payment-history {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .payment-history-entry {
+      display: grid;
+      gap: 4px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: white;
+    }
 
     .checkout-item,
     .order-item {

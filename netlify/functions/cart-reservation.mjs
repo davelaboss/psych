@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   claimCartLease,
   cartSessionIdFromRequest,
+  extendCartLease,
   getCartLeaseStatus,
   jsonResponse,
   loadCatalog,
@@ -39,6 +40,10 @@ export default async function handler(request) {
     const action = String(body?.action || '');
     if (action === 'release-all') {
       const result = await releaseCartLease(cartSessionId);
+      return jsonResponse({ ok: true, ...result });
+    }
+    if (action === 'extend') {
+      const result = await extendCartLease(cartSessionId);
       return jsonResponse({ ok: true, ...result });
     }
 

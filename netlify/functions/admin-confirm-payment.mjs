@@ -1,6 +1,6 @@
 import {
   adminAuthorized,
-  commitInventoryHold,
+  confirmOrderPayment,
   getOrder,
   jsonResponse,
 } from './_shared/commerce.mjs';
@@ -30,6 +30,9 @@ export default async function handler(request) {
         body?.orderId || ''
       ).trim();
 
+    const paymentId = String(body?.paymentId || '').trim() || undefined;
+    const paymentType = String(body?.paymentType || '').trim().toUpperCase() || undefined;
+
     const order =
       await getOrder(orderId);
 
@@ -46,9 +49,11 @@ export default async function handler(request) {
     if (
       ![
         'RECEIPT_RECEIVED',
+        'FINAL_RECEIPT_RECEIVED',
         'VERIFYING_PAYMENT',
         'PAYMENT_CONFIRMED',
         'DEPOSIT_CONFIRMED',
+        'PAID_IN_FULL',
       ].includes(order.status)
     ) {
       return jsonResponse(
@@ -60,10 +65,7 @@ export default async function handler(request) {
       );
     }
 
-    const committed =
-      await commitInventoryHold(
-        orderId
-      );
+    const committed = await confirmOrderPayment(orderId, paymentId, paymentType);
 
     if (!committed) {
       return jsonResponse(
@@ -95,7 +97,7 @@ export default async function handler(request) {
             ? error.message
             : 'No se pudo confirmar el pago.',
       },
-      400
+      Number(error?.status || 400)
     );
   }
 }

@@ -577,6 +577,14 @@ async function renderCartPage() {
 
         ${cart.expiresAt ? '<div class="cart-lease-countdown" id="cart-lease-countdown" role="status">Reserva temporal · <strong></strong></div>' : ''}
 
+        ${cart.expiresAt ? `
+          <div class="pickup-confirm" id="cart-extension" ${cart.extensionUsed ? '' : 'hidden'}>
+            <strong>${cart.extensionUsed ? 'Reserva extendida' : '¿Necesitás más tiempo?'}</strong>
+            <span>${cart.extensionUsed ? 'Tenés 20 minutos adicionales para terminar tu compra.' : 'Podés extender tu reserva una vez por 20 minutos para terminar de comprar.'}</span>
+            ${cart.extensionUsed ? '' : '<button class="secondary-action" type="button" id="extend-cart-reservation">Necesito más tiempo (+20 min)</button>'}
+          </div>
+        ` : ''}
+
         <dl>
           <div>
             <dt>Valor total de los artículos</dt>
@@ -640,7 +648,7 @@ async function renderCartPage() {
 
         <small>
           En el siguiente paso confirmaremos tus datos y la forma de pago.
-          Cada artículo queda reservado durante 20 minutos desde que lo agregás.
+          La reserva inicial del carrito dura 35 minutos. Podés extenderla una vez por 20 minutos.
         </small>
       </aside>
 
@@ -649,17 +657,19 @@ async function renderCartPage() {
   `;
 
   setupCartPageEvents(hasUnavailable);
-  startCartCountdown(cart.expiresAt);
+  startCartCountdown(cart);
   updateStaticCartCount();
 }
 
 
-function startCartCountdown(expiresAt) {
+function startCartCountdown(cart) {
   clearInterval(startCartCountdown.timer);
+  const expiresAt = cart?.expiresAt;
   if (!expiresAt) return;
   const update = async () => {
     const remaining = Number(expiresAt) - Date.now();
     const target = document.querySelector('#cart-lease-countdown strong');
+    const extension = document.getElementById('cart-extension');
     if (!target) return;
     if (remaining <= 0) {
       clearInterval(startCartCountdown.timer);
@@ -669,6 +679,7 @@ function startCartCountdown(expiresAt) {
     }
     const seconds = Math.ceil(remaining / 1000);
     target.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    if (extension && !cart.extensionUsed && remaining <= 10 * 60 * 1000) extension.hidden = false;
   };
   void update();
   startCartCountdown.timer = setInterval(update, 1000);
@@ -850,6 +861,21 @@ function setupCartPageEvents(hasUnavailable) {
     });
   }
 
+  const extendButton = document.getElementById('extend-cart-reservation');
+  if (extendButton) {
+    extendButton.addEventListener('click', async function () {
+      extendButton.disabled = true;
+      const result = await postCartReservation('extend');
+      if (!result.ok || !result.lease) {
+        extendButton.disabled = false;
+        showCartNotice(result.error || 'No se pudo extender la reserva.');
+        return;
+      }
+      setStaticCartFromLease(result.lease);
+      await renderCartPage();
+    });
+  }
+
   const continueButton =
     document.getElementById('continue-checkout');
 
@@ -948,7 +974,9 @@ function getStaticCart() {
 
     if (Array.isArray(stored)) {
       return {
+        createdAt: null,
         expiresAt: null,
+        extensionUsed: false,
         ids: stored.filter(
           (id) => typeof id === 'string'
         ),
@@ -961,7 +989,9 @@ function getStaticCart() {
     }
 
     return {
+      createdAt: Number(stored.createdAt || 0) || null,
       expiresAt: Number(stored.expiresAt || 0) || null,
+      extensionUsed: Boolean(stored.extensionUsed),
       ids: Array.isArray(stored.ids)
         ? stored.ids
         : [],
@@ -974,7 +1004,9 @@ function getStaticCart() {
     };
   } catch {
     return {
+      createdAt: null,
       expiresAt: null,
+      extensionUsed: false,
       ids: [],
       quantities: {},
     };
@@ -985,7 +1017,9 @@ function getStaticCart() {
 function setStaticCartFromLease(lease) {
   if (getStaticCart().expiresAt !== lease.expiresAt) localStorage.removeItem('mudanza-cart-checkout-id');
   saveStaticCart({
+    createdAt: lease.createdAt,
     expiresAt: lease.expiresAt,
+    extensionUsed: Boolean(lease.extensionUsed),
     ids: Object.keys(lease.items || {}),
     quantities: lease.items || {},
   });

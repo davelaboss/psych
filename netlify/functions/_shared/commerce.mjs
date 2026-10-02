@@ -447,18 +447,19 @@ export async function loadCatalog(origin) {
 }
 
 export {
-  claimCartLease, updateCartLease, releaseCartLease, getCartLeaseStatus,
+  claimCartLease, updateCartLease, releaseCartLease, extendCartLease, getCartLeaseStatus,
   transitionCartLeaseToOrder, getCartCheckoutAttempt, recordOrderReceipt,
-  commitInventoryHold, updateProductCapacity, cancelOrder,
+  commitInventoryHold, confirmOrderPayment, updateProductCapacity, cancelOrder,
 } from './inventory-database.mjs';
 import { listOrderSnapshots, readCommittedInventory } from './inventory-database.mjs';
 import { recoverOrderBlob, readRecoverableOrder } from './order-recovery.mjs';
+import { publicPayments, withPaymentState } from './order-payments.mjs';
 
 export async function writeNewOrder(order) {
   try {
     const recovered = await recoverOrderBlob(order.id);
     if (!recovered) throw new Error('No encontramos la reserva del pedido.');
-    return recovered;
+    return withPaymentState(recovered);
   } catch (error) {
     const failure = new Error('El pedido quedó reservado y se puede recuperar reintentando la compra.');
     failure.status = 503;
@@ -466,7 +467,7 @@ export async function writeNewOrder(order) {
   }
 }
 
-export async function getOrder(orderId) { return readRecoverableOrder(orderId); }
+export async function getOrder(orderId) { return withPaymentState(await readRecoverableOrder(orderId)); }
 
 export async function getAuthorizedOrder(
   orderId,
@@ -491,6 +492,7 @@ export async function getAuthorizedOrder(
 
 
 export function publicOrder(order) {
+  order = withPaymentState(order);
   return {
     id: order.id,
     createdAt: order.createdAt,
@@ -507,6 +509,9 @@ export function publicOrder(order) {
     items: order.items,
 
     totals: order.totals,
+    paidAmountPYG: order.paidAmountPYG,
+    remainingBalancePYG: order.remainingBalancePYG,
+    payments: publicPayments(order),
 
     holdExpiresAt:
       order.holdExpiresAt || null,
@@ -571,7 +576,7 @@ export async function listOrders() {
   const snapshots = await listOrderSnapshots();
   const byId = new Map(orders.map(order => [order.id, order]));
   for (const snapshot of snapshots) byId.set(snapshot.id, snapshot);
-  orders.splice(0, orders.length, ...byId.values());
+  orders.splice(0, orders.length, ...[...byId.values()].map(withPaymentState));
 
   orders.sort(
     (a, b) =>

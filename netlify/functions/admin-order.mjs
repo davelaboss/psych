@@ -50,24 +50,18 @@ export default async function handler(request) {
   };
 
   delete safeOrder.accessTokenHash;
+  delete safeOrder.receipt;
 
-  if (safeOrder.receipt) {
-    safeOrder.receipt = {
-      fileName:
-        safeOrder.receipt.fileName,
-
-      contentType:
-        safeOrder.receipt.contentType,
-
-      uploadedAt:
-        safeOrder.receipt.uploadedAt,
-
-      uploadedBy:
-        safeOrder.receipt.uploadedBy,
-
+  safeOrder.payments = (safeOrder.payments || []).map(payment => ({
+    ...payment,
+    receipt: payment.receipt ? {
+      fileName: payment.receipt.fileName,
+      contentType: payment.receipt.contentType,
+      uploadedAt: payment.receipt.uploadedAt,
+      uploadedBy: payment.receipt.uploadedBy,
       available: true,
-    };
-  }
+    } : null,
+  }));
 
   return jsonResponse({
     ok: true,

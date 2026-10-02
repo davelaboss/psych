@@ -3811,19 +3811,27 @@ function renderAdminOrderDetail(
       )
       .join('');
 
-  const canConfirm =
-    [
-      'RECEIPT_RECEIVED',
-      'VERIFYING_PAYMENT',
-    ].includes(
-      order.status
-    );
+  const payments = order.payments || [];
+  const pendingPayment = payments.find(payment => payment.verificationStatus === 'PENDING');
+  const paidAmount = Number(order.paidAmountPYG || 0);
+  const remainingBalance = Number(order.remainingBalancePYG ?? order.totals?.totalPYG ?? 0);
 
   const canCancel = !order.initialPaymentConfirmedAt &&
     ['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(order.status);
 
-  const canUploadReceipt = !order.receipt && !order.initialPaymentConfirmedAt &&
-    order.status === 'AWAITING_INITIAL_PAYMENT';
+  const canUploadReceipt = !pendingPayment && remainingBalance > 0 &&
+    ['AWAITING_INITIAL_PAYMENT', 'DEPOSIT_CONFIRMED'].includes(order.status);
+
+  const paymentHistory = payments.map((payment, index) => `
+    <article class="admin-payment-entry">
+      <strong>Comprobante ${index + 1}</strong>
+      <span>${adminPaymentType(payment.type)}</span>
+      <span>${payment.amountPYG == null ? 'Monto pendiente de clasificación' : adminMoney(payment.amountPYG)}</span>
+      <span>${payment.verificationStatus === 'CONFIRMED' ? 'Confirmado' : 'Pendiente de verificación'}</span>
+      ${payment.receipt?.uploadedBy === 'ADMIN' ? '<span>Comprobante cargado por el vendedor</span>' : ''}
+      ${payment.receipt ? `<button class="secondary-action" type="button" data-view-receipt="${adminEscape(payment.id)}">Ver comprobante</button>` : ''}
+    </article>
+  `).join('');
 
   target.innerHTML = `
     <section class="admin-order-detail-v2">
@@ -3890,9 +3898,7 @@ function renderAdminOrderDetail(
         <div>
           <dl class="admin-summary-list">
             <div>
-              <dt>
-                Valor total
-              </dt>
+              <dt>TOTAL DEL PEDIDO</dt>
 
               <dd>
                 ${adminMoney(
@@ -3903,27 +3909,21 @@ function renderAdminOrderDetail(
             </div>
 
             <div>
-              <dt>
-                A pagar ahora
-              </dt>
+              <dt>TOTAL PAGADO</dt>
 
               <dd>
                 ${adminMoney(
-                  order.totals
-                    ?.dueNowPYG
+                  paidAmount
                 )}
               </dd>
             </div>
 
             <div>
-              <dt>
-                Saldo futuro
-              </dt>
+              <dt>SALDO PENDIENTE</dt>
 
               <dd>
                 ${adminMoney(
-                  order.totals
-                    ?.futureBalancePYG
+                  remainingBalance
                 )}
               </dd>
             </div>
@@ -3942,25 +3942,13 @@ function renderAdminOrderDetail(
             <p>No se puede usar después de confirmar el pago.</p>
           </div>
         ` : ''}
+        ${paymentHistory ? `<section class="admin-payment-history"><h3>Historial de pagos</h3>${paymentHistory}</section>` : ''}
         ${
-          order.receipt
-            ? `
-              <div>
-                <button
-                  class="secondary-action"
-                  type="button"
-                  data-view-receipt
-                >
-                  Ver comprobante
-                </button>
-                ${order.receipt.uploadedBy === 'ADMIN' ? '<p><strong>Comprobante cargado por el vendedor</strong></p>' : ''}
-              </div>
-            `
-            : canUploadReceipt
+          canUploadReceipt
               ? `
                 <form data-admin-receipt-upload>
                   <label>
-                    <span>Subir comprobante recibido</span>
+                    <span>${paidAmount > 0 ? 'Subir comprobante del saldo' : 'Subir comprobante recibido'}</span>
                     <input type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" required>
                   </label>
                   <small>JPEG, PNG, WebP o PDF. Máximo 3 MB.</small>
@@ -3969,24 +3957,21 @@ function renderAdminOrderDetail(
                   <button class="primary-action" type="submit">Cargar comprobante por el cliente</button>
                 </form>
               `
-              : `
+              : !paymentHistory ? `
               <span>
                 Todavía no hay comprobante.
               </span>
-            `
+            ` : ''
         }
 
         ${
-          canConfirm
-            ? `
-              <button
-                class="primary-action"
-                type="button"
-                data-confirm-payment
-              >
-                Confirmé que los fondos ingresaron
-              </button>
-            `
+          pendingPayment
+            ? paidAmount > 0
+              ? `<button class="primary-action" type="button" data-confirm-payment="FINAL" data-payment-id="${adminEscape(pendingPayment.id)}">Confirmar pago del saldo</button>`
+              : Number(order.totals?.futureBalancePYG || 0) > 0
+                ? `<button class="primary-action" type="button" data-confirm-payment="DEPOSIT" data-payment-id="${adminEscape(pendingPayment.id)}">Confirmar como seña</button>
+                   <button class="secondary-action" type="button" data-confirm-payment="FULL" data-payment-id="${adminEscape(pendingPayment.id)}">Confirmar como pago total</button>`
+                : `<button class="primary-action" type="button" data-confirm-payment="FULL" data-payment-id="${adminEscape(pendingPayment.id)}">Confirmar como pago total</button>`
             : ''
         }
 
@@ -4008,31 +3993,15 @@ function renderAdminOrderDetail(
     </section>
   `;
 
-  target
-    .querySelector(
-      '[data-view-receipt]'
-    )
-    ?.addEventListener(
-      'click',
-      () => {
-        viewAdminReceipt(
-          order.id
-        );
-      }
-    );
+  target.querySelectorAll('[data-view-receipt]').forEach(button => {
+    button.addEventListener('click', () => viewAdminReceipt(order.id, button.dataset.viewReceipt));
+  });
 
-  target
-    .querySelector(
-      '[data-confirm-payment]'
-    )
-    ?.addEventListener(
-      'click',
-      () => {
-        confirmAdminPayment(
-          order.id
-        );
-      }
-    );
+  target.querySelectorAll('[data-confirm-payment]').forEach(button => {
+    button.addEventListener('click', () => confirmAdminPayment(
+      order.id, button.dataset.paymentId, button.dataset.confirmPayment
+    ));
+  });
 
   target.querySelector('[data-admin-receipt-upload]')?.addEventListener('submit', async function (event) {
     event.preventDefault();
@@ -4077,13 +4046,14 @@ function renderAdminOrderDetail(
 
 
 async function viewAdminReceipt(
-  orderId
+  orderId,
+  paymentId
 ) {
   const response =
     await fetch(
       `/api/admin/receipt?id=${encodeURIComponent(
         orderId
-      )}`,
+      )}&paymentId=${encodeURIComponent(paymentId || '')}`,
       {
         headers: {
           'x-admin-token':
@@ -4125,7 +4095,9 @@ async function viewAdminReceipt(
 
 
 async function confirmAdminPayment(
-  orderId
+  orderId,
+  paymentId,
+  paymentType
 ) {
   const confirmed =
     window.confirm(
@@ -4151,6 +4123,8 @@ async function confirmAdminPayment(
         body:
           JSON.stringify({
             orderId,
+            paymentId,
+            paymentType,
           }),
       }
     );
@@ -4295,6 +4269,9 @@ function adminStatus(
 
     RECEIPT_RECEIVED:
       'Comprobante recibido',
+
+    FINAL_RECEIPT_RECEIVED:
+      'Comprobante del saldo recibido',
 
     VERIFYING_PAYMENT:
       'Verificando pago',
@@ -4937,6 +4914,21 @@ function injectAdminStyles() {
       margin-top: 18px;
     }
 
+    .admin-payment-history {
+      flex: 1 1 100%;
+      display: grid;
+      gap: 10px;
+    }
+
+    .admin-payment-entry {
+      display: grid;
+      gap: 4px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fffdfa;
+    }
+
     .admin-empty-v2,
     .admin-error-card {
       border: 1px dashed var(--line);
@@ -5155,4 +5147,14 @@ function injectAdminStyles() {
   document.head.appendChild(
     style
   );
+}
+
+
+function adminPaymentType(type) {
+  return ({
+    DEPOSIT: 'Seña',
+    FINAL: 'Pago del saldo',
+    FULL: 'Pago total',
+    PENDING: 'Pendiente de clasificación',
+  })[type] || type || '';
 }
