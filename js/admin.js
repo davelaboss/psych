@@ -4,6 +4,7 @@ const ADMIN_STATE = {
   token: '',
   activeTab: 'overview',
   orders: [],
+  buyerGroups: [],
   inventory: [],
   batches: [],
   stats: {},
@@ -238,6 +239,14 @@ async function fetchAdminOrders(
 }
 
 
+async function fetchBuyerGroups() {
+  const data = await adminFetch(
+    '/api/admin/buyer-groups'
+  );
+  return data.buyerGroups || [];
+}
+
+
 async function fetchLegacyInventory() {
   return adminFetch(
     '/api/admin/legacy-inventory'
@@ -265,14 +274,19 @@ async function loadAdminDashboard() {
     const [
       orders,
       inventoryData,
+      buyerGroups,
     ] =
       await Promise.all([
         fetchAdminOrders(),
         fetchLegacyInventory(),
+        fetchBuyerGroups(),
       ]);
 
     ADMIN_STATE.orders =
       orders;
+
+    ADMIN_STATE.buyerGroups =
+      buyerGroups;
 
     ADMIN_STATE.inventory =
       inventoryData.products || [];
@@ -510,6 +524,14 @@ function renderAdminShell() {
         )}
 
         ${adminTabButton(
+          'buyer-sheets',
+          'Planillas',
+          ADMIN_STATE.buyerGroups.filter(
+            (group) => group.confirmedItems.length > 0
+          ).length
+        )}
+
+        ${adminTabButton(
           'inventory',
           'Inventario',
           ADMIN_STATE.stats
@@ -664,6 +686,14 @@ function renderAdminTab() {
     'batches'
   ) {
     renderBatchesTab();
+    return;
+  }
+
+  if (
+    ADMIN_STATE.activeTab ===
+    'buyer-sheets'
+  ) {
+    renderBuyerSheetsTab();
     return;
   }
 
@@ -3546,6 +3576,81 @@ function renderBatchesTab() {
 }
 
 
+function renderBuyerSheetsTab() {
+  const target = document.getElementById('admin-tab-content');
+  const printable = ADMIN_STATE.buyerGroups.filter(
+    (group) => group.confirmedItems.length > 0
+  );
+
+  target.innerHTML = `
+    <section class="admin-content-v2 buyer-sheets-view">
+      <div class="admin-section-heading-v2">
+        <div>
+          <span class="section-kicker">PLANILLAS DE INVENTARIO</span>
+          <h2>Artículos confirmados por comprador</h2>
+          <p>Los pedidos se agrupan por comprador asignado. La coincidencia de teléfono por sí sola no combina personas.</p>
+        </div>
+        <strong>${printable.length} planilla${printable.length === 1 ? '' : 's'}</strong>
+      </div>
+
+      <div class="buyer-sheet-list">
+        ${printable.length ? printable.map((group) => `
+          <article class="buyer-sheet" data-buyer-sheet="${adminEscapeAttribute(group.buyerGroupId)}">
+            <header>
+              <span>COMPRADOR</span>
+              <h2>${adminEscape(group.displayName)}</h2>
+              <strong>${adminEscape(group.displayPhone || 'Sin teléfono')}</strong>
+              <small>Grupo ${adminEscape(group.buyerGroupId)}</small>
+            </header>
+
+            <p>Pedidos vinculados: ${group.orders.map((order) => adminEscape(order.id)).join(', ')}</p>
+
+            <table>
+              <thead><tr><th>Artículo</th><th>Descripción</th><th>Cantidad</th><th>Pedido</th></tr></thead>
+              <tbody>
+                ${group.confirmedItems.map((item) => `
+                  <tr>
+                    <td>${adminEscape(adminFormatItem(item.itemNumber))}</td>
+                    <td>${adminEscape(item.title)}</td>
+                    <td>${Number(item.quantity || 0)}</td>
+                    <td>${adminEscape(item.orderId)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+
+            <button class="primary-action buyer-sheet-print" type="button" data-print-buyer-sheet="${adminEscapeAttribute(group.buyerGroupId)}">
+              Imprimir planilla
+            </button>
+          </article>
+        `).join('') : '<div class="admin-empty-v2">Todavía no hay artículos confirmados para imprimir.</div>'}
+      </div>
+    </section>
+  `;
+
+  target.querySelectorAll('[data-print-buyer-sheet]').forEach((button) => {
+    button.addEventListener('click', () => printBuyerSheet(
+      button.getAttribute('data-print-buyer-sheet')
+    ));
+  });
+}
+
+
+function printBuyerSheet(buyerGroupId) {
+  const sheet = document.querySelector(
+    `[data-buyer-sheet="${CSS.escape(buyerGroupId)}"]`
+  );
+  if (!sheet) return;
+  document.body.classList.add('printing-buyer-sheet');
+  sheet.classList.add('is-print-target');
+  window.addEventListener('afterprint', () => {
+    document.body.classList.remove('printing-buyer-sheet');
+    sheet.classList.remove('is-print-target');
+  }, { once: true });
+  window.print();
+}
+
+
 function renderOrdersTab() {
   const target =
     document.getElementById(
@@ -3973,6 +4078,15 @@ function renderAdminOrderDetail(
   const paidAmount = Number(order.paidAmountPYG || 0);
   const remainingBalance = Number(order.remainingBalancePYG ?? order.totals?.totalPYG ?? 0);
   const dueNow = Number(order.totals?.dueNowPYG ?? order.totals?.totalPYG ?? 0);
+  const buyerGroup = ADMIN_STATE.buyerGroups.find(
+    (group) => group.orders.some((candidate) => candidate.id === order.id)
+  );
+  const buyerGroupOrder = buyerGroup?.orders.find(
+    (candidate) => candidate.id === order.id
+  );
+  const otherBuyerGroups = ADMIN_STATE.buyerGroups.filter(
+    (group) => group.buyerGroupId !== buyerGroup?.buyerGroupId
+  );
 
   const canCancel = !order.initialPaymentConfirmedAt &&
     ['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(order.status);
@@ -4116,6 +4230,39 @@ function renderAdminOrderDetail(
         </div>
       </div>
 
+      <section class="admin-buyer-group-card">
+        <h3>Comprador para planillas de inventario</h3>
+        <p>
+          Grupo actual:
+          <strong>${adminEscape(buyerGroup?.displayName || order.buyer?.name || '')}</strong>
+          · ${adminEscape(buyerGroup?.displayPhone || order.buyer?.phone || '')}
+        </p>
+        <small>
+          ${buyerGroupOrder?.assignmentMode === 'MANUAL_SEPARATE'
+            ? 'Este pedido se mantiene separado por decisión manual.'
+            : buyerGroupOrder?.assignmentMode === 'MANUAL_MERGE'
+              ? 'Este pedido fue combinado manualmente.'
+              : 'Asignación automática conservadora: nombre y teléfono deben coincidir.'}
+        </small>
+        <div class="admin-buyer-group-actions">
+          <select data-buyer-group-target aria-label="Comprador existente">
+            <option value="">Seleccionar comprador existente…</option>
+            ${otherBuyerGroups.map((group) => `
+              <option value="${adminEscapeAttribute(group.buyerGroupId)}">
+                ${adminEscape(group.displayName)} · ${adminEscape(group.displayPhone || 'Sin teléfono')} · ${group.orders.length} pedido${group.orders.length === 1 ? '' : 's'}
+              </option>
+            `).join('')}
+          </select>
+          <button class="secondary-action" type="button" data-buyer-group-merge ${otherBuyerGroups.length ? '' : 'disabled'}>
+            Combinar con comprador existente
+          </button>
+          <button class="text-action" type="button" data-buyer-group-separate>
+            Mantener separado
+          </button>
+        </div>
+        <p class="form-error" data-buyer-group-error hidden></p>
+      </section>
+
       ${order.status === 'CANCELLED' ? '<p role="status"><strong>Pedido cancelado</strong>. Los artículos fueron liberados y volvieron a estar disponibles. El pedido se conserva para consulta.</p>' : ''}
 
       <div class="order-detail-actions">
@@ -4227,6 +4374,48 @@ function renderAdminOrderDetail(
       alert(error instanceof Error ? error.message : 'No se pudo cancelar el pedido.');
     }
   });
+
+  target.querySelector('[data-buyer-group-merge]')?.addEventListener('click', async function () {
+    const targetBuyerGroupId = target.querySelector('[data-buyer-group-target]')?.value;
+    if (!targetBuyerGroupId) {
+      const errorBox = target.querySelector('[data-buyer-group-error]');
+      errorBox.textContent = 'Seleccioná un comprador existente.';
+      errorBox.hidden = false;
+      return;
+    }
+    await updateBuyerGroupAssignment(order.id, 'MERGE', targetBuyerGroupId, target);
+  });
+
+  target.querySelector('[data-buyer-group-separate]')?.addEventListener('click', async function () {
+    await updateBuyerGroupAssignment(order.id, 'SEPARATE', null, target);
+  });
+}
+
+
+async function updateBuyerGroupAssignment(orderId, action, targetBuyerGroupId, detailTarget) {
+  const errorBox = detailTarget.querySelector('[data-buyer-group-error]');
+  if (errorBox) errorBox.hidden = true;
+  detailTarget.querySelectorAll('[data-buyer-group-merge], [data-buyer-group-separate]').forEach(
+    (button) => { button.disabled = true; }
+  );
+  try {
+    const result = await adminFetch('/api/admin/assign-buyer-group', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ orderId, action, targetBuyerGroupId }),
+    });
+    ADMIN_STATE.buyerGroups = result.buyerGroups || [];
+    renderOrdersTab();
+    await openAdminOrder(orderId);
+  } catch (error) {
+    detailTarget.querySelectorAll('[data-buyer-group-merge], [data-buyer-group-separate]').forEach(
+      (button) => { button.disabled = false; }
+    );
+    if (errorBox) {
+      errorBox.textContent = error instanceof Error ? error.message : 'No se pudo guardar el comprador.';
+      errorBox.hidden = false;
+    }
+  }
 }
 
 
@@ -5153,6 +5342,100 @@ function injectAdminStyles() {
       border: 1px solid var(--line);
       border-radius: 10px;
       background: #fffdfa;
+    }
+
+    .admin-buyer-group-card {
+      margin-top: 18px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fffdfa;
+    }
+
+    .admin-buyer-group-card h3 {
+      margin: 0 0 8px;
+    }
+
+    .admin-buyer-group-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .admin-buyer-group-actions select {
+      flex: 1 1 320px;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      padding: 9px 11px;
+    }
+
+    .buyer-sheet-list {
+      display: grid;
+      gap: 18px;
+    }
+
+    .buyer-sheet {
+      border: 2px solid var(--forest);
+      border-radius: 12px;
+      background: #fff;
+      padding: 24px;
+    }
+
+    .buyer-sheet header span,
+    .buyer-sheet header small {
+      display: block;
+      color: var(--muted);
+    }
+
+    .buyer-sheet header h2 {
+      margin: 5px 0;
+      font-family: Georgia, serif;
+      font-size: 34px;
+      font-weight: 500;
+    }
+
+    .buyer-sheet header > strong {
+      display: block;
+      font-size: 24px;
+    }
+
+    .buyer-sheet table {
+      width: 100%;
+      margin: 18px 0;
+      border-collapse: collapse;
+    }
+
+    .buyer-sheet th,
+    .buyer-sheet td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 8px;
+      text-align: left;
+    }
+
+    @media print {
+      body.printing-buyer-sheet * {
+        visibility: hidden !important;
+      }
+
+      body.printing-buyer-sheet .buyer-sheet.is-print-target,
+      body.printing-buyer-sheet .buyer-sheet.is-print-target * {
+        visibility: visible !important;
+      }
+
+      body.printing-buyer-sheet .buyer-sheet.is-print-target {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        border: 0;
+        padding: 0;
+      }
+
+      body.printing-buyer-sheet .buyer-sheet-print {
+        display: none !important;
+      }
     }
 
     .admin-empty-v2,
