@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import {
-  INITIAL_HOLD_MS,
   cartSessionIdFromRequest,
   getCartCheckoutAttempt,
   getOrder,
@@ -290,9 +289,6 @@ export default async function handler(request) {
 
     const now = Date.now();
 
-    const holdExpiresAt =
-      now + INITIAL_HOLD_MS;
-
     const accessToken = accessTokenFor(orderId);
     const orderSnapshot = {
       buyer: { name, phone, email },
@@ -316,8 +312,6 @@ export default async function handler(request) {
           futureBalance,
       },
 
-      holdExpiresAt,
-
       receipt: null,
       payments: [],
       paidAmountPYG: 0,
@@ -331,7 +325,6 @@ export default async function handler(request) {
       orderId,
       items: holdItems,
       availability,
-      expiresAt: holdExpiresAt,
       orderSnapshot,
     });
     const finalAccessToken = accessTokenFor(attempt.orderId);

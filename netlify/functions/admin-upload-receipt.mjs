@@ -30,7 +30,7 @@ export default async function handler(request) {
     if (order.payments.some(payment => payment.verificationStatus === 'PENDING')) {
       return jsonResponse({ error: 'Este pedido ya tiene un comprobante pendiente de verificación.' }, 409);
     }
-    if (!['AWAITING_INITIAL_PAYMENT', 'DEPOSIT_CONFIRMED'].includes(order.status) || order.remainingBalancePYG <= 0) {
+    if (!['AWAITING_INITIAL_PAYMENT', 'RESERVATION_EXPIRED', 'DEPOSIT_CONFIRMED'].includes(order.status) || order.remainingBalancePYG <= 0) {
       return jsonResponse({ error: 'Este pedido no admite la carga de un comprobante.' }, 409);
     }
 

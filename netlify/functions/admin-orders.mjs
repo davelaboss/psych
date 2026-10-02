@@ -39,6 +39,12 @@ export default async function handler(request) {
         status:
           order.status,
 
+        holdExpiresAt:
+          order.holdExpiresAt || null,
+
+        reservationState:
+          order.reservationState || null,
+
         buyer: {
           name:
             order.buyer?.name || '',

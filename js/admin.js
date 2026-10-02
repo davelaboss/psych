@@ -3734,9 +3734,9 @@ function renderOrdersTab() {
                   </span>
 
                   <span>
-                    ${adminStatus(
-                      order.status
-                    )}
+                    ${order.status === 'AWAITING_INITIAL_PAYMENT' && order.holdExpiresAt
+                      ? `Esperando transferencia - reservado hasta ${adminEscape(adminOrderDeadline(order.holdExpiresAt))}`
+                      : adminStatus(order.status)}
                   </span>
                 </div>
 
@@ -4089,10 +4089,10 @@ function renderAdminOrderDetail(
   );
 
   const canCancel = !order.initialPaymentConfirmedAt &&
-    ['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(order.status);
+    ['AWAITING_INITIAL_PAYMENT', 'RESERVATION_EXPIRED', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(order.status);
 
   const canUploadReceipt = !pendingPayment && remainingBalance > 0 &&
-    ['AWAITING_INITIAL_PAYMENT', 'DEPOSIT_CONFIRMED'].includes(order.status);
+    ['AWAITING_INITIAL_PAYMENT', 'RESERVATION_EXPIRED', 'DEPOSIT_CONFIRMED'].includes(order.status);
 
   const paymentHistory = payments.map((payment, index) => {
     const expectedAmount = adminExpectedPaymentAmount(
@@ -4173,11 +4173,18 @@ function renderAdminOrderDetail(
           <p>
             Estado:
             <strong>
-              ${adminStatus(
-                order.status
-              )}
+              ${order.status === 'AWAITING_INITIAL_PAYMENT' && order.holdExpiresAt
+                ? `Esperando transferencia - reservado hasta ${adminEscape(adminOrderDeadline(order.holdExpiresAt))}`
+                : adminStatus(order.status)}
             </strong>
           </p>
+
+          ${order.status === 'RESERVATION_EXPIRED' ? `
+            <div class="admin-expired-reservation" role="status">
+              <strong>RESERVA VENCIDA</strong>
+              <span>No indiques al cliente que transfiera hasta recuperar el inventario completo.</span>
+            </div>
+          ` : ''}
 
           <ul>
             ${items}
@@ -4285,6 +4292,7 @@ function renderAdminOrderDetail(
                   </label>
                   <small>JPEG, PNG, WebP o PDF. Máximo 3 MB.</small>
                   <p>La carga registra el comprobante, pero no confirma el pago.</p>
+                  ${order.status === 'RESERVATION_EXPIRED' ? '<p>Antes de aceptar el archivo, el sistema intentará recuperar todos los artículos de forma atómica.</p>' : ''}
                   <p class="form-error" data-admin-receipt-error hidden></p>
                   <button class="primary-action" type="submit">Cargar comprobante por el cliente</button>
                 </form>
@@ -4638,6 +4646,7 @@ function adminStatus(
 ) {
   const labels = {
     CANCELLED: 'Pedido cancelado',
+    RESERVATION_EXPIRED: 'RESERVA VENCIDA',
     AWAITING_INITIAL_PAYMENT:
       'Esperando transferencia',
 
@@ -5356,6 +5365,17 @@ function injectAdminStyles() {
       margin: 0 0 8px;
     }
 
+    .admin-expired-reservation {
+      display: grid;
+      gap: 6px;
+      margin: 14px 0;
+      padding: 14px;
+      border: 2px solid #9c2f24;
+      border-radius: 9px;
+      background: #fff0ed;
+      color: #6f1f18;
+    }
+
     .admin-buyer-group-actions {
       display: flex;
       flex-wrap: wrap;
@@ -5656,6 +5676,14 @@ function injectAdminStyles() {
   document.head.appendChild(
     style
   );
+}
+
+
+function adminOrderDeadline(value) {
+  return new Date(Number(value)).toLocaleString('es-PY', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
 }
 
 

@@ -7,6 +7,8 @@ const EXPIRED = 'La reserva temporal venció y este artículo volvió a estar di
 const INITIAL_CART_TTL = 35 * 60 * 1000;
 const CART_EXTENSION = 20 * 60 * 1000;
 const MAX_CART_TTL = 55 * 60 * 1000;
+export const ORDER_HOLD_MS = 2 * 60 * 60 * 1000;
+const ORDER_EXPIRING_LEAD_MS = 30 * 60 * 1000;
 const ms = value => value == null ? null : new Date(value).getTime();
 const fail = message => Object.assign(new Error(message), { status: 409 });
 let databaseClient;
@@ -80,6 +82,59 @@ async function availableForOrderReceipt(client, productId, orderId) {
         OR (r.phase='ORDER' AND (r.expires_at IS NULL OR r.expires_at>clock_timestamp())))
   ),0) AS available FROM operational_inventory p WHERE p.product_id=$1`, [productId, orderId]);
   return Number(rows[0]?.available || 0);
+}
+
+async function cancelOrderReservationEvents(client, orderId) {
+  await client.query(`UPDATE order_reservation_events
+    SET cancelled_at=clock_timestamp()
+    WHERE order_id=$1 AND cancelled_at IS NULL AND processed_at IS NULL`, [orderId]);
+}
+
+async function scheduleOrderReservationEvents(client, orderId, expiresAt) {
+  await cancelOrderReservationEvents(client, orderId);
+  const expiration = ms(expiresAt);
+  const events = [
+    ['ORDER_RESERVATION_EXPIRING', new Date(expiration - ORDER_EXPIRING_LEAD_MS)],
+    ['ORDER_RESERVATION_EXPIRED', new Date(expiration)],
+  ];
+  for (const [eventType, dueAt] of events) {
+    await client.query(`INSERT INTO order_reservation_events
+      (order_id,event_type,reservation_expires_at,due_at,payload)
+      VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (order_id,event_type,reservation_expires_at) DO NOTHING`, [
+      orderId,
+      eventType,
+      expiresAt,
+      dueAt,
+      JSON.stringify({ orderId, reservationExpiresAt: expiration }),
+    ]);
+  }
+}
+
+function snapshotWithReservation(row) {
+  if (!row) return null;
+  const snapshot = row.order_snapshot;
+  const expiresAt = ms(row.expires_at);
+  const expirable = !row.committed_at &&
+    ['AWAITING_INITIAL_PAYMENT', 'RESERVATION_EXPIRED'].includes(snapshot.status);
+  const expired = expirable && expiresAt != null &&
+    (row.reservation_expired === true || expiresAt <= Date.now());
+  if (expired) {
+    return {
+      ...snapshot,
+      status: 'RESERVATION_EXPIRED',
+      reservationState: 'EXPIRED',
+      holdExpiresAt: expiresAt,
+    };
+  }
+  if (expirable && expiresAt != null) {
+    return {
+      ...snapshot,
+      reservationState: 'ACTIVE',
+      holdExpiresAt: expiresAt,
+    };
+  }
+  return snapshot;
 }
 
 export async function getCartLeaseStatus(sessionId) {
@@ -186,21 +241,26 @@ export async function transitionCartLeaseToOrder({ cartSessionId, checkoutId, or
       throw fail('La selección del carrito cambió. Actualizá el carrito e intentá de nuevo.');
     }
     for (const item of items) if ((await available(client, item.productId, cartSessionId)) < item.quantity) throw fail(RESERVED);
-    const expiresAt = new Date(timestamp + 45 * 60 * 1000);
-    const snapshot = { ...orderSnapshot, createdAt: timestamp, updatedAt: timestamp, holdExpiresAt: ms(expiresAt) };
+    const expiresAt = new Date(timestamp + ORDER_HOLD_MS);
+    const snapshot = { ...orderSnapshot, createdAt: timestamp, updatedAt: timestamp,
+      holdExpiresAt: ms(expiresAt), reservationState: 'ACTIVE' };
     const inserted = (await client.query(`INSERT INTO checkout_attempts
       (order_id,session_id,checkout_id,cart_generation,request_fingerprint,order_snapshot,expires_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
     [orderId, cartSessionId, checkoutId, session.generation, fingerprint(items), JSON.stringify(snapshot), expiresAt])).rows[0];
     await client.query("UPDATE inventory_reservations SET phase='ORDER',order_id=$2,expires_at=$3,updated_at=clock_timestamp() WHERE session_id=$1 AND phase='CART'",
       [cartSessionId, orderId, expiresAt]);
+    await scheduleOrderReservationEvents(client, orderId, expiresAt);
     await client.query('UPDATE cart_sessions SET expires_at=NULL,expired_at=NULL WHERE session_id=$1', [cartSessionId]);
     return attempt(inserted);
   });
 }
 
 export async function getOrderSnapshot(orderId) {
-  return (await database().pool.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1', [orderId])).rows[0]?.order_snapshot || null;
+  const row = (await database().pool.query(`SELECT *,
+    expires_at IS NOT NULL AND expires_at<=clock_timestamp() AS reservation_expired
+    FROM checkout_attempts WHERE order_id=$1`, [orderId])).rows[0];
+  return snapshotWithReservation(row);
 }
 export async function synchronizeOrderProjection(orderId, writer) {
   return inventoryTransaction(async client => {
@@ -218,29 +278,86 @@ async function orderLock(client, orderId) {
   await productLocks(client, rows.map(item => item.product_id));
   return { row, rows };
 }
+
+async function reclaimExpiredOrderLocked(client, locked, timestamp) {
+  const { row, rows } = locked;
+  const current = withPaymentState(row.order_snapshot);
+  const expiresAt = ms(row.expires_at);
+  const canExpire = !row.committed_at &&
+    ['AWAITING_INITIAL_PAYMENT', 'RESERVATION_EXPIRED'].includes(current.status);
+
+  if (!canExpire || expiresAt == null) {
+    return { order: current, renewed: false, available: true };
+  }
+  if (expiresAt > timestamp) {
+    return { order: { ...current, reservationState: 'ACTIVE', holdExpiresAt: expiresAt },
+      renewed: false, available: true };
+  }
+
+  const orderRows = rows.filter(item => item.phase === 'ORDER');
+  if (!orderRows.length) {
+    return { order: { ...current, status: 'RESERVATION_EXPIRED', reservationState: 'EXPIRED',
+      holdExpiresAt: expiresAt }, renewed: false, available: false };
+  }
+  for (const item of orderRows) {
+    if ((await availableForOrderReceipt(client, item.product_id, row.order_id)) < item.quantity) {
+      return { order: { ...current, status: 'RESERVATION_EXPIRED', reservationState: 'EXPIRED',
+        holdExpiresAt: expiresAt }, renewed: false, available: false };
+    }
+  }
+
+  const renewedExpiresAt = new Date(timestamp + ORDER_HOLD_MS);
+  const snapshot = {
+    ...current,
+    status: 'AWAITING_INITIAL_PAYMENT',
+    reservationState: 'ACTIVE',
+    reservationRenewedAt: timestamp,
+    reservationRenewalCount: Number(current.reservationRenewalCount || 0) + 1,
+    holdExpiresAt: ms(renewedExpiresAt),
+    updatedAt: timestamp,
+  };
+  await client.query("UPDATE inventory_reservations SET expires_at=$2,updated_at=clock_timestamp() WHERE order_id=$1 AND phase='ORDER'",
+    [row.order_id, renewedExpiresAt]);
+  await client.query(`UPDATE checkout_attempts
+    SET order_snapshot=$2,expires_at=$3,projection_version=projection_version+1,updated_at=clock_timestamp()
+    WHERE order_id=$1`, [row.order_id, JSON.stringify(snapshot), renewedExpiresAt]);
+  await scheduleOrderReservationEvents(client, row.order_id, renewedExpiresAt);
+  row.order_snapshot = snapshot;
+  row.expires_at = renewedExpiresAt;
+  return { order: snapshot, renewed: true, available: true };
+}
+
+export async function refreshOrderReservation(orderId) {
+  return inventoryTransaction(async client => {
+    const locked = await orderLock(client, orderId);
+    if (!locked) return null;
+    return reclaimExpiredOrderLocked(client, locked, await now(client));
+  });
+}
+
 export async function recordOrderReceipt(orderId, receipt) {
   return inventoryTransaction(async client => {
     const locked = await orderLock(client, orderId);
     if (!locked) return false;
     const { row, rows } = locked;
     const timestamp = await now(client);
-    const current = withPaymentState(row.order_snapshot);
+    let current = withPaymentState(row.order_snapshot);
     if (current.status === 'CANCELLED' || !rows.length || current.remainingBalancePYG <= 0) return false;
     if (current.payments.some(payment => payment.verificationStatus === 'PENDING')) return false;
     if (!row.committed_at && row.expires_at && ms(row.expires_at) <= timestamp) {
-      for (const item of rows) {
-        if ((await availableForOrderReceipt(client, item.product_id, orderId)) < item.quantity) {
-          throw fail('La reserva venció y uno de los artículos ya no está disponible.');
-        }
-      }
+      const reclaim = await reclaimExpiredOrderLocked(client, locked, timestamp);
+      if (!reclaim.available) throw fail('La reserva venció y uno o más artículos ya no están disponibles. No realices la transferencia.');
+      current = withPaymentState(reclaim.order);
     }
     if (row.committed_at && current.status !== 'DEPOSIT_CONFIRMED') return false;
     const payment = { id: crypto.randomUUID(), type: row.committed_at ? 'FINAL' : 'PENDING', amountPYG: null,
       receipt, submittedAt: timestamp, submittedBy: receipt.uploadedBy || 'CUSTOMER',
       paymentMethod: 'BANK_TRANSFER', verificationStatus: 'PENDING', confirmedAt: null };
     const snapshot = { ...current, receipt: current.receipt || receipt, payments: [...current.payments, payment],
-      status: row.committed_at ? 'FINAL_RECEIPT_RECEIVED' : 'RECEIPT_RECEIVED', holdExpiresAt: null, updatedAt: timestamp };
+      status: row.committed_at ? 'FINAL_RECEIPT_RECEIVED' : 'RECEIPT_RECEIVED',
+      reservationState: row.committed_at ? current.reservationState : 'PROTECTED', holdExpiresAt: null, updatedAt: timestamp };
     if (!row.committed_at) await client.query("UPDATE inventory_reservations SET expires_at=NULL,updated_at=clock_timestamp() WHERE order_id=$1 AND phase='ORDER'", [orderId]);
+    await cancelOrderReservationEvents(client, orderId);
     await client.query('UPDATE checkout_attempts SET order_snapshot=$2,expires_at=NULL,projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1',
       [orderId, JSON.stringify(snapshot)]);
     return snapshot;
@@ -289,6 +406,7 @@ export async function confirmOrderPayment(orderId, paymentId, requestedType) {
       }
       await client.query("UPDATE inventory_reservations SET phase='COMMITTED',expires_at=NULL,updated_at=clock_timestamp() WHERE order_id=$1 AND phase='ORDER'", [orderId]);
     }
+    await cancelOrderReservationEvents(client, orderId);
     const payments = current.payments.map((payment, paymentIndex) => paymentIndex === index
       ? { ...payment, type, amountPYG: amount, verificationStatus: 'CONFIRMED', confirmedAt: timestamp }
       : payment);
@@ -322,6 +440,7 @@ export async function cancelOrder(orderId) {
     const snapshot = { ...row.order_snapshot, status: 'CANCELLED', cancelledAt: timestamp,
       cancelledBy: 'ADMIN', inventoryReleasedAt: timestamp, holdExpiresAt: null, updatedAt: timestamp };
     await client.query("DELETE FROM inventory_reservations WHERE order_id=$1 AND phase='ORDER'", [orderId]);
+    await cancelOrderReservationEvents(client, orderId);
     await client.query('UPDATE checkout_attempts SET order_snapshot=$2,expires_at=$3,projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1',
       [orderId, JSON.stringify(snapshot), new Date(timestamp)]);
     return snapshot;
@@ -351,7 +470,10 @@ export async function extendCartLease(sessionId) {
 }
 
 export async function listOrderSnapshots() {
-  return (await database().pool.query('SELECT order_snapshot FROM checkout_attempts ORDER BY created_at DESC')).rows.map(row => row.order_snapshot);
+  const rows = (await database().pool.query(`SELECT *,
+    expires_at IS NOT NULL AND expires_at<=clock_timestamp() AS reservation_expired
+    FROM checkout_attempts ORDER BY created_at DESC`)).rows;
+  return rows.map(snapshotWithReservation);
 }
 
 export async function readCommittedInventory() {

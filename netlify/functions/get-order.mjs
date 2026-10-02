@@ -2,6 +2,8 @@ import {
   getAuthorizedOrder,
   jsonResponse,
   publicOrder,
+  refreshOrderReservation,
+  writeNewOrder,
 } from './_shared/commerce.mjs';
 
 
@@ -36,7 +38,7 @@ export default async function handler(request) {
     );
   }
 
-  const order =
+  let order =
     await getAuthorizedOrder(
       orderId,
       accessToken
@@ -51,6 +53,30 @@ export default async function handler(request) {
       404
     );
   }
+
+  const reservation =
+    await refreshOrderReservation(
+      orderId
+    );
+
+  if (!reservation) {
+    return jsonResponse(
+      { error: 'Pedido no encontrado.' },
+      404
+    );
+  }
+
+  order = reservation.renewed
+    ? await writeNewOrder(
+        reservation.order
+      )
+    : reservation.order;
+
+  order = {
+    ...order,
+    reservationRenewed:
+      reservation.renewed,
+  };
 
   return jsonResponse({
     ok: true,

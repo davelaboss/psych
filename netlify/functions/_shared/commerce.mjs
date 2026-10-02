@@ -8,9 +8,6 @@ export const SALES_OPEN_AT =
 export const SALES_CLOSE_AT =
   Date.parse('2026-12-01T00:00:00-03:00');
 
-export const INITIAL_HOLD_MS =
-  45 * 60 * 1000;
-
 export const PICKUP_RULES = Object.freeze({
   timezone: 'America/Asuncion',
 
@@ -450,6 +447,7 @@ export {
   claimCartLease, updateCartLease, releaseCartLease, extendCartLease, getCartLeaseStatus,
   transitionCartLeaseToOrder, getCartCheckoutAttempt, recordOrderReceipt,
   commitInventoryHold, confirmOrderPayment, updateProductCapacity, cancelOrder,
+  refreshOrderReservation,
 } from './inventory-database.mjs';
 import { listOrderSnapshots, readCommittedInventory } from './inventory-database.mjs';
 import { recoverOrderBlob, readRecoverableOrder } from './order-recovery.mjs';
@@ -515,6 +513,15 @@ export function publicOrder(order) {
 
     holdExpiresAt:
       order.holdExpiresAt || null,
+
+    reservationState:
+      order.reservationState || null,
+
+    reservationRenewed:
+      Boolean(order.reservationRenewed),
+
+    reservationRenewedAt:
+      order.reservationRenewedAt || null,
 
     receipt: order.receipt
       ? {
