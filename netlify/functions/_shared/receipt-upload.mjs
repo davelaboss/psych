@@ -45,9 +45,13 @@ export async function attachOrderReceipt({ orderId, file, uploadedBy }) {
     },
   });
 
-  if (!await recordOrderReceipt(orderId, receipt)) {
-    await receiptStore().delete(receiptKey);
-    throw uploadError('Este pedido ya no puede recibir otro comprobante.', 409);
+  try {
+    if (!await recordOrderReceipt(orderId, receipt)) {
+      throw uploadError('Este pedido ya no puede recibir otro comprobante.', 409);
+    }
+  } catch (error) {
+    await receiptStore().delete(receiptKey).catch(() => {});
+    throw error;
   }
 
   return getOrder(orderId);

@@ -72,6 +72,16 @@ async function available(client, productId, sessionId) {
   return Number(rows[0]?.available || 0);
 }
 
+async function availableForOrderReceipt(client, productId, orderId) {
+  const { rows } = await client.query(`SELECT p.capacity-p.committed_quantity-COALESCE((
+    SELECT sum(r.quantity) FROM inventory_reservations r WHERE r.product_id=p.product_id
+      AND r.order_id IS DISTINCT FROM $2
+      AND ((r.phase='CART' AND r.expires_at>clock_timestamp())
+        OR (r.phase='ORDER' AND (r.expires_at IS NULL OR r.expires_at>clock_timestamp())))
+  ),0) AS available FROM operational_inventory p WHERE p.product_id=$1`, [productId, orderId]);
+  return Number(rows[0]?.available || 0);
+}
+
 export async function getCartLeaseStatus(sessionId) {
   return inventoryTransaction(async client => {
     const session = await sessionLock(client, sessionId);
@@ -217,7 +227,13 @@ export async function recordOrderReceipt(orderId, receipt) {
     const current = withPaymentState(row.order_snapshot);
     if (current.status === 'CANCELLED' || !rows.length || current.remainingBalancePYG <= 0) return false;
     if (current.payments.some(payment => payment.verificationStatus === 'PENDING')) return false;
-    if (!row.committed_at && row.expires_at && ms(row.expires_at) <= timestamp) return false;
+    if (!row.committed_at && row.expires_at && ms(row.expires_at) <= timestamp) {
+      for (const item of rows) {
+        if ((await availableForOrderReceipt(client, item.product_id, orderId)) < item.quantity) {
+          throw fail('La reserva venció y uno de los artículos ya no está disponible.');
+        }
+      }
+    }
     if (row.committed_at && current.status !== 'DEPOSIT_CONFIRMED') return false;
     const payment = { id: crypto.randomUUID(), type: row.committed_at ? 'FINAL' : 'PENDING', amountPYG: null,
       receipt, submittedAt: timestamp, submittedBy: receipt.uploadedBy || 'CUSTOMER',
