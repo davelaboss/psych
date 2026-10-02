@@ -7,6 +7,8 @@ const ADMIN_STATE = {
   inventory: [],
   batches: [],
   stats: {},
+  orderFilter: 'ACTIVE',
+  orderSearch: '',
   inventorySearch: '',
   inventoryBatch: 'ALL',
   inventoryStatus: 'ALL',
@@ -3550,9 +3552,32 @@ function renderOrdersTab() {
       'admin-tab-content'
     );
 
+  const normalizedSearch = adminNormalizeSearch(
+    ADMIN_STATE.orderSearch
+  );
+
+  const cancelledCount = ADMIN_STATE.orders.filter(
+    (order) => order.status === 'CANCELLED'
+  ).length;
+
+  const visibleOrders = ADMIN_STATE.orders.filter(
+    (order) => {
+      if (normalizedSearch) {
+        return adminOrderSearchText(order).includes(
+          normalizedSearch
+        );
+      }
+
+      return adminOrderMatchesFilter(
+        order,
+        ADMIN_STATE.orderFilter
+      );
+    }
+  );
+
   const rows =
-    ADMIN_STATE.orders.length
-      ? ADMIN_STATE.orders
+    visibleOrders.length
+      ? visibleOrders
           .map(
             (order) => `
               <article
@@ -3638,7 +3663,9 @@ function renderOrdersTab() {
           .join('')
       : `
         <div class="admin-empty-v2">
-          Todavía no hay pedidos en este entorno.
+          ${ADMIN_STATE.orders.length
+            ? 'No hay pedidos que coincidan con esta búsqueda o filtro.'
+            : 'Todavía no hay pedidos en este entorno.'}
         </div>
       `;
 
@@ -3670,6 +3697,44 @@ function renderOrdersTab() {
         </strong>
       </div>
 
+      <div class="admin-order-tools-v2">
+        <label class="admin-search-v2">
+          <span>Buscar pedido o cliente</span>
+          <input
+            type="search"
+            value="${adminEscapeAttribute(ADMIN_STATE.orderSearch)}"
+            placeholder="N.º de pedido, nombre, teléfono o email"
+            data-admin-order-search
+          >
+        </label>
+
+        <div class="admin-order-filters-v2" aria-label="Filtrar pedidos por estado">
+          ${[
+            ['ACTIVE', 'Activos'],
+            ['WAITING', 'Esperando pago'],
+            ['RECEIPT', 'Comprobante recibido'],
+            ['PAID', 'Pagados'],
+            ['CANCELLED', 'Cancelados'],
+            ['ALL', 'Todos'],
+          ].map(([value, label]) => `
+            <button
+              class="${ADMIN_STATE.orderFilter === value ? 'primary-action' : 'secondary-action'}"
+              type="button"
+              data-admin-order-filter="${value}"
+              aria-pressed="${ADMIN_STATE.orderFilter === value}"
+            >
+              ${label}
+            </button>
+          `).join('')}
+        </div>
+
+        ${ADMIN_STATE.orderFilter === 'CANCELLED'
+          ? `<button class="secondary-action" type="button" data-admin-cancelled-toggle="ACTIVE">Ocultar pedidos cancelados</button>`
+          : ADMIN_STATE.orderFilter === 'ALL'
+            ? ''
+            : `<button class="secondary-action" type="button" data-admin-cancelled-toggle="CANCELLED">Mostrar pedidos cancelados (${cancelledCount})</button>`}
+      </div>
+
       <div class="admin-order-list-v2">
         ${rows}
       </div>
@@ -3694,6 +3759,82 @@ function renderOrdersTab() {
         );
       }
     );
+
+  target
+    .querySelector('[data-admin-order-search]')
+    ?.addEventListener('input', function (event) {
+      ADMIN_STATE.orderSearch = event.target.value;
+      renderOrdersTab();
+      const input = document.querySelector('[data-admin-order-search]');
+      input?.focus();
+      input?.setSelectionRange(input.value.length, input.value.length);
+    });
+
+  target
+    .querySelectorAll('[data-admin-order-filter]')
+    .forEach((button) => {
+      button.addEventListener('click', function () {
+        ADMIN_STATE.orderFilter = button.getAttribute('data-admin-order-filter');
+        renderOrdersTab();
+      });
+    });
+
+  target
+    .querySelector('[data-admin-cancelled-toggle]')
+    ?.addEventListener('click', function (event) {
+      ADMIN_STATE.orderFilter = event.currentTarget.getAttribute('data-admin-cancelled-toggle');
+      ADMIN_STATE.orderSearch = '';
+      renderOrdersTab();
+    });
+}
+
+
+function adminNormalizeSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+
+function adminOrderSearchText(order) {
+  return adminNormalizeSearch([
+    order.id,
+    order.buyer?.name,
+    order.buyer?.phone,
+    order.buyer?.email,
+  ].join(' '));
+}
+
+
+function adminOrderMatchesFilter(order, filter) {
+  const status = order.status;
+
+  const groups = {
+    ACTIVE: status !== 'CANCELLED',
+    WAITING: [
+      'AWAITING_INITIAL_PAYMENT',
+      'DEPOSIT_CONFIRMED',
+      'BALANCE_DUE',
+    ].includes(status),
+    RECEIPT: [
+      'RECEIPT_RECEIVED',
+      'FINAL_RECEIPT_RECEIVED',
+      'VERIFYING_PAYMENT',
+    ].includes(status),
+    PAID: [
+      'PAYMENT_CONFIRMED',
+      'PAID_IN_FULL',
+      'READY_TO_SCHEDULE',
+      'PICKUP_SCHEDULED',
+      'PICKED_UP',
+    ].includes(status),
+    CANCELLED: status === 'CANCELLED',
+    ALL: true,
+  };
+
+  return groups[filter] ?? groups.ACTIVE;
 }
 
 
@@ -3808,21 +3949,30 @@ function renderAdminOrderDetail(
 ) {
   const items =
     (order.items || [])
-      .map(
-        (item) => `
-          <li>
+      .map((item) => {
+        const delayed = item.saleMode === 'DELAYED';
+        const pickupWindow = adminPickupWindow(item);
+
+        return `
+          <li class="admin-order-item ${delayed ? 'is-delayed' : 'is-immediate'}">
             <strong>${adminEscape(adminFormatItem(item.itemNumber))} · ${adminEscape(item.title)}</strong>
             <br>
             <span>Cantidad: ${item.quantity}</span>
+            <div class="admin-order-item-fulfillment">
+              <strong>${delayed ? 'RETIRO POSTERIOR' : 'RETIRO INMEDIATO'}</strong>
+              ${delayed ? `<span>Seña ${Number(item.depositPercent || 0)}%</span>` : ''}
+              ${delayed && pickupWindow ? `<span>Retiro: ${adminEscape(pickupWindow)}</span>` : ''}
+            </div>
           </li>
-        `
-      )
+        `;
+      })
       .join('');
 
   const payments = order.payments || [];
   const pendingPayment = payments.find(payment => payment.verificationStatus === 'PENDING');
   const paidAmount = Number(order.paidAmountPYG || 0);
   const remainingBalance = Number(order.remainingBalancePYG ?? order.totals?.totalPYG ?? 0);
+  const dueNow = Number(order.totals?.dueNowPYG ?? order.totals?.totalPYG ?? 0);
 
   const canCancel = !order.initialPaymentConfirmedAt &&
     ['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(order.status);
@@ -3830,16 +3980,33 @@ function renderAdminOrderDetail(
   const canUploadReceipt = !pendingPayment && remainingBalance > 0 &&
     ['AWAITING_INITIAL_PAYMENT', 'DEPOSIT_CONFIRMED'].includes(order.status);
 
-  const paymentHistory = payments.map((payment, index) => `
-    <article class="admin-payment-entry">
-      <strong>Comprobante ${index + 1}</strong>
-      <span>${adminPaymentType(payment.type)}</span>
-      <span>${payment.amountPYG == null ? 'Monto pendiente de clasificación' : adminMoney(payment.amountPYG)}</span>
-      <span>${payment.verificationStatus === 'CONFIRMED' ? 'Confirmado' : 'Pendiente de verificación'}</span>
-      ${payment.receipt?.uploadedBy === 'ADMIN' ? '<span>Comprobante cargado por el vendedor</span>' : ''}
-      ${payment.receipt ? `<button class="secondary-action" type="button" data-view-receipt="${adminEscape(payment.id)}">Ver comprobante</button>` : ''}
-    </article>
-  `).join('');
+  const paymentHistory = payments.map((payment, index) => {
+    const expectedAmount = adminExpectedPaymentAmount(
+      order,
+      payment,
+      paidAmount,
+      remainingBalance,
+      dueNow
+    );
+
+    const confirmedAmount = payment.verificationStatus === 'CONFIRMED'
+      ? Number(payment.amountPYG ?? expectedAmount)
+      : 0;
+
+    return `
+      <article class="admin-payment-entry">
+        <strong>Comprobante ${index + 1}</strong>
+        <span>Tipo: <strong>${adminPaymentType(payment.type)}</strong></span>
+        <span>A pagar con este comprobante: <strong>${adminMoney(expectedAmount)}</strong></span>
+        <span>Confirmado con este comprobante: <strong>${adminMoney(confirmedAmount)}</strong></span>
+        <span>Pagado confirmado del pedido: <strong>${adminMoney(paidAmount)}</strong></span>
+        <span>Saldo pendiente del pedido: <strong>${adminMoney(remainingBalance)}</strong></span>
+        <span>${payment.verificationStatus === 'CONFIRMED' ? 'Pago verificado' : 'Pendiente de verificación'}</span>
+        ${payment.receipt?.uploadedBy === 'ADMIN' ? '<span>Comprobante cargado por el vendedor</span>' : ''}
+        ${payment.receipt ? `<button class="secondary-action" type="button" data-view-receipt="${adminEscape(payment.id)}">Ver comprobante</button>` : ''}
+      </article>
+    `;
+  }).join('');
 
   target.innerHTML = `
     <section class="admin-order-detail-v2">
@@ -3917,7 +4084,17 @@ function renderAdminOrderDetail(
             </div>
 
             <div>
-              <dt>TOTAL PAGADO</dt>
+              <dt>SEÑA / A PAGAR AHORA</dt>
+
+              <dd>
+                ${adminMoney(
+                  dueNow
+                )}
+              </dd>
+            </div>
+
+            <div>
+              <dt>PAGADO CONFIRMADO</dt>
 
               <dd>
                 ${adminMoney(
@@ -4891,6 +5068,22 @@ function injectAdminStyles() {
       color: var(--muted);
     }
 
+    .admin-order-tools-v2 {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .admin-order-tools-v2 .admin-search-v2 {
+      margin-bottom: 0;
+    }
+
+    .admin-order-filters-v2 {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
     .admin-inline-detail {
       grid-column: 1 / -1;
       margin: 0 -16px -16px;
@@ -4912,6 +5105,31 @@ function injectAdminStyles() {
       display: grid;
       grid-template-columns: 1fr .75fr;
       gap: 28px;
+    }
+
+    .admin-order-item {
+      margin-bottom: 12px;
+      padding: 12px;
+      border-left: 4px solid var(--forest);
+      background: #fffdfa;
+    }
+
+    .admin-order-item.is-delayed {
+      border-left-color: #b27622;
+      background: #fff8e7;
+    }
+
+    .admin-order-item-fulfillment {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      margin-top: 8px;
+      font-size: 10px;
+      letter-spacing: .02em;
+    }
+
+    .admin-order-item.is-delayed .admin-order-item-fulfillment strong {
+      color: #85530d;
     }
 
     .order-detail-actions {
@@ -5155,6 +5373,56 @@ function injectAdminStyles() {
   document.head.appendChild(
     style
   );
+}
+
+
+function adminExpectedPaymentAmount(
+  order,
+  payment,
+  paidAmount,
+  remainingBalance,
+  dueNow
+) {
+  if (payment.amountPYG != null) {
+    return Number(payment.amountPYG || 0);
+  }
+
+  if (payment.type === 'FULL') {
+    return Number(order.totals?.totalPYG || 0);
+  }
+
+  if (payment.type === 'DEPOSIT') {
+    return dueNow;
+  }
+
+  if (payment.type === 'FINAL' || paidAmount > 0) {
+    return remainingBalance;
+  }
+
+  return dueNow;
+}
+
+
+function adminPickupWindow(item) {
+  if (!item.pickupWindowStart || !item.pickupWindowEnd) {
+    return '';
+  }
+
+  const start = new Date(`${item.pickupWindowStart}T12:00:00`);
+  const end = new Date(`${item.pickupWindowEnd}T12:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return `${item.pickupWindowStart}–${item.pickupWindowEnd}`;
+  }
+
+  const startDay = start.toLocaleDateString('es-PY', { day: 'numeric' });
+  const endText = end.toLocaleDateString('es-PY', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  return `${startDay}–${endText}`;
 }
 
 
