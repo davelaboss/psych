@@ -834,21 +834,33 @@ function displayOrder(
               </span>
 
               ${
-                item.futureBalancePYG > 0 && remainingBalance > 0
+                item.futureBalancePYG > 0
                   ? `
-                    <span>
-                      Saldo posterior:
-                      ${formatPYG(
-                        item.futureBalancePYG
-                      )}
-                    </span>
+                    ${
+                      remainingBalance > 0
+                        ? `
+                          <span>
+                            Saldo posterior:
+                            ${formatPYG(
+                              item.futureBalancePYG
+                            )}
+                          </span>
 
-                    <span>Pago final: ${DELAYED_FINAL_PAYMENT_WINDOW}</span>
+                          <span>Pago final: ${DELAYED_FINAL_PAYMENT_WINDOW}</span>
+                        `
+                        : ''
+                    }
 
                     <span>Retiro: ${escapeHtml(formatPickupWindow(
                       item.pickupWindowStart,
                       item.pickupWindowEnd
                     ))}</span>
+
+                    ${
+                      remainingBalance === 0
+                        ? '<span>El pago completo no adelanta la fecha de retiro.</span>'
+                        : ''
+                    }
                   `
                   : ''
               }
