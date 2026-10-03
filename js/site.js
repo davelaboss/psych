@@ -212,6 +212,14 @@ function renderProductDetail(product) {
     </nav>
 
     <section class="product-page">
+      <aside class="mobile-product-policy" aria-label="Aviso importante sobre la venta">
+        <strong>Importante</strong>
+        <ul>
+          <li>La mayoría de los artículos son usados.</li>
+          <li>Todas las ventas son finales.</li>
+        </ul>
+      </aside>
+
       <div class="product-detail">
 
         <div class="product-gallery">
