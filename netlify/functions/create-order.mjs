@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   cartSessionIdFromRequest,
   getCartCheckoutAttempt,
@@ -12,6 +11,7 @@ import {
   transitionCartLeaseToOrder,
   writeNewOrder,
 } from './_shared/commerce.mjs';
+import { orderAccessToken } from './_shared/order-access.mjs';
 
 const FINAL_SALE_POLICY_VERSION = '2026-10-02-v1';
 
@@ -79,9 +79,7 @@ export default async function handler(request) {
       );
     }
 
-    const accessTokenFor = (orderId) => createHash('sha256')
-      .update(`psych-cart-order-access:${cartSessionId}:${orderId}`)
-      .digest('hex');
+    const accessTokenFor = (orderId) => orderAccessToken(cartSessionId, orderId);
     const existingAttempt = await getCartCheckoutAttempt(cartSessionId, checkoutId, body.items);
     if (existingAttempt) {
       if (existingAttempt.expiresAt != null && existingAttempt.expiresAt <= Date.now()

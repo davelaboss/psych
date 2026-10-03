@@ -1093,7 +1093,11 @@ function displayOrder(
 
   injectCheckoutStyles();
 
-  setupPickupScheduler(order, access);
+  setupPickupScheduler(order, access).then(() => {
+    if (window.location.hash === '#pickup-scheduler') {
+      document.getElementById('pickup-scheduler')?.scrollIntoView({ block: 'start' });
+    }
+  });
 
   if (awaitingInitialPayment || awaitingFinalPayment) {
     setupBankAliasCopy(order.bank?.alias);

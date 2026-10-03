@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   claimCartLease,
   cartSessionIdFromRequest,
@@ -10,6 +9,7 @@ import {
   salesAreOpen,
   updateCartLease,
 } from './_shared/commerce.mjs';
+import { orderAccessToken } from './_shared/order-access.mjs';
 
 
 function setSessionCookie(response, sessionId, request) {
@@ -27,7 +27,7 @@ export default async function handler(request) {
       const { pendingOrderId, ...status } = await getCartLeaseStatus(cartSessionId);
       const checkoutRecovery = pendingOrderId ? {
         orderId: pendingOrderId,
-        accessToken: createHash('sha256').update(`psych-cart-order-access:${cartSessionId}:${pendingOrderId}`).digest('hex'),
+        accessToken: orderAccessToken(cartSessionId, pendingOrderId),
       } : null;
       return setSessionCookie(jsonResponse({ ok: true, ...status, checkoutRecovery }), cartSessionId, request);
     }

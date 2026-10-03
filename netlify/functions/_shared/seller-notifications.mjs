@@ -1,3 +1,5 @@
+import { orderAccessToken } from './order-access.mjs';
+
 async function database() {
   const module = await import('./inventory-database.mjs');
   return module.database();
@@ -12,54 +14,83 @@ const localDateTime = value => new Intl.DateTimeFormat('es-PY', {
   timeZone: 'America/Asuncion', dateStyle: 'long', timeStyle: 'short',
 }).format(new Date(value));
 
-function slotLabel(key) {
-  if (!key) return '';
+function slotParts(key) {
+  if (!key) return { date: '', time: '' };
   const [day, period] = key.split('|');
-  if (!day || !period) return '';
-  const date = new Intl.DateTimeFormat('es-PY', { timeZone: 'UTC',
-    day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${day}T12:00:00Z`));
-  const [start, end] = period.split('-');
-  return `${date}, de ${start} a ${end}`;
+  if (!day || !period) return { date: '', time: '' };
+  return {
+    date: new Intl.DateTimeFormat('es-PY', { timeZone: 'UTC',
+      day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${day}T12:00:00Z`)),
+    time: period.replace('-', ' a '),
+  };
 }
 
-export function customerNotification({ order, type, details = {} }) {
+function notificationOrigin() {
+  return String(process.env.DEPLOY_PRIME_URL || process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8888');
+}
+
+export function notificationLinks(orderId, cartSessionId, origin = notificationOrigin()) {
+  const url = new URL(`/pedido/${encodeURIComponent(orderId)}`, origin);
+  url.searchParams.set('access', orderAccessToken(cartSessionId, orderId));
+  return { privateOrderLink: url.toString(), pickupSchedulerLink: `${url}#pickup-scheduler` };
+}
+
+function customerHeader(order) {
+  return `Cliente: ${String(order.buyer?.name || '').trim()}\nWhatsApp: ${String(order.buyer?.phone || '').trim()}\nPedido: ${order.id}`;
+}
+
+function completeCustomerMessage(order, body) {
+  return `${customerHeader(order)}\n\n${body}\n\n¡Gracias!\n\nLos LaBossiere`;
+}
+
+export function customerNotification({ order, type, details = {}, privateOrderLink, pickupSchedulerLink }) {
   const name = String(order.buyer?.name || '').trim();
   const hello = `Hola ${name}.`;
   const id = order.id;
   switch (type) {
     case 'ORDER_CREATED':
-      return { subject: `Pedido ${id} recibido`, text: `${hello} Recibimos tu pedido ${id}. Tu reserva vence el ${localDateTime(order.holdExpiresAt)}. Para conservar los artículos, realizá la transferencia y cargá el comprobante desde tu enlace privado antes de ese horario. Gracias.` };
+      return { subject: `Pedido ${id} recibido`, text: completeCustomerMessage(order,
+        `${hello}\n\n¡Gracias por tu pedido! Tus artículos quedaron reservados hasta ${localDateTime(order.holdExpiresAt)}.\n\nPara conservar la reserva, realizá la transferencia y cargá el comprobante desde tu enlace privado antes de ese horario.\n\nSi la reserva vence antes de recibir el comprobante, los artículos podrán volver a estar disponibles para otros compradores.\n\n${privateOrderLink}`) };
     case 'RECEIPT_UPLOADED':
-      return { subject: `Comprobante recibido · ${id}`, text: `${hello} Recibimos el comprobante de tu pedido ${id}. El vendedor verificará que los fondos hayan ingresado. La carga del comprobante todavía no confirma el pago. Te avisaremos cuando esté confirmado.` };
+      return { subject: `Comprobante recibido · ${id}`, text: completeCustomerMessage(order,
+        `${hello}\n\nRecibimos el comprobante de tu pedido ${id}.\n\nEn breve verificaremos que la transferencia haya ingresado correctamente. La carga del comprobante no confirma el pago automáticamente.\n\nPodés seguir el estado de tu pedido desde este enlace:\n\n${privateOrderLink}`) };
     case 'FINAL_RECEIPT_UPLOADED':
-      return { subject: `Comprobante del saldo recibido · ${id}`, text: `${hello} Recibimos el comprobante del saldo de tu pedido ${id}. El vendedor verificará que los fondos hayan ingresado. Podrás agendar el retiro después de que se confirme el pago total.` };
+      return { subject: `Comprobante del saldo recibido · ${id}`, text: completeCustomerMessage(order,
+        `${hello}\n\nRecibimos el comprobante de tu pedido ${id}.\n\nEn breve verificaremos que la transferencia haya ingresado correctamente. La carga del comprobante no confirma el pago automáticamente.\n\nPodés seguir el estado de tu pedido desde este enlace:\n\n${privateOrderLink}`) };
     case 'PAYMENT_CONFIRMED':
       return Number(order.remainingBalancePYG) > 0
-        ? { subject: `Seña confirmada · ${id}`, text: `${hello} El vendedor confirmó la seña de tu pedido ${id}. El saldo se paga del 1 al 8 de diciembre de 2026. Podrás agendar el retiro después de que se confirme el pago total.` }
-        : { subject: `Pago confirmado · ${id}`, text: `${hello} El vendedor confirmó el pago total de tu pedido ${id}. Ya podés elegir tu horario de retiro desde tu enlace privado del pedido. Gracias.` };
+        ? { subject: `Seña confirmada · ${id}`, text: completeCustomerMessage(order,
+          `${hello}\n\nConfirmamos la seña de tu pedido ${id}.\n\nEl saldo se paga del 1 al 8 de diciembre de 2026. Podés seguir el estado de tu pedido desde este enlace:\n\n${privateOrderLink}`) }
+        : { subject: `Pago confirmado · ${id}`, text: completeCustomerMessage(order,
+          `${hello}\n\nConfirmamos el pago total de tu pedido ${id}.\n\nYa podés elegir el horario de retiro desde este enlace:\n\n${pickupSchedulerLink}`) };
     case 'PICKUP_SCHEDULED':
-      return { subject: `Retiro agendado · ${id}`, text: `${hello} El retiro de tu pedido ${id} quedó agendado para el ${slotLabel(details.slot)}. Si necesitás cambiarlo, abrí tu enlace privado del pedido.` };
-    case 'PICKUP_CHANGED':
-      return details.slot
-        ? { subject: `Retiro modificado · ${id}`, text: `${hello} El horario de retiro de tu pedido ${id} cambió. Tu nuevo horario es el ${slotLabel(details.slot)}. Podés consultarlo en tu enlace privado del pedido.` }
-        : { subject: `Retiro cancelado · ${id}`, text: `${hello} Se canceló el horario de retiro de tu pedido ${id}. Tu compra sigue confirmada. Podés elegir otro horario desde tu enlace privado del pedido.` };
+    case 'PICKUP_CHANGED': {
+      if (!details.slot) return { subject: `Retiro cancelado · ${id}`, text: completeCustomerMessage(order,
+        `${hello}\n\nSe canceló el horario de retiro de tu pedido ${id}.\n\nTu compra sigue confirmada. Elegí otro horario desde este enlace:\n\n${pickupSchedulerLink}`) };
+      const { date, time } = slotParts(details.slot);
+      return { subject: type === 'PICKUP_SCHEDULED' ? `Retiro agendado · ${id}` : `Retiro modificado · ${id}`,
+        text: completeCustomerMessage(order,
+          `${hello}\n\n¡Gracias! Tu horario de retiro quedó registrado.\n\nFecha:\n${date}\n\nHora:\n${time}\n\nEsta es la ubicación de nuestra casa:\n\nhttps://goo.gl/maps/TMeEA6Fnoe1tcCmYA?g_st=aw\n\nSi necesitás cambiar el horario elegido, podés hacerlo desde este enlace:\n\n${privateOrderLink}`) };
+    }
     case 'ORDER_RESERVATION_EXPIRING':
-      return { subject: `Tu reserva vence pronto · ${id}`, text: `${hello} Te avisamos que la reserva de tu pedido vence en aproximadamente 30 minutos. Si querés conservar los artículos, por favor realizá la transferencia y cargá el comprobante antes del horario indicado en tu pedido. Gracias.` };
+      return { subject: `Tu reserva vence pronto · ${id}`, text: completeCustomerMessage(order,
+        `${hello}\n\nLa reserva de tu pedido vence en aproximadamente 30 minutos.\n\nPara conservar los artículos, realizá la transferencia y cargá el comprobante desde tu enlace privado antes del horario indicado:\n\n${privateOrderLink}`) };
     case 'ORDER_RESERVATION_EXPIRED':
-      return { subject: `Reserva vencida · ${id}`, text: `${hello} La reserva de tu pedido ${id} venció. No realices ninguna transferencia todavía. Abrí tu enlace privado del pedido y confirmá que los artículos sigan disponibles antes de pagar o cargar un comprobante.` };
+      return { subject: `Reserva vencida · ${id}`, text: completeCustomerMessage(order,
+        `${hello}\n\nLa reserva de tu pedido ${id} venció.\n\nNo realices ninguna transferencia todavía. Confirmá que los artículos sigan disponibles antes de pagar o cargar un comprobante:\n\n${privateOrderLink}`) };
     default:
       throw new Error(`Unsupported notification type: ${type}`);
   }
 }
 
 export async function queueOrderNotifications(client, { key, order, type, details = {} }) {
-  const { subject, text } = customerNotification({ order, type, details });
-  const name = String(order.buyer?.name || '').trim();
-  const phone = String(order.buyer?.phone || '').trim();
+  const attempt = (await client.query('SELECT session_id FROM checkout_attempts WHERE order_id=$1', [order.id])).rows[0];
+  if (!attempt?.session_id) throw new Error(`Missing checkout session for notification: ${order.id}`);
+  const links = notificationLinks(order.id, attempt.session_id);
+  const { subject, text } = customerNotification({ order, type, details, ...links });
   const customerEmail = String(order.buyer?.email || '').trim();
-  const sellerText = `Cliente: ${name}\nWhatsApp: ${phone}\nPedido: ${order.id}\n\n${text}`;
   const entries = [
-    { role: 'SELLER', email: null, message: sellerText },
+    { role: 'SELLER', email: null, message: text },
     ...(customerEmail ? [{ role: 'CUSTOMER', email: customerEmail, message: text }] : []),
   ];
   for (const entry of entries) {
