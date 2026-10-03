@@ -441,11 +441,41 @@ export async function loadCatalog(origin) {
         };
       }
     )
+    .map(correctItem054058DefectNote)
     .sort(
       (a, b) =>
         Number(a.itemNumber) -
         Number(b.itemNumber)
     );
+}
+
+
+const ITEM_058_FREEZER_DEFECT_NOTE =
+  'Desgaste por uso normal con detalles. Burlete superior con pequeño corte que no afecta el sellado. Compartimiento inferior con reparación de una grieta.';
+
+
+function correctItem054058DefectNote(product) {
+  if (
+    Number(product?.itemNumber) === 54 &&
+    product.knownDefects === ITEM_058_FREEZER_DEFECT_NOTE
+  ) {
+    return {
+      ...product,
+      knownDefects: '',
+    };
+  }
+
+  if (
+    Number(product?.itemNumber) === 58 &&
+    !product.knownDefects
+  ) {
+    return {
+      ...product,
+      knownDefects: ITEM_058_FREEZER_DEFECT_NOTE,
+    };
+  }
+
+  return product;
 }
 
 export {
