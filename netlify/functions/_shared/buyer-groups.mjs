@@ -149,10 +149,12 @@ export async function assignBuyerGroup({ orderId, action, targetBuyerGroupId }) 
       const target = (await client.query(`SELECT buyer_group_id FROM buyer_groups
         WHERE buyer_group_id=$1 FOR UPDATE`, [targetBuyerGroupId])).rows[0];
       if (!target) throw Object.assign(new Error('El comprador seleccionado ya no existe.'), { status: 404 });
-      await client.query(`UPDATE buyer_group_orders
-        SET buyer_group_id=$2, assignment_mode='MANUAL_MERGE',
-            auto_match_blocked=false, updated_at=clock_timestamp()
-        WHERE order_id=$1`, [orderId, targetBuyerGroupId]);
+      if (previousGroupId !== targetBuyerGroupId) {
+        await client.query(`UPDATE buyer_group_orders
+          SET buyer_group_id=$2, assignment_mode='MANUAL_MERGE',
+              auto_match_blocked=false, updated_at=clock_timestamp()
+          WHERE buyer_group_id=$1`, [previousGroupId, targetBuyerGroupId]);
+      }
     } else if (action === 'SEPARATE') {
       if (current.assignment_mode !== 'MANUAL_SEPARATE' || !current.auto_match_blocked) {
         const buyerGroupId = await createGroup(client, order.order_snapshot?.buyer || {});

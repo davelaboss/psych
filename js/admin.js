@@ -3606,7 +3606,7 @@ function renderBuyerSheetsTab() {
             <p>Pedidos vinculados: ${group.orders.map((order) => adminEscape(order.id)).join(', ')}</p>
 
             <table>
-              <thead><tr><th>Artículo</th><th>Descripción</th><th>Cantidad</th><th>Pedido</th></tr></thead>
+              <thead><tr><th>Artículo</th><th>Descripción</th><th>Cantidad</th><th>Pedido</th><th>Control</th></tr></thead>
               <tbody>
                 ${group.confirmedItems.map((item) => `
                   <tr>
@@ -3614,6 +3614,10 @@ function renderBuyerSheetsTab() {
                     <td>${adminEscape(item.title)}</td>
                     <td>${Number(item.quantity || 0)}</td>
                     <td>${adminEscape(item.orderId)}</td>
+                    <td class="buyer-sheet-checks">
+                      <span>☐ Preparado</span>
+                      <span>☐ Entregado</span>
+                    </td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -3641,11 +3645,15 @@ function printBuyerSheet(buyerGroupId) {
     `[data-buyer-sheet="${CSS.escape(buyerGroupId)}"]`
   );
   if (!sheet) return;
+  document.getElementById('buyer-sheet-print-root')?.remove();
+  const printRoot = document.createElement('div');
+  printRoot.id = 'buyer-sheet-print-root';
+  printRoot.append(sheet.cloneNode(true));
+  document.body.append(printRoot);
   document.body.classList.add('printing-buyer-sheet');
-  sheet.classList.add('is-print-target');
   window.addEventListener('afterprint', () => {
     document.body.classList.remove('printing-buyer-sheet');
-    sheet.classList.remove('is-print-target');
+    printRoot.remove();
   }, { once: true });
   window.print();
 }
@@ -5488,26 +5496,48 @@ function injectAdminStyles() {
       text-align: left;
     }
 
+    .buyer-sheet-checks {
+      min-width: 220px;
+    }
+
+    .buyer-sheet-checks span {
+      display: inline-block;
+      min-width: 102px;
+      padding: 8px 4px;
+      white-space: nowrap;
+    }
+
+    #buyer-sheet-print-root {
+      display: none;
+    }
+
     @media print {
-      body.printing-buyer-sheet * {
-        visibility: hidden !important;
+      body.printing-buyer-sheet > :not(#buyer-sheet-print-root) {
+        display: none !important;
       }
 
-      body.printing-buyer-sheet .buyer-sheet.is-print-target,
-      body.printing-buyer-sheet .buyer-sheet.is-print-target * {
-        visibility: visible !important;
+      body.printing-buyer-sheet #buyer-sheet-print-root {
+        display: block !important;
       }
 
-      body.printing-buyer-sheet .buyer-sheet.is-print-target {
-        position: absolute;
-        inset: 0;
+      body.printing-buyer-sheet #buyer-sheet-print-root .buyer-sheet {
+        position: static;
         width: 100%;
         border: 0;
         padding: 0;
       }
 
-      body.printing-buyer-sheet .buyer-sheet-print {
+      body.printing-buyer-sheet #buyer-sheet-print-root .buyer-sheet-print {
         display: none !important;
+      }
+
+      body.printing-buyer-sheet #buyer-sheet-print-root thead {
+        display: table-header-group;
+      }
+
+      body.printing-buyer-sheet #buyer-sheet-print-root tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
       }
     }
 
