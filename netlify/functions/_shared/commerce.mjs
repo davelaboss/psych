@@ -385,6 +385,10 @@ export async function loadBaseCatalog(origin) {
   }
 
   return [...byId.values()]
+    .filter(
+      (product) =>
+        product.status !== 'UNLISTED'
+    )
     .sort(
       (a, b) =>
         Number(a.itemNumber) -

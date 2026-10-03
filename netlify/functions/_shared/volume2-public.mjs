@@ -35,8 +35,10 @@ function removeUsedWords(value) {
 }
 
 
-function cleanPublicText(value) {
-  let next = removeUsedWords(value);
+function cleanPublicText(value, { allowUsedWords = false } = {}) {
+  let next = allowUsedWords
+    ? String(value || '').trim()
+    : removeUsedWords(value);
 
   const privatePhrases = [
     'No se identificaron otros objetos visibles que deban considerarse incluidos.',
@@ -105,7 +107,10 @@ function joinDescriptionParts(parts) {
 
 function cleanDescription(item) {
   const description =
-    cleanPublicText(item.description);
+    cleanPublicText(
+      item.description,
+      { allowUsedWords: item.itemNumber === 63 }
+    );
 
   const measurements =
     publicMeasurements(item);
@@ -170,6 +175,13 @@ function cleanDescription(item) {
 
 
 function publicKnownDefects(item) {
+  const explicitlyConfirmed =
+    cleanPublicText(item.publicKnownDefects);
+
+  if (explicitlyConfirmed) {
+    return explicitlyConfirmed;
+  }
+
   const value =
     cleanPublicText(item.knownDefects);
 

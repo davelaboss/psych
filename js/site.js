@@ -43,7 +43,11 @@ function getEmbeddedProductBySlug(slug) {
     ? window.__catalogProducts.find((product) => product.slug === slug)
     : null;
 
-  return unified || getEmbeddedProduct('slug', slug);
+  const product = unified || getEmbeddedProduct('slug', slug);
+
+  return ['UNLISTED', 'NEEDS_REVIEW'].includes(product?.status)
+    ? null
+    : product;
 }
 
 
@@ -52,7 +56,11 @@ function getEmbeddedProductById(id) {
     ? window.__catalogProducts.find((product) => product.id === id)
     : null;
 
-  return unified || getEmbeddedProduct('id', id);
+  const product = unified || getEmbeddedProduct('id', id);
+
+  return ['UNLISTED', 'NEEDS_REVIEW'].includes(product?.status)
+    ? null
+    : product;
 }
 
 

@@ -22,6 +22,7 @@ type SupplementalSpec = {
   help?: boolean;
   status?: Volume2BatchItem['status'];
   needsReview?: boolean;
+  publicKnownDefects?: string;
   flag?: string;
 };
 
@@ -41,6 +42,7 @@ function build(spec: SupplementalSpec): Volume2BatchItem {
     conditionNotes: '',
     functionality: spec.functionality ?? '',
     knownDefects: spec.flag ?? '',
+    publicKnownDefects: spec.publicKnownDefects,
     includedAccessories: spec.included ?? [],
     notIncludedVisible: spec.excluded ?? '',
     quantityStructure: spec.structure ?? (quantity > 1 ? `Precio por unidad; ${quantity} unidades disponibles.` : 'Una unidad.'),
@@ -135,6 +137,7 @@ export const SALE_READINESS_SUPPLEMENTAL_ITEMS: Volume2BatchItem[] = [
     quantity: 2,
     delayed: true,
     vehicle: true,
+    publicKnownDefects: 'Desgaste por uso normal. Falta apoyo de goma negro.',
   }),
   build({
     itemNumber: 164,
@@ -193,8 +196,9 @@ export const SALE_READINESS_SUPPLEMENTAL_ITEMS: Volume2BatchItem[] = [
       'PXL_20260904_210708822.jpg',
       'PXL_20260904_210808221.jpg',
     ],
-    asking: 150000,
+    asking: 90000,
     description: 'Bolso rodante.',
+    publicKnownDefects: 'Desgaste por uso normal. Mancha y malla interior floja.',
     measurements: '48 cm de ancho × 30 cm de profundidad. Altura: 43 cm hasta la parte superior del bolso; 51 cm hasta la parte superior del asa cerrada; 95 cm con el asa totalmente extendida.',
   }),
 ];

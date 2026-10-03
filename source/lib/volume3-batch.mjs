@@ -1,6 +1,7 @@
 // Generated from the owner-reviewed Volume 3 snapshot.
 // Source SHA-256: f97c8ad51d7679876ec14db113d8cfd532202cf054aaf4296883b7d3e81afd17
 // Only public product fields are included; no review app or temporary paths are used.
+// Owner-approved merchandising corrections applied 2026-10-03.
 export const VOLUME3_ITEMS = Object.freeze([
   {
     "id": "real-202610-volume3-169",
@@ -281,7 +282,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Plato liviano de bambú con una flor artificial pegada en la parte superior.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -471,7 +472,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Escuadra y regla para sastrería y costura.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -582,7 +583,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Bolso pequeño y resistente, de aproximadamente 5 pulgadas de ancho. Tiene un espejo plástico pequeño en el interior, con una pequeña grieta.",
     "condition": "Estado regular",
     "conditionNotes": "",
-    "knownDefects": "El espejo plástico interior tiene una pequeña grieta.",
+    "knownDefects": "El espejo plástico interior tiene una pequeña grieta. Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -610,7 +611,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Mochila de nailon de aproximadamente 38 cm de alto.",
     "condition": "Estado regular",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -775,7 +776,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Caja plegable de cartón resistente para archivo o almacenamiento. Mide 24 cm de alto, 26 cm de ancho y 36 cm de profundidad.",
     "condition": "Estado regular",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -832,7 +833,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Balde metálico de Heineken, en buen estado.",
     "condition": "Estado regular",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal. Rayones y leve óxido superficial.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -857,9 +858,9 @@ export const VOLUME3_ITEMS = Object.freeze([
     "title": "Prensa francesa Tramontina",
     "category": "Cocina",
     "description": "Prensa francesa Tramontina de 0,95 litros. Se usó muy pocas veces y conserva su caja original.",
-    "condition": "Excelente estado",
+    "condition": "Muy buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -1040,7 +1041,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "pickupWindowStart": null,
     "pickupWindowEnd": null,
     "quantityTotal": 1,
-    "status": "AVAILABLE",
+    "status": "UNLISTED",
     "needsReview": false,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
@@ -1055,7 +1056,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Cubrecama azul marino de 238 × 210 cm con dos fundas de almohada de 86 × 48 cm. La cama, las mesitas de noche y la lámpara que aparecen en las fotos no están incluidas.",
     "condition": "Muy buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal. Alteración en una costura.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -1246,7 +1247,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Almohadón azul de 45 × 45 cm con flecos color crema. En buen estado.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal. Estado regular.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -1300,7 +1301,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Baúl plegable acolchado color marrón oscuro, en buen estado. Medidas sin la tapa: 74 cm de ancho × 38 cm de profundidad × 36 cm de alto.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -1633,7 +1634,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Dos almohadones marrones.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -1726,7 +1727,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "pickupWindowStart": null,
     "pickupWindowEnd": null,
     "quantityTotal": 1,
-    "status": "AVAILABLE",
+    "status": "UNLISTED",
     "needsReview": false,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
@@ -1929,10 +1930,10 @@ export const VOLUME3_ITEMS = Object.freeze([
     "slug": "juego-de-te-y-vajilla-item-241",
     "title": "Juego de té y vajilla",
     "category": "Cocina",
-    "description": "Juego incompleto que incluye una taza de té con su platillo, un platillo adicional sin taza, una jarrita para crema y cuatro cuencos pequeños.",
+    "description": "Juego parcial que incluye una taza de té con su platillo, un platillo adicional sin taza, una jarrita para crema y cuatro cuencos pequeños.",
     "condition": "Estado regular",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -1986,7 +1987,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Conjunto vendido completo: una flor morada artificial de plástico; un arreglo con flores amarillas de pétalos de tela; un manojo de espigas secas; y una rama larga de hiedra artificial, con tallo plástico y hojas de tela.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal. Al arreglo Miraflores le faltan algunas flores.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -2039,10 +2040,10 @@ export const VOLUME3_ITEMS = Object.freeze([
     "slug": "par-de-buhos-espantapajaros-decorativos-item-245",
     "title": "Par de búhos espantapájaros decorativos",
     "category": "Jardín",
-    "description": "Dos búhos decorativos de plástico para ahuyentar aves. El búho pequeño tiene un panel solar y sus ojos se iluminan tenuemente por la noche cuando recibe sol.",
+    "description": "Dos búhos decorativos de plástico para ahuyentar aves.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -2124,14 +2125,14 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Dos antiparras de natación para adultos, vendidas juntas. Tienen muy poco uso, aproximadamente ocho a diez usos como máximo. Marca Avena.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal. Rayones leves.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
       "/images/volume-3/IMG_8195-2.jpg",
       "/images/volume-3/IMG_8195.JPG"
     ],
-    "asking": 180000,
+    "asking": 120000,
     "saleMode": "IMMEDIATE",
     "pickupDate": null,
     "pickupWindowStart": null,
@@ -2152,7 +2153,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Conjunto de jarras y dispensadores de plástico. La pieza color aqua de la derecha es de marca Tupperware.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -2433,9 +2434,9 @@ export const VOLUME3_ITEMS = Object.freeze([
     "title": "Bal­de de trabajo reforzado",
     "category": "Cocina",
     "description": "Balde plástico de trabajo, adecuado para tareas de construcción o trabajos más pesados.",
-    "condition": "Buen estado",
+    "condition": "Estado regular",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -2597,7 +2598,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Carrete de alambre plastificado para atar, con cortador.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal. Poco uso.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -2651,7 +2652,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Kit de puerta para mascotas con piezas interior y exterior y tapa. Para perros pequeños. Hay 2 unidades disponibles; se venden por separado.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -2681,7 +2682,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Lote de tres almohadones vendido junto: uno morado cuadrado y dos rectangulares. Los dos rectangulares comparten estilo; se muestran con fundas azules y con sus almohadones interiores.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -2764,7 +2765,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Conjunto de comedor artesanal, hecho de madera maciza, muy sólido y pesado. La mesa mide 185 cm de largo × 100 cm de ancho × 76 cm de alto. Los respaldos de las sillas miden 100 cm desde el piso y 46 cm de ancho. Está en muy buen estado.",
     "condition": "Muy buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -2901,10 +2902,10 @@ export const VOLUME3_ITEMS = Object.freeze([
     "slug": "kit-de-pinturas-acrilicas-decoupage-y-accesorios-item-279",
     "title": "Kit de pinturas acrílicas, decoupage y accesorios",
     "category": "Manualidades",
-    "description": "Kit para pintar y hacer decoupage con pinturas acrílicas y accesorios. Algunas pinturas están sin usar y otras tienen algo de uso; ninguna está seca y todos los envases conservan al menos la mitad de su contenido.",
+    "description": "Kit para pintar y hacer decoupage con pinturas acrílicas y accesorios. Ninguna está seca y la mayoría de los envases conservan la mitad o más de su contenido.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -3043,7 +3044,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Sartén Tramontina grande. Se muestran vistas superior, inferior y lateral.",
     "condition": "Estado regular",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles. Manchas de uso.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -3072,7 +3073,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Sartén Tramontina con revestimiento cerámico y mango remachado. En buen estado.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles. Manchas de uso.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -3348,7 +3349,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Conjunto vendido completo con tres velas de cera, una vela tipo tealight, cinco velas LED a batería y dos difusores de aceite de cerámica. No incluye pilas ni aceite para los difusores.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Algunas de las velas LED presentan amarillamiento por el paso del tiempo.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -3730,7 +3731,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Estantería negra plegable y portátil, hecha a medida. En buen estado. Mide 63,5 cm de ancho × 133 cm de alto × 23,5 cm de profundidad.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -4036,7 +4037,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Sartén Tramontina mediana.",
     "condition": "Buen estado",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles. Manchas de uso.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
@@ -4065,7 +4066,7 @@ export const VOLUME3_ITEMS = Object.freeze([
     "description": "Sartén Tramontina pequeña.",
     "condition": "Estado regular",
     "conditionNotes": "",
-    "knownDefects": "",
+    "knownDefects": "Desgaste por uso normal con detalles. Manchas de uso.",
     "includedAccessories": [],
     "notIncludedVisible": "",
     "photos": [
