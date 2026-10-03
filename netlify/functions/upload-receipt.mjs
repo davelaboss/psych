@@ -47,7 +47,7 @@ export default async function handler(request) {
       );
     }
 
-    if (!['AWAITING_INITIAL_PAYMENT', 'DEPOSIT_CONFIRMED'].includes(order.status)) {
+    if (!['AWAITING_INITIAL_PAYMENT', 'RESERVATION_EXPIRED', 'DEPOSIT_CONFIRMED'].includes(order.status)) {
       return jsonResponse(
         {
           error:

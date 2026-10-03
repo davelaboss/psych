@@ -319,10 +319,9 @@ async function renderCheckoutPage() {
         </h1>
 
         <p>
-          Primero creamos el pedido y
-          retenemos temporalmente los
-          artículos mientras realizás
-          la transferencia.
+          Tu pedido quedará reservado por 2 horas mientras realizás la transferencia.
+          Si no enviás el comprobante dentro de ese plazo, la reserva puede vencer y
+          los artículos pueden volver a estar disponibles.
         </p>
         ${leaseExpiresAt ? `<p class="cart-lease-countdown" id="checkout-lease-countdown" data-expires-at="${leaseExpiresAt}">Tu carrito queda reservado por <strong></strong>.</p>` : ''}
         ${leaseExpiresAt ? `
@@ -398,11 +397,8 @@ async function renderCheckoutPage() {
           </button>
 
           <small>
-            Al continuar, los artículos
-            se retienen temporalmente
-            durante 45 minutos mientras
-            realizás el pago y cargás
-            el comprobante.
+            Al continuar, los artículos quedan reservados durante 2 horas mientras
+            realizás la transferencia y cargás el comprobante.
           </small>
         </form>
 
@@ -834,21 +830,33 @@ function displayOrder(
               </span>
 
               ${
-                item.futureBalancePYG > 0 && remainingBalance > 0
+                item.futureBalancePYG > 0
                   ? `
-                    <span>
-                      Saldo posterior:
-                      ${formatPYG(
-                        item.futureBalancePYG
-                      )}
-                    </span>
+                    ${
+                      remainingBalance > 0
+                        ? `
+                          <span>
+                            Saldo posterior:
+                            ${formatPYG(
+                              item.futureBalancePYG
+                            )}
+                          </span>
 
-                    <span>Pago final: ${DELAYED_FINAL_PAYMENT_WINDOW}</span>
+                          <span>Pago final: ${DELAYED_FINAL_PAYMENT_WINDOW}</span>
+                        `
+                        : ''
+                    }
 
                     <span>Retiro: ${escapeHtml(formatPickupWindow(
                       item.pickupWindowStart,
                       item.pickupWindowEnd
                     ))}</span>
+
+                    ${
+                      remainingBalance === 0
+                        ? '<span>El pago completo no adelanta la fecha de retiro.</span>'
+                        : ''
+                    }
                   `
                   : ''
               }
@@ -861,6 +869,33 @@ function displayOrder(
   const awaitingInitialPayment = order.status === 'AWAITING_INITIAL_PAYMENT';
   const awaitingFinalPayment = order.status === 'DEPOSIT_CONFIRMED' && remainingBalance > 0;
   const receiptReceived = ['RECEIPT_RECEIVED', 'FINAL_RECEIPT_RECEIVED'].includes(order.status);
+  const reservationExpired = order.status === 'RESERVATION_EXPIRED' || order.reservationState === 'EXPIRED';
+
+  if (reservationExpired) {
+    main.innerHTML = `
+      <section class="order-shell">
+        <div class="page-heading">
+          <span class="section-kicker">MI PEDIDO</span>
+          <h1>${escapeHtml(order.id)}</h1>
+          <p>Pedido de ${escapeHtml(order.buyer.name)}</p>
+        </div>
+        <section class="reservation-expired-card" role="alert">
+          <span>RESERVA VENCIDA</span>
+          <h2>Tu reserva venció. No realices la transferencia todavía.</h2>
+          <p>Uno o más artículos ya no están disponibles para renovar este pedido completo. No cargues un comprobante ni transfieras dinero.</p>
+          <p>Consultanos antes de intentar una nueva compra.</p>
+        </section>
+        <section class="checkout-card">
+          <h2>Artículos del pedido</h2>
+          ${items}
+        </section>
+        <a class="secondary-action" href="https://wa.me/595972588347?text=${encodeURIComponent(`Hola, quisiera consultar por la reserva vencida de mi pedido ${order.id}.`)}" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>
+      </section>
+    `;
+    injectCheckoutStyles();
+    return;
+  }
+
   const paymentHistory = payments.map((payment, index) => `
     <article class="payment-history-entry">
       <strong>Comprobante ${index + 1} · ${paymentTypeLabel(payment.type)}</strong>
@@ -901,6 +936,15 @@ function displayOrder(
           ${escapeHtml(status)}
         </strong>
       </div>
+
+      ${awaitingInitialPayment && order.holdExpiresAt ? `
+        <section class="reservation-deadline-card" role="status">
+          <span>RESERVA DEL PEDIDO</span>
+          <strong>Reservado hasta: ${escapeHtml(formatOrderDeadline(order.holdExpiresAt))}</strong>
+          <p>Los artículos están reservados mientras completás la transferencia y enviás el comprobante.</p>
+          ${order.reservationRenewed ? '<p><strong>Tu reserva fue renovada por 2 horas.</strong></p>' : ''}
+        </section>
+      ` : ''}
 
       <div class="checkout-grid">
 
@@ -1346,6 +1390,7 @@ function setupReceiptUpload(
 function orderStatusLabel(status) {
   const labels = {
     CANCELLED: 'Pedido cancelado',
+    RESERVATION_EXPIRED: 'Reserva vencida',
     AWAITING_INITIAL_PAYMENT:
       'Esperando transferencia',
 
@@ -1387,6 +1432,14 @@ function orderStatusLabel(status) {
     labels[status] ||
     status
   );
+}
+
+
+function formatOrderDeadline(value) {
+  return new Date(Number(value)).toLocaleString('es-PY', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
 }
 
 
@@ -1624,6 +1677,36 @@ function injectCheckoutStyles() {
 
     .order-status-card strong {
       font-size: 1.1rem;
+    }
+
+    .reservation-deadline-card,
+    .reservation-expired-card {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 28px;
+      padding: 22px;
+      border-radius: 14px;
+    }
+
+    .reservation-deadline-card {
+      border: 2px solid var(--forest);
+      background: #edf5ef;
+    }
+
+    .reservation-deadline-card > strong {
+      font-size: 1.3rem;
+    }
+
+    .reservation-deadline-card p,
+    .reservation-expired-card p,
+    .reservation-expired-card h2 {
+      margin: 0;
+    }
+
+    .reservation-expired-card {
+      border: 3px solid #9c2f24;
+      background: #fff0ed;
+      color: #6f1f18;
     }
 
     .bank-details {

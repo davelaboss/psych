@@ -4,9 +4,12 @@ const ADMIN_STATE = {
   token: '',
   activeTab: 'overview',
   orders: [],
+  buyerGroups: [],
   inventory: [],
   batches: [],
   stats: {},
+  orderFilter: 'ACTIVE',
+  orderSearch: '',
   inventorySearch: '',
   inventoryBatch: 'ALL',
   inventoryStatus: 'ALL',
@@ -236,6 +239,14 @@ async function fetchAdminOrders(
 }
 
 
+async function fetchBuyerGroups() {
+  const data = await adminFetch(
+    '/api/admin/buyer-groups'
+  );
+  return data.buyerGroups || [];
+}
+
+
 async function fetchLegacyInventory() {
   return adminFetch(
     '/api/admin/legacy-inventory'
@@ -263,14 +274,19 @@ async function loadAdminDashboard() {
     const [
       orders,
       inventoryData,
+      buyerGroups,
     ] =
       await Promise.all([
         fetchAdminOrders(),
         fetchLegacyInventory(),
+        fetchBuyerGroups(),
       ]);
 
     ADMIN_STATE.orders =
       orders;
+
+    ADMIN_STATE.buyerGroups =
+      buyerGroups;
 
     ADMIN_STATE.inventory =
       inventoryData.products || [];
@@ -508,6 +524,14 @@ function renderAdminShell() {
         )}
 
         ${adminTabButton(
+          'buyer-sheets',
+          'Planillas',
+          ADMIN_STATE.buyerGroups.filter(
+            (group) => group.confirmedItems.length > 0
+          ).length
+        )}
+
+        ${adminTabButton(
           'inventory',
           'Inventario',
           ADMIN_STATE.stats
@@ -662,6 +686,14 @@ function renderAdminTab() {
     'batches'
   ) {
     renderBatchesTab();
+    return;
+  }
+
+  if (
+    ADMIN_STATE.activeTab ===
+    'buyer-sheets'
+  ) {
+    renderBuyerSheetsTab();
     return;
   }
 
@@ -3544,15 +3576,113 @@ function renderBatchesTab() {
 }
 
 
+function renderBuyerSheetsTab() {
+  const target = document.getElementById('admin-tab-content');
+  const printable = ADMIN_STATE.buyerGroups.filter(
+    (group) => group.confirmedItems.length > 0
+  );
+
+  target.innerHTML = `
+    <section class="admin-content-v2 buyer-sheets-view">
+      <div class="admin-section-heading-v2">
+        <div>
+          <span class="section-kicker">PLANILLAS DE INVENTARIO</span>
+          <h2>Artículos confirmados por comprador</h2>
+          <p>Los pedidos se agrupan por comprador asignado. La coincidencia de teléfono por sí sola no combina personas.</p>
+        </div>
+        <strong>${printable.length} planilla${printable.length === 1 ? '' : 's'}</strong>
+      </div>
+
+      <div class="buyer-sheet-list">
+        ${printable.length ? printable.map((group) => `
+          <article class="buyer-sheet" data-buyer-sheet="${adminEscapeAttribute(group.buyerGroupId)}">
+            <header>
+              <span>COMPRADOR</span>
+              <h2>${adminEscape(group.displayName)}</h2>
+              <strong>${adminEscape(group.displayPhone || 'Sin teléfono')}</strong>
+              <small>Grupo ${adminEscape(group.buyerGroupId)}</small>
+            </header>
+
+            <p>Pedidos vinculados: ${group.orders.map((order) => adminEscape(order.id)).join(', ')}</p>
+
+            <table>
+              <thead><tr><th>Artículo</th><th>Descripción</th><th>Cantidad</th><th>Pedido</th></tr></thead>
+              <tbody>
+                ${group.confirmedItems.map((item) => `
+                  <tr>
+                    <td>${adminEscape(adminFormatItem(item.itemNumber))}</td>
+                    <td>${adminEscape(item.title)}</td>
+                    <td>${Number(item.quantity || 0)}</td>
+                    <td>${adminEscape(item.orderId)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+
+            <button class="primary-action buyer-sheet-print" type="button" data-print-buyer-sheet="${adminEscapeAttribute(group.buyerGroupId)}">
+              Imprimir planilla
+            </button>
+          </article>
+        `).join('') : '<div class="admin-empty-v2">Todavía no hay artículos confirmados para imprimir.</div>'}
+      </div>
+    </section>
+  `;
+
+  target.querySelectorAll('[data-print-buyer-sheet]').forEach((button) => {
+    button.addEventListener('click', () => printBuyerSheet(
+      button.getAttribute('data-print-buyer-sheet')
+    ));
+  });
+}
+
+
+function printBuyerSheet(buyerGroupId) {
+  const sheet = document.querySelector(
+    `[data-buyer-sheet="${CSS.escape(buyerGroupId)}"]`
+  );
+  if (!sheet) return;
+  document.body.classList.add('printing-buyer-sheet');
+  sheet.classList.add('is-print-target');
+  window.addEventListener('afterprint', () => {
+    document.body.classList.remove('printing-buyer-sheet');
+    sheet.classList.remove('is-print-target');
+  }, { once: true });
+  window.print();
+}
+
+
 function renderOrdersTab() {
   const target =
     document.getElementById(
       'admin-tab-content'
     );
 
+  const normalizedSearch = adminNormalizeSearch(
+    ADMIN_STATE.orderSearch
+  );
+
+  const cancelledCount = ADMIN_STATE.orders.filter(
+    (order) => order.status === 'CANCELLED'
+  ).length;
+
+  const visibleOrders = ADMIN_STATE.orders.filter(
+    (order) => {
+      if (normalizedSearch) {
+        return adminOrderSearchText(order).includes(
+          normalizedSearch
+        );
+      }
+
+      return adminOrderMatchesFilter(
+        order,
+        ADMIN_STATE.orderFilter
+      );
+    }
+  );
+
   const rows =
-    ADMIN_STATE.orders.length
-      ? ADMIN_STATE.orders
+    visibleOrders.length
+      ? visibleOrders
           .map(
             (order) => `
               <article
@@ -3588,17 +3718,25 @@ function renderOrdersTab() {
                 </div>
 
                 <div>
-                  <strong>
-                    ${adminMoney(
-                      order.totals
-                        ?.dueNowPYG
-                    )}
-                  </strong>
+                  <span>
+                    Total del pedido:
+                    <strong>${adminMoney(order.totals?.totalPYG)}</strong>
+                  </span>
 
                   <span>
-                    ${adminStatus(
-                      order.status
-                    )}
+                    Pagado:
+                    <strong>${adminMoney(order.paidAmountPYG || 0)}</strong>
+                  </span>
+
+                  <span>
+                    Saldo:
+                    <strong>${adminMoney(order.remainingBalancePYG ?? order.totals?.totalPYG ?? 0)}</strong>
+                  </span>
+
+                  <span>
+                    ${order.status === 'AWAITING_INITIAL_PAYMENT' && order.holdExpiresAt
+                      ? `Esperando transferencia - reservado hasta ${adminEscape(adminOrderDeadline(order.holdExpiresAt))}`
+                      : adminStatus(order.status)}
                   </span>
                 </div>
 
@@ -3630,7 +3768,9 @@ function renderOrdersTab() {
           .join('')
       : `
         <div class="admin-empty-v2">
-          Todavía no hay pedidos en este entorno.
+          ${ADMIN_STATE.orders.length
+            ? 'No hay pedidos que coincidan con esta búsqueda o filtro.'
+            : 'Todavía no hay pedidos en este entorno.'}
         </div>
       `;
 
@@ -3662,6 +3802,44 @@ function renderOrdersTab() {
         </strong>
       </div>
 
+      <div class="admin-order-tools-v2">
+        <label class="admin-search-v2">
+          <span>Buscar pedido o cliente</span>
+          <input
+            type="search"
+            value="${adminEscapeAttribute(ADMIN_STATE.orderSearch)}"
+            placeholder="N.º de pedido, nombre, teléfono o email"
+            data-admin-order-search
+          >
+        </label>
+
+        <div class="admin-order-filters-v2" aria-label="Filtrar pedidos por estado">
+          ${[
+            ['ACTIVE', 'Activos'],
+            ['WAITING', 'Esperando pago'],
+            ['RECEIPT', 'Comprobante recibido'],
+            ['PAID', 'Pagados'],
+            ['CANCELLED', 'Cancelados'],
+            ['ALL', 'Todos'],
+          ].map(([value, label]) => `
+            <button
+              class="${ADMIN_STATE.orderFilter === value ? 'primary-action' : 'secondary-action'}"
+              type="button"
+              data-admin-order-filter="${value}"
+              aria-pressed="${ADMIN_STATE.orderFilter === value}"
+            >
+              ${label}
+            </button>
+          `).join('')}
+        </div>
+
+        ${ADMIN_STATE.orderFilter === 'CANCELLED'
+          ? `<button class="secondary-action" type="button" data-admin-cancelled-toggle="ACTIVE">Ocultar pedidos cancelados</button>`
+          : ADMIN_STATE.orderFilter === 'ALL'
+            ? ''
+            : `<button class="secondary-action" type="button" data-admin-cancelled-toggle="CANCELLED">Mostrar pedidos cancelados (${cancelledCount})</button>`}
+      </div>
+
       <div class="admin-order-list-v2">
         ${rows}
       </div>
@@ -3691,6 +3869,82 @@ function renderOrdersTab() {
         );
       }
     );
+
+  target
+    .querySelector('[data-admin-order-search]')
+    ?.addEventListener('input', function (event) {
+      ADMIN_STATE.orderSearch = event.target.value;
+      renderOrdersTab();
+      const input = document.querySelector('[data-admin-order-search]');
+      input?.focus();
+      input?.setSelectionRange(input.value.length, input.value.length);
+    });
+
+  target
+    .querySelectorAll('[data-admin-order-filter]')
+    .forEach((button) => {
+      button.addEventListener('click', function () {
+        ADMIN_STATE.orderFilter = button.getAttribute('data-admin-order-filter');
+        renderOrdersTab();
+      });
+    });
+
+  target
+    .querySelector('[data-admin-cancelled-toggle]')
+    ?.addEventListener('click', function (event) {
+      ADMIN_STATE.orderFilter = event.currentTarget.getAttribute('data-admin-cancelled-toggle');
+      ADMIN_STATE.orderSearch = '';
+      renderOrdersTab();
+    });
+}
+
+
+function adminNormalizeSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+
+function adminOrderSearchText(order) {
+  return adminNormalizeSearch([
+    order.id,
+    order.buyer?.name,
+    order.buyer?.phone,
+    order.buyer?.email,
+  ].join(' '));
+}
+
+
+function adminOrderMatchesFilter(order, filter) {
+  const status = order.status;
+
+  const groups = {
+    ACTIVE: status !== 'CANCELLED',
+    WAITING: [
+      'AWAITING_INITIAL_PAYMENT',
+      'DEPOSIT_CONFIRMED',
+      'BALANCE_DUE',
+    ].includes(status),
+    RECEIPT: [
+      'RECEIPT_RECEIVED',
+      'FINAL_RECEIPT_RECEIVED',
+      'VERIFYING_PAYMENT',
+    ].includes(status),
+    PAID: [
+      'PAYMENT_CONFIRMED',
+      'PAID_IN_FULL',
+      'READY_TO_SCHEDULE',
+      'PICKUP_SCHEDULED',
+      'PICKED_UP',
+    ].includes(status),
+    CANCELLED: status === 'CANCELLED',
+    ALL: true,
+  };
+
+  return groups[filter] ?? groups.ACTIVE;
 }
 
 
@@ -3805,38 +4059,73 @@ function renderAdminOrderDetail(
 ) {
   const items =
     (order.items || [])
-      .map(
-        (item) => `
-          <li>
+      .map((item) => {
+        const delayed = item.saleMode === 'DELAYED';
+        const pickupWindow = adminPickupWindow(item);
+
+        return `
+          <li class="admin-order-item ${delayed ? 'is-delayed' : 'is-immediate'}">
             <strong>${adminEscape(adminFormatItem(item.itemNumber))} · ${adminEscape(item.title)}</strong>
             <br>
             <span>Cantidad: ${item.quantity}</span>
+            <div class="admin-order-item-fulfillment">
+              <strong>${delayed ? 'RETIRO POSTERIOR' : 'RETIRO INMEDIATO'}</strong>
+              ${delayed ? `<span>Seña ${Number(item.depositPercent || 0)}%</span>` : ''}
+              ${delayed && pickupWindow ? `<span>Retiro: ${adminEscape(pickupWindow)}</span>` : ''}
+            </div>
           </li>
-        `
-      )
+        `;
+      })
       .join('');
 
   const payments = order.payments || [];
   const pendingPayment = payments.find(payment => payment.verificationStatus === 'PENDING');
   const paidAmount = Number(order.paidAmountPYG || 0);
   const remainingBalance = Number(order.remainingBalancePYG ?? order.totals?.totalPYG ?? 0);
+  const dueNow = Number(order.totals?.dueNowPYG ?? order.totals?.totalPYG ?? 0);
+  const buyerGroup = ADMIN_STATE.buyerGroups.find(
+    (group) => group.orders.some((candidate) => candidate.id === order.id)
+  );
+  const buyerGroupOrder = buyerGroup?.orders.find(
+    (candidate) => candidate.id === order.id
+  );
+  const otherBuyerGroups = ADMIN_STATE.buyerGroups.filter(
+    (group) => group.buyerGroupId !== buyerGroup?.buyerGroupId
+  );
 
   const canCancel = !order.initialPaymentConfirmedAt &&
-    ['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(order.status);
+    ['AWAITING_INITIAL_PAYMENT', 'RESERVATION_EXPIRED', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(order.status);
 
   const canUploadReceipt = !pendingPayment && remainingBalance > 0 &&
-    ['AWAITING_INITIAL_PAYMENT', 'DEPOSIT_CONFIRMED'].includes(order.status);
+    ['AWAITING_INITIAL_PAYMENT', 'RESERVATION_EXPIRED', 'DEPOSIT_CONFIRMED'].includes(order.status);
 
-  const paymentHistory = payments.map((payment, index) => `
-    <article class="admin-payment-entry">
-      <strong>Comprobante ${index + 1}</strong>
-      <span>${adminPaymentType(payment.type)}</span>
-      <span>${payment.amountPYG == null ? 'Monto pendiente de clasificación' : adminMoney(payment.amountPYG)}</span>
-      <span>${payment.verificationStatus === 'CONFIRMED' ? 'Confirmado' : 'Pendiente de verificación'}</span>
-      ${payment.receipt?.uploadedBy === 'ADMIN' ? '<span>Comprobante cargado por el vendedor</span>' : ''}
-      ${payment.receipt ? `<button class="secondary-action" type="button" data-view-receipt="${adminEscape(payment.id)}">Ver comprobante</button>` : ''}
-    </article>
-  `).join('');
+  const paymentHistory = payments.map((payment, index) => {
+    const expectedAmount = adminExpectedPaymentAmount(
+      order,
+      payment,
+      paidAmount,
+      remainingBalance,
+      dueNow
+    );
+
+    const confirmedAmount = payment.verificationStatus === 'CONFIRMED'
+      ? Number(payment.amountPYG ?? expectedAmount)
+      : 0;
+
+    return `
+      <article class="admin-payment-entry">
+        <strong>Comprobante ${index + 1}</strong>
+        <span>Tipo: <strong>${adminPaymentType(payment.type)}</strong></span>
+        <span>A pagar con este comprobante: <strong>${adminMoney(expectedAmount)}</strong></span>
+        <span>Confirmado con este comprobante: <strong>${adminMoney(confirmedAmount)}</strong></span>
+        <span>Pagado confirmado del pedido: <strong>${adminMoney(paidAmount)}</strong></span>
+        <span>Saldo pendiente del pedido: <strong>${adminMoney(remainingBalance)}</strong></span>
+        <span>${payment.verificationStatus === 'CONFIRMED' ? 'Pago verificado' : 'Pendiente de verificación'}</span>
+        ${payment.receipt?.uploadedBy === 'ADMIN' ? '<span>Comprobante cargado por el vendedor</span>' : ''}
+        ${payment.receipt ? `<button class="secondary-action" type="button" data-view-receipt="${adminEscape(payment.id)}">Ver comprobante</button>` : ''}
+      </article>
+    `;
+  }).join('');
 
   target.innerHTML = `
     <section class="admin-order-detail-v2">
@@ -3889,11 +4178,18 @@ function renderAdminOrderDetail(
           <p>
             Estado:
             <strong>
-              ${adminStatus(
-                order.status
-              )}
+              ${order.status === 'AWAITING_INITIAL_PAYMENT' && order.holdExpiresAt
+                ? `Esperando transferencia - reservado hasta ${adminEscape(adminOrderDeadline(order.holdExpiresAt))}`
+                : adminStatus(order.status)}
             </strong>
           </p>
+
+          ${order.status === 'RESERVATION_EXPIRED' ? `
+            <div class="admin-expired-reservation" role="status">
+              <strong>RESERVA VENCIDA</strong>
+              <span>No indiques al cliente que transfiera hasta recuperar el inventario completo.</span>
+            </div>
+          ` : ''}
 
           <ul>
             ${items}
@@ -3914,7 +4210,17 @@ function renderAdminOrderDetail(
             </div>
 
             <div>
-              <dt>TOTAL PAGADO</dt>
+              <dt>SEÑA / A PAGAR AHORA</dt>
+
+              <dd>
+                ${adminMoney(
+                  dueNow
+                )}
+              </dd>
+            </div>
+
+            <div>
+              <dt>PAGADO CONFIRMADO</dt>
 
               <dd>
                 ${adminMoney(
@@ -3935,6 +4241,39 @@ function renderAdminOrderDetail(
           </dl>
         </div>
       </div>
+
+      <section class="admin-buyer-group-card">
+        <h3>Comprador para planillas de inventario</h3>
+        <p>
+          Grupo actual:
+          <strong>${adminEscape(buyerGroup?.displayName || order.buyer?.name || '')}</strong>
+          · ${adminEscape(buyerGroup?.displayPhone || order.buyer?.phone || '')}
+        </p>
+        <small>
+          ${buyerGroupOrder?.assignmentMode === 'MANUAL_SEPARATE'
+            ? 'Este pedido se mantiene separado por decisión manual.'
+            : buyerGroupOrder?.assignmentMode === 'MANUAL_MERGE'
+              ? 'Este pedido fue combinado manualmente.'
+              : 'Asignación automática conservadora: nombre y teléfono deben coincidir.'}
+        </small>
+        <div class="admin-buyer-group-actions">
+          <select data-buyer-group-target aria-label="Comprador existente">
+            <option value="">Seleccionar comprador existente…</option>
+            ${otherBuyerGroups.map((group) => `
+              <option value="${adminEscapeAttribute(group.buyerGroupId)}">
+                ${adminEscape(group.displayName)} · ${adminEscape(group.displayPhone || 'Sin teléfono')} · ${group.orders.length} pedido${group.orders.length === 1 ? '' : 's'}
+              </option>
+            `).join('')}
+          </select>
+          <button class="secondary-action" type="button" data-buyer-group-merge ${otherBuyerGroups.length ? '' : 'disabled'}>
+            Combinar con comprador existente
+          </button>
+          <button class="text-action" type="button" data-buyer-group-separate>
+            Mantener separado
+          </button>
+        </div>
+        <p class="form-error" data-buyer-group-error hidden></p>
+      </section>
 
       ${order.status === 'CANCELLED' ? '<p role="status"><strong>Pedido cancelado</strong>. Los artículos fueron liberados y volvieron a estar disponibles. El pedido se conserva para consulta.</p>' : ''}
 
@@ -3960,6 +4299,7 @@ function renderAdminOrderDetail(
                   </label>
                   <small>JPEG, PNG, WebP o PDF. Máximo 3 MB.</small>
                   <p>La carga registra el comprobante, pero no confirma el pago.</p>
+                  ${order.status === 'RESERVATION_EXPIRED' ? '<p>Antes de aceptar el archivo, el sistema intentará recuperar todos los artículos de forma atómica.</p>' : ''}
                   <p class="form-error" data-admin-receipt-error hidden></p>
                   <button class="primary-action" type="submit">Cargar comprobante por el cliente</button>
                 </form>
@@ -4051,6 +4391,48 @@ function renderAdminOrderDetail(
       alert(error instanceof Error ? error.message : 'No se pudo cancelar el pedido.');
     }
   });
+
+  target.querySelector('[data-buyer-group-merge]')?.addEventListener('click', async function () {
+    const targetBuyerGroupId = target.querySelector('[data-buyer-group-target]')?.value;
+    if (!targetBuyerGroupId) {
+      const errorBox = target.querySelector('[data-buyer-group-error]');
+      errorBox.textContent = 'Seleccioná un comprador existente.';
+      errorBox.hidden = false;
+      return;
+    }
+    await updateBuyerGroupAssignment(order.id, 'MERGE', targetBuyerGroupId, target);
+  });
+
+  target.querySelector('[data-buyer-group-separate]')?.addEventListener('click', async function () {
+    await updateBuyerGroupAssignment(order.id, 'SEPARATE', null, target);
+  });
+}
+
+
+async function updateBuyerGroupAssignment(orderId, action, targetBuyerGroupId, detailTarget) {
+  const errorBox = detailTarget.querySelector('[data-buyer-group-error]');
+  if (errorBox) errorBox.hidden = true;
+  detailTarget.querySelectorAll('[data-buyer-group-merge], [data-buyer-group-separate]').forEach(
+    (button) => { button.disabled = true; }
+  );
+  try {
+    const result = await adminFetch('/api/admin/assign-buyer-group', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ orderId, action, targetBuyerGroupId }),
+    });
+    ADMIN_STATE.buyerGroups = result.buyerGroups || [];
+    renderOrdersTab();
+    await openAdminOrder(orderId);
+  } catch (error) {
+    detailTarget.querySelectorAll('[data-buyer-group-merge], [data-buyer-group-separate]').forEach(
+      (button) => { button.disabled = false; }
+    );
+    if (errorBox) {
+      errorBox.textContent = error instanceof Error ? error.message : 'No se pudo guardar el comprador.';
+      errorBox.hidden = false;
+    }
+  }
 }
 
 async function loadUpcomingPickups() {
@@ -4317,6 +4699,7 @@ function adminStatus(
 ) {
   const labels = {
     CANCELLED: 'Pedido cancelado',
+    RESERVATION_EXPIRED: 'RESERVA VENCIDA',
     AWAITING_INITIAL_PAYMENT:
       'Esperando transferencia',
 
@@ -4936,6 +5319,22 @@ function injectAdminStyles() {
       color: var(--muted);
     }
 
+    .admin-order-tools-v2 {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .admin-order-tools-v2 .admin-search-v2 {
+      margin-bottom: 0;
+    }
+
+    .admin-order-filters-v2 {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
     .admin-inline-detail {
       grid-column: 1 / -1;
       margin: 0 -16px -16px;
@@ -4959,6 +5358,31 @@ function injectAdminStyles() {
       gap: 28px;
     }
 
+    .admin-order-item {
+      margin-bottom: 12px;
+      padding: 12px;
+      border-left: 4px solid var(--forest);
+      background: #fffdfa;
+    }
+
+    .admin-order-item.is-delayed {
+      border-left-color: #b27622;
+      background: #fff8e7;
+    }
+
+    .admin-order-item-fulfillment {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      margin-top: 8px;
+      font-size: 10px;
+      letter-spacing: .02em;
+    }
+
+    .admin-order-item.is-delayed .admin-order-item-fulfillment strong {
+      color: #85530d;
+    }
+
     .order-detail-actions {
       display: flex;
       flex-wrap: wrap;
@@ -4980,6 +5404,111 @@ function injectAdminStyles() {
       border: 1px solid var(--line);
       border-radius: 10px;
       background: #fffdfa;
+    }
+
+    .admin-buyer-group-card {
+      margin-top: 18px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fffdfa;
+    }
+
+    .admin-buyer-group-card h3 {
+      margin: 0 0 8px;
+    }
+
+    .admin-expired-reservation {
+      display: grid;
+      gap: 6px;
+      margin: 14px 0;
+      padding: 14px;
+      border: 2px solid #9c2f24;
+      border-radius: 9px;
+      background: #fff0ed;
+      color: #6f1f18;
+    }
+
+    .admin-buyer-group-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .admin-buyer-group-actions select {
+      flex: 1 1 320px;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      padding: 9px 11px;
+    }
+
+    .buyer-sheet-list {
+      display: grid;
+      gap: 18px;
+    }
+
+    .buyer-sheet {
+      border: 2px solid var(--forest);
+      border-radius: 12px;
+      background: #fff;
+      padding: 24px;
+    }
+
+    .buyer-sheet header span,
+    .buyer-sheet header small {
+      display: block;
+      color: var(--muted);
+    }
+
+    .buyer-sheet header h2 {
+      margin: 5px 0;
+      font-family: Georgia, serif;
+      font-size: 34px;
+      font-weight: 500;
+    }
+
+    .buyer-sheet header > strong {
+      display: block;
+      font-size: 24px;
+    }
+
+    .buyer-sheet table {
+      width: 100%;
+      margin: 18px 0;
+      border-collapse: collapse;
+    }
+
+    .buyer-sheet th,
+    .buyer-sheet td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 8px;
+      text-align: left;
+    }
+
+    @media print {
+      body.printing-buyer-sheet * {
+        visibility: hidden !important;
+      }
+
+      body.printing-buyer-sheet .buyer-sheet.is-print-target,
+      body.printing-buyer-sheet .buyer-sheet.is-print-target * {
+        visibility: visible !important;
+      }
+
+      body.printing-buyer-sheet .buyer-sheet.is-print-target {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        border: 0;
+        padding: 0;
+      }
+
+      body.printing-buyer-sheet .buyer-sheet-print {
+        display: none !important;
+      }
     }
 
     .admin-empty-v2,
@@ -5200,6 +5729,64 @@ function injectAdminStyles() {
   document.head.appendChild(
     style
   );
+}
+
+
+function adminOrderDeadline(value) {
+  return new Date(Number(value)).toLocaleString('es-PY', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+
+function adminExpectedPaymentAmount(
+  order,
+  payment,
+  paidAmount,
+  remainingBalance,
+  dueNow
+) {
+  if (payment.amountPYG != null) {
+    return Number(payment.amountPYG || 0);
+  }
+
+  if (payment.type === 'FULL') {
+    return Number(order.totals?.totalPYG || 0);
+  }
+
+  if (payment.type === 'DEPOSIT') {
+    return dueNow;
+  }
+
+  if (payment.type === 'FINAL' || paidAmount > 0) {
+    return remainingBalance;
+  }
+
+  return dueNow;
+}
+
+
+function adminPickupWindow(item) {
+  if (!item.pickupWindowStart || !item.pickupWindowEnd) {
+    return '';
+  }
+
+  const start = new Date(`${item.pickupWindowStart}T12:00:00`);
+  const end = new Date(`${item.pickupWindowEnd}T12:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return `${item.pickupWindowStart}–${item.pickupWindowEnd}`;
+  }
+
+  const startDay = start.toLocaleDateString('es-PY', { day: 'numeric' });
+  const endText = end.toLocaleDateString('es-PY', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  return `${startDay}–${endText}`;
 }
 
 

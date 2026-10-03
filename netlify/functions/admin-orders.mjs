@@ -39,6 +39,12 @@ export default async function handler(request) {
         status:
           order.status,
 
+        holdExpiresAt:
+          order.holdExpiresAt || null,
+
+        reservationState:
+          order.reservationState || null,
+
         buyer: {
           name:
             order.buyer?.name || '',
@@ -52,6 +58,12 @@ export default async function handler(request) {
 
         totals:
           order.totals,
+
+        paidAmountPYG:
+          order.paidAmountPYG,
+
+        remainingBalancePYG:
+          order.remainingBalancePYG,
 
         itemCount:
           (order.items || []).reduce(
