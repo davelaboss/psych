@@ -38,11 +38,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     <section className="product-detail">
       <ProductImageGallery images={product.images} title={product.title} isDemo={product.isDemo} status={product.status} />
       <div className="product-information">
-        <div className="product-meta detail-meta"><span>{product.isDemo ? product.category : `${formatItemNumber(product.itemNumber)} · ${product.category}`}</span>{product.status === 'AVAILABLE' ? <span className={product.saleMode === 'IMMEDIATE' ? 'status-now' : 'status-later'}>{product.saleMode === 'IMMEDIATE' ? 'DISPONIBLE AHORA' : 'RETIRO 9–12 DIC.'}</span> : <span className="status-unavailable">{publicStatusLabel(product.status).toUpperCase()}</span>}</div>
-        <h1>{product.title}</h1>
-        {product.originalPricePYG ? <del>{formatPYG(product.originalPricePYG)}</del> : null}
-        <strong className="detail-price">{formatPYG(product.askingPricePYG)}{(product.quantityTotal ?? 1) > 1 ? ' por unidad' : ''}</strong>
-        {(product.quantityTotal ?? 1) > 1 ? <p>{product.quantityRemaining} unidades disponibles</p> : null}
+        <div className="product-summary">
+          <div className="product-meta detail-meta"><span>{product.isDemo ? product.category : `${formatItemNumber(product.itemNumber)} · ${product.category}`}</span>{product.status === 'AVAILABLE' ? <span className={product.saleMode === 'IMMEDIATE' ? 'status-now' : 'status-later'}>{product.saleMode === 'IMMEDIATE' ? 'DISPONIBLE AHORA' : 'RETIRO 9–12 DIC.'}</span> : <span className="status-unavailable">{publicStatusLabel(product.status).toUpperCase()}</span>}</div>
+          <h1>{product.title}</h1>
+          {product.originalPricePYG ? <del>{formatPYG(product.originalPricePYG)}</del> : null}
+          <strong className="detail-price">{formatPYG(product.askingPricePYG)}{(product.quantityTotal ?? 1) > 1 ? ' por unidad' : ''}</strong>
+          {(product.quantityTotal ?? 1) > 1 ? <p>{product.quantityRemaining} unidades disponibles</p> : null}
+        </div>
         <p className="lead">{product.description}</p>
 
         <div className="payment-breakdown">

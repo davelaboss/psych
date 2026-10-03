@@ -523,8 +523,15 @@ select, textarea { font: inherit; color: var(--ink); }
   .shelf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .how-it-works, .faq { grid-template-columns: 1fr; gap: 30px; }
   .faq-intro { position: static; }
-  .product-detail, .product-notes { grid-template-columns: 1fr; }
-  .product-information { position: static; }
+  .product-detail { display: flex; flex-direction: column; gap: 24px; }
+  .product-notes { grid-template-columns: 1fr; }
+  .product-information { display: contents; position: static; }
+  .product-summary { order: 1; }
+  .product-gallery { order: 2; }
+  .product-actions { order: 3; }
+  .payment-breakdown { order: 4; margin: 0; }
+  .product-information > .lead { order: 5; margin: 0; }
+  .reservation-rule { order: 6; margin: 0; }
   .product-notes { gap: 22px; }
   .cart-layout, .checkout-layout { grid-template-columns: 1fr; }
   .cart-summary, .checkout-summary { position: static; order: -1; }

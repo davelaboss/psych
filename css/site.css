@@ -37,3 +37,5 @@
 .product-card .card-availability{flex:none;align-content:flex-start}
 
 .cart-lease-countdown{margin:12px 0;padding:11px 13px;border-radius:7px;background:#263d32;color:#fff;font-size:12px;font-weight:700}.cart-lease-countdown strong{float:right;font-variant-numeric:tabular-nums;font-size:16px}
+
+@media (max-width:820px){.product-detail{display:flex;flex-direction:column;gap:24px}.product-notes{grid-template-columns:1fr}.product-information{display:contents;position:static}.product-summary{order:1}.product-gallery{order:2}.product-actions{order:3}.payment-breakdown{order:4;margin:0}.product-information>.lead{order:5;margin:0}.reservation-rule{order:6;margin:0}}

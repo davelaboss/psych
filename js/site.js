@@ -231,6 +231,7 @@ function renderProductDetail(product) {
         </div>
 
         <div class="product-information">
+          <div class="product-summary">
 
           <div class="product-meta detail-meta">
             <span>
@@ -268,6 +269,8 @@ function renderProductDetail(product) {
               ? `<p>${product.quantityRemaining} unidades disponibles</p>`
               : ''
           }
+
+          </div>
 
           <p class="lead">
             ${escapeHtml(product.description).replace(/\\n/g, '<br>')}
