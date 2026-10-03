@@ -2090,6 +2090,10 @@ function renderPublicAdminForm(
       product.knownDefects
     )}
 
+    <p class="admin-editor-guidance">
+      Indicá en la descripción pública los defectos importantes conocidos, por ejemplo: grietas, astillas, rayones, manchas, piezas faltantes, daños visibles o desgaste significativo, aunque también se vean en las fotos.
+    </p>
+
     ${adminEditorTextarea(
       'Incluye — una línea por elemento',
       'includedAccessories',
@@ -5615,6 +5619,13 @@ function injectAdminStyles() {
       gap: 5px;
       font-size: 10px;
       font-weight: 800;
+    }
+
+    .admin-editor-guidance {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
     }
 
     .admin-data-editor input,

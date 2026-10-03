@@ -13,6 +13,8 @@ import {
   writeNewOrder,
 } from './_shared/commerce.mjs';
 
+const FINAL_SALE_POLICY_VERSION = '2026-10-02-v1';
+
 
 export default async function handler(request) {
   if (request.method !== 'POST') {
@@ -34,6 +36,14 @@ export default async function handler(request) {
     }
 
     const body = await request.json();
+
+    if (body?.finalSaleAcknowledged !== true ||
+        body?.finalSalePolicyVersion !== FINAL_SALE_POLICY_VERSION) {
+      return jsonResponse(
+        { error: 'Debés aceptar la política de venta final antes de crear el pedido.' },
+        400
+      );
+    }
 
     const name =
       String(body?.buyer?.name || '').trim();
@@ -317,6 +327,10 @@ export default async function handler(request) {
       paidAmountPYG: 0,
       remainingBalancePYG: total,
       pickup: null,
+      finalSaleAcknowledgment: {
+        policyVersion: FINAL_SALE_POLICY_VERSION,
+        acknowledgedAt: now,
+      },
     };
 
     const attempt = await transitionCartLeaseToOrder({

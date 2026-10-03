@@ -448,6 +448,10 @@ Examples of material that belongs in admin/internal context rather than public c
 
 Public known-defect fields must contain actual confirmed defects, not tasks to investigate later.
 
+Known meaningful defects such as cracks, chips, scratches, stains, missing pieces, visible damage, or significant wear must be stated in the written public product description when known, even when they are also visible in the photos. Existing listings are not automatically rewritten; apply this standard through the supported product-review and admin workflow.
+
+The words `usado/usada/usados/usadas` remain prohibited as individual product-condition labels. The approved sitewide final-sale policy may state that most articles are used.
+
 ---
 
 # 11. COMPLETED AND VERIFIED — UNIFIED CATALOG

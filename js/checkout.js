@@ -339,6 +339,13 @@ async function renderCheckoutPage() {
           id="checkout-form"
           class="checkout-card"
         >
+          <section class="final-sale-policy" aria-labelledby="checkout-final-sale-title">
+            <h2 id="checkout-final-sale-title">Todas las ventas son finales.</h2>
+            <p>La mayoría de los artículos son usados y se venden en el estado en que se encuentran, según las fotos y la descripción publicada. Al retirar tu compra, por favor revisá el artículo antes de llevártelo. Una vez que el artículo sale de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</p>
+            <p>${NO_DELIVERY_NOTICE}</p>
+            ${items.some(({ product }) => product.saleMode === 'DELAYED') ? `<p>${DELAYED_PICKUP_NOTICE}</p>` : ''}
+          </section>
+
           <label>
             <span>
               Nombre y apellido
@@ -350,6 +357,16 @@ async function renderCheckoutPage() {
               autocomplete="name"
               required
             >
+          </label>
+
+          <label class="final-sale-acknowledgment">
+            <input
+              type="checkbox"
+              name="finalSaleAcknowledged"
+              value="true"
+              required
+            >
+            <span>Entiendo que la mayoría de los artículos son usados y que todas las ventas son finales. Revisaré los artículos al retirarlos y entiendo que, una vez retirados del domicilio, no se aceptan devoluciones, cambios ni reembolsos.</span>
           </label>
 
           <label>
@@ -500,6 +517,12 @@ async function renderCheckoutPage() {
         const data =
           new FormData(form);
 
+        if (data.get('finalSaleAcknowledged') !== 'true') {
+          errorBox.textContent = 'Debés aceptar la política de venta final antes de crear el pedido.';
+          errorBox.hidden = false;
+          return;
+        }
+
         button.disabled = true;
 
         button.textContent =
@@ -544,6 +567,9 @@ async function renderCheckoutPage() {
                     },
 
                     checkoutId,
+
+                    finalSaleAcknowledged: true,
+                    finalSalePolicyVersion: FINAL_SALE_POLICY_VERSION,
 
                     items:
                       items.map(
@@ -937,6 +963,13 @@ function displayOrder(
         </strong>
       </div>
 
+      <section class="checkout-card final-sale-policy" aria-labelledby="order-final-sale-title">
+        <h2 id="order-final-sale-title">Todas las ventas son finales.</h2>
+        <p>La mayoría de los artículos son usados y se venden en el estado en que se encuentran, según las fotos y la descripción publicada. Al retirar tu compra, por favor revisá el artículo antes de llevártelo. Una vez que el artículo sale de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</p>
+        <p>${NO_DELIVERY_NOTICE}</p>
+        ${order.items.some((item) => item.saleMode === 'DELAYED') ? `<p>${DELAYED_PICKUP_NOTICE}</p>` : ''}
+      </section>
+
       ${awaitingInitialPayment && order.holdExpiresAt ? `
         <section class="reservation-deadline-card" role="status">
           <span>RESERVA DEL PEDIDO</span>
@@ -1082,6 +1115,11 @@ async function setupPickupScheduler(order, access) {
     const appointment = data.appointment?.status === 'SCHEDULED' ? data.appointment : null;
     const current = appointment?.slotKey ? appointment.slotKey.replace('|', ' · ') : '';
     target.innerHTML = `<h2>Retiro</h2>
+      <div class="pickup-policy-reminder">
+        <strong>Antes de retirarte con los artículos, revisalos y asegurate de estar conforme. Una vez retirados del domicilio, la venta es final.</strong>
+        <span>${NO_DELIVERY_NOTICE}</span>
+        ${order.items.some((item) => item.saleMode === 'DELAYED') ? `<span>${DELAYED_PICKUP_NOTICE}</span>` : ''}
+      </div>
       ${appointment ? `<p><strong>Horario confirmado:</strong> ${escapeHtml(current)}</p>` : ''}
       ${data.eligible ? `<form id="pickup-scheduler-form">
         <label for="pickup-slot">${appointment ? 'Cambiar horario' : 'Elegí un horario'}</label>
@@ -1568,6 +1606,44 @@ function injectCheckoutStyles() {
     .checkout-card {
       display: grid;
       gap: 18px;
+    }
+
+    .final-sale-policy,
+    .pickup-policy-reminder {
+      display: grid;
+      gap: 9px;
+      border: 2px solid var(--clay);
+      border-radius: 12px;
+      background: #fff8f4;
+      padding: 18px;
+    }
+
+    .final-sale-policy h2,
+    .final-sale-policy p {
+      margin: 0;
+    }
+
+    .final-sale-acknowledgment {
+      grid-template-columns: 22px 1fr;
+      align-items: start;
+      gap: 12px !important;
+      border: 2px solid var(--forest);
+      border-radius: 12px;
+      background: #f3faf6;
+      padding: 16px;
+      font-weight: 700;
+      line-height: 1.5;
+    }
+
+    .checkout-card .final-sale-acknowledgment input {
+      width: 20px;
+      min-height: 20px;
+      margin: 2px 0 0;
+      padding: 0;
+    }
+
+    .pickup-policy-reminder span {
+      display: block;
     }
 
     .checkout-card label,

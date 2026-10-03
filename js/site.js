@@ -2,6 +2,10 @@
 
 const STATIC_CART_KEY = 'mudanza-demo-cart';
 const DELAYED_FINAL_PAYMENT_WINDOW = '1–8 diciembre 2026';
+const FINAL_SALE_POLICY_VERSION = '2026-10-02-v1';
+const FINAL_SALE_SHORT_NOTICE = 'Importante: La mayoría de los artículos son usados. Todas las ventas son finales.';
+const NO_DELIVERY_NOTICE = 'No realizamos entregas. El comprador debe retirar su compra en nuestro domicilio en la fecha correspondiente.';
+const DELAYED_PICKUP_NOTICE = 'Aunque el artículo esté pagado, si está marcado para retiro posterior deberá permanecer con nosotros hasta la fecha de retiro indicada.';
 window.__staticCartReady = syncStaticCartFromServer({ migrateLegacy: true });
 
 window.addEventListener('load', async function () {
@@ -387,6 +391,13 @@ function renderProductDetail(product) {
             el pago correspondiente.
           </p>
 
+          <div class="pickup-confirm final-sale-notice">
+            <strong>Todas las ventas son finales.</strong>
+            <span>La mayoría de los artículos son usados y se venden en el estado en que se encuentran, según las fotos y la descripción publicada. Al retirar tu compra, por favor revisá el artículo antes de llevártelo. Una vez que el artículo sale de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</span>
+            <span>${NO_DELIVERY_NOTICE}</span>
+            ${product.saleMode === 'DELAYED' ? `<span>${DELAYED_PICKUP_NOTICE}</span>` : ''}
+          </div>
+
         </div>
       </div>
 
@@ -475,7 +486,8 @@ function renderProductDetail(product) {
             <ul>
               <li>Retiro personal en San Lorenzo, Barrio Santo Tomás.</li>
               <li>El comprador organiza y cubre el transporte.</li>
-              <li>No hacemos delivery ni envíos.</li>
+              <li>${NO_DELIVERY_NOTICE}</li>
+              <li>Antes de retirarte con los artículos, revisalos y asegurate de estar conforme. Una vez retirados del domicilio, la venta es final.</li>
             </ul>
           </div>
         </div>
@@ -615,7 +627,13 @@ async function renderCartPage() {
 
         <div class="pickup-confirm">
           <strong>Retiro únicamente</strong>
-          <span>No ofrecemos delivery ni envíos.</span>
+          <span>${NO_DELIVERY_NOTICE}</span>
+        </div>
+
+        <div class="pickup-confirm final-sale-notice">
+          <strong>${FINAL_SALE_SHORT_NOTICE}</strong>
+          <span>Revisá los artículos al retirarlos. Una vez que salen de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</span>
+          ${products.some((product) => product.saleMode === 'DELAYED') ? `<span>${DELAYED_PICKUP_NOTICE}</span>` : ''}
         </div>
 
         ${
