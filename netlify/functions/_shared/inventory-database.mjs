@@ -1,7 +1,7 @@
 import { getDatabase } from '@netlify/database';
 import { createHash } from 'node:crypto';
 import { withPaymentState } from './order-payments.mjs';
-import { queueSellerNotification } from './seller-notifications.mjs';
+import { queueOrderNotifications } from './seller-notifications.mjs';
 
 const RESERVED = 'Este artículo está temporalmente reservado por otro comprador.';
 const EXPIRED = 'La reserva temporal venció y este artículo volvió a estar disponible.';
@@ -253,7 +253,7 @@ export async function transitionCartLeaseToOrder({ cartSessionId, checkoutId, or
       [cartSessionId, orderId, expiresAt]);
     await scheduleOrderReservationEvents(client, orderId, expiresAt);
     await client.query('UPDATE cart_sessions SET expires_at=NULL,expired_at=NULL WHERE session_id=$1', [cartSessionId]);
-    await queueSellerNotification(client, { key: `order:${orderId}`, order: snapshot, type: 'ORDER_CREATED' });
+    await queueOrderNotifications(client, { key: `order:${orderId}`, order: snapshot, type: 'ORDER_CREATED' });
     return attempt(inserted);
   });
 }
@@ -362,7 +362,7 @@ export async function recordOrderReceipt(orderId, receipt) {
     await cancelOrderReservationEvents(client, orderId);
     await client.query('UPDATE checkout_attempts SET order_snapshot=$2,expires_at=NULL,projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1',
       [orderId, JSON.stringify(snapshot)]);
-    await queueSellerNotification(client, { key: `receipt:${payment.id}`, order: snapshot,
+    await queueOrderNotifications(client, { key: `receipt:${payment.id}`, order: snapshot,
       type: row.committed_at ? 'FINAL_RECEIPT_UPLOADED' : 'RECEIPT_UPLOADED' });
     return snapshot;
   });
@@ -424,6 +424,8 @@ export async function confirmOrderPayment(orderId, paymentId, requestedType) {
       ...(type === 'FINAL' ? { finalPaymentConfirmedAt: timestamp } : {}), updatedAt: timestamp };
     await client.query('UPDATE checkout_attempts SET committed_at=COALESCE(committed_at,$2),order_snapshot=$3,projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1',
       [orderId, new Date(timestamp), JSON.stringify(snapshot)]);
+    await queueOrderNotifications(client, { key: `payment:${existing.id}`, order: snapshot,
+      type: 'PAYMENT_CONFIRMED', details: { paymentType: type } });
     return snapshot;
   });
 }

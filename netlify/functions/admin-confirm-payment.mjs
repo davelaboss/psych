@@ -4,6 +4,7 @@ import {
   getOrder,
   jsonResponse,
 } from './_shared/commerce.mjs';
+import { dispatchSellerNotificationsSafely } from './_shared/seller-notifications.mjs';
 
 
 export default async function handler(request) {
@@ -78,6 +79,7 @@ export default async function handler(request) {
     }
 
     const updated = await getOrder(orderId);
+    await dispatchSellerNotificationsSafely();
 
     const safeOrder = {
       ...updated,

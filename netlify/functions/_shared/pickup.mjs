@@ -1,6 +1,6 @@
 import { database, inventoryTransaction } from './inventory-database.mjs';
 import { PICKUP_RULES } from './commerce.mjs';
-import { queueSellerNotification } from './seller-notifications.mjs';
+import { queueOrderNotifications } from './seller-notifications.mjs';
 
 const conflict = message => Object.assign(new Error(message), { status: 409 });
 const windows = PICKUP_RULES.mainPickup;
@@ -75,7 +75,7 @@ export async function changePickup({ orderId, slotKey, actor }) {
       VALUES($1,$2,$3,$4) ON CONFLICT(order_id) DO UPDATE SET slot_key=EXCLUDED.slot_key,
       status=EXCLUDED.status,changed_by=EXCLUDED.changed_by,revision=pickup_appointments.revision+1,
       updated_at=clock_timestamp() RETURNING *`, [orderId, slotKey, slotKey ? 'SCHEDULED' : 'CANCELLED', actor])).rows[0];
-    await queueSellerNotification(client, {
+    await queueOrderNotifications(client, {
       key: `pickup:${orderId}:${row.revision}`, order,
       type: oldKey ? 'PICKUP_CHANGED' : 'PICKUP_SCHEDULED',
       details: { oldSlot: oldKey, slot: slotKey, actor },
