@@ -1,6 +1,7 @@
 import { catalogBatchProducts } from './volume2-public.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
+import { dispatchSellerNotificationsSafely } from './seller-notifications.mjs';
 
 export const SALES_OPEN_AT =
   Date.parse('2026-10-01T00:00:00-03:00');
@@ -459,6 +460,7 @@ export async function writeNewOrder(order) {
   try {
     const recovered = await recoverOrderBlob(order.id);
     if (!recovered) throw new Error('No encontramos la reserva del pedido.');
+    await dispatchSellerNotificationsSafely();
     return withPaymentState(recovered);
   } catch (error) {
     const failure = new Error('El pedido quedó reservado y se puede recuperar reintentando la compra.');

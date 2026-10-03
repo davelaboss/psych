@@ -3,6 +3,7 @@ import {
   receiptStore,
   recordOrderReceipt,
 } from './commerce.mjs';
+import { dispatchSellerNotificationsSafely } from './seller-notifications.mjs';
 
 export const MAX_RECEIPT_SIZE = 3_000_000;
 
@@ -49,6 +50,8 @@ export async function attachOrderReceipt({ orderId, file, uploadedBy }) {
     await receiptStore().delete(receiptKey);
     throw uploadError('Este pedido ya no puede recibir otro comprobante.', 409);
   }
+
+  await dispatchSellerNotificationsSafely();
 
   return getOrder(orderId);
 }

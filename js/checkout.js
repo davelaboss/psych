@@ -996,6 +996,11 @@ function displayOrder(
 
       </div>
 
+      <section class="checkout-card" id="pickup-scheduler" aria-live="polite">
+        <h2>Retiro</h2>
+        <p>Cargando horarios de retiro…</p>
+      </section>
+
       <a
         class="secondary-action"
         target="_blank"
@@ -1011,12 +1016,61 @@ function displayOrder(
 
   injectCheckoutStyles();
 
+  setupPickupScheduler(order, access);
+
   if (awaitingInitialPayment || awaitingFinalPayment) {
     setupBankAliasCopy(order.bank?.alias);
     setupReceiptUpload(
       order,
       access
     );
+  }
+}
+
+async function setupPickupScheduler(order, access) {
+  const target = document.getElementById('pickup-scheduler');
+  if (!target) return;
+  try {
+    const query = new URLSearchParams({ id: order.id, access });
+    const response = await fetch(`/api/orders/pickup?${query}`, { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los horarios.');
+    const appointment = data.appointment?.status === 'SCHEDULED' ? data.appointment : null;
+    const current = appointment?.slotKey ? appointment.slotKey.replace('|', ' · ') : '';
+    target.innerHTML = `<h2>Retiro</h2>
+      ${appointment ? `<p><strong>Horario confirmado:</strong> ${escapeHtml(current)}</p>` : ''}
+      ${data.eligible ? `<form id="pickup-scheduler-form">
+        <label for="pickup-slot">${appointment ? 'Cambiar horario' : 'Elegí un horario'}</label>
+        <select id="pickup-slot" name="slotKey" required>
+          <option value="">Seleccioná fecha y horario</option>
+          ${data.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
+            `<option value="${escapeHtml(slot.key)}">${escapeHtml(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}
+        </select>
+        <button class="primary-action" type="submit">${appointment ? 'Cambiar retiro' : 'Agendar retiro'}</button>
+        <p class="form-error" id="pickup-scheduler-error" role="alert" hidden></p>
+      </form>` : `<p>${order.status === 'CANCELLED' ? 'Pedido cancelado.' : 'Podrás agendar cuando el vendedor confirme el pago total.'}</p>`}`;
+    target.querySelector('form')?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = target.querySelector('button[type="submit"]');
+      const error = document.getElementById('pickup-scheduler-error');
+      button.disabled = true;
+      error.hidden = true;
+      try {
+        const saved = await fetch('/api/orders/pickup', { method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ orderId: order.id, access,
+            slotKey: document.getElementById('pickup-slot').value }) });
+        const result = await saved.json();
+        if (!saved.ok) throw new Error(result.error || 'No se pudo agendar el retiro.');
+        await setupPickupScheduler(order, access);
+      } catch (problem) {
+        error.textContent = problem.message;
+        error.hidden = false;
+        button.disabled = false;
+      }
+    });
+  } catch (error) {
+    target.innerHTML = `<h2>Retiro</h2><p>${escapeHtml(error.message)}</p>`;
   }
 }
 

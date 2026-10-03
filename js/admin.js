@@ -3665,8 +3665,13 @@ function renderOrdersTab() {
       <div class="admin-order-list-v2">
         ${rows}
       </div>
+      <section class="admin-content-v2" id="admin-upcoming-pickups">
+        <h2>Próximos retiros</h2><p>Cargando…</p>
+      </section>
     </section>
   `;
+
+  loadUpcomingPickups();
 
   target
     .querySelectorAll(
@@ -3933,6 +3938,8 @@ function renderAdminOrderDetail(
 
       ${order.status === 'CANCELLED' ? '<p role="status"><strong>Pedido cancelado</strong>. Los artículos fueron liberados y volvieron a estar disponibles. El pedido se conserva para consulta.</p>' : ''}
 
+      <section id="admin-pickup-editor"><h3>Retiro</h3><p>Cargando horarios…</p></section>
+
       <div class="order-detail-actions">
         ${canCancel ? `
           <div>
@@ -3993,6 +4000,8 @@ function renderAdminOrderDetail(
     </section>
   `;
 
+  setupAdminPickup(order);
+
   target.querySelectorAll('[data-view-receipt]').forEach(button => {
     button.addEventListener('click', () => viewAdminReceipt(order.id, button.dataset.viewReceipt));
   });
@@ -4042,6 +4051,50 @@ function renderAdminOrderDetail(
       alert(error instanceof Error ? error.message : 'No se pudo cancelar el pedido.');
     }
   });
+}
+
+async function loadUpcomingPickups() {
+  const target = document.getElementById('admin-upcoming-pickups');
+  if (!target) return;
+  try {
+    const data = await adminFetch('/api/admin/pickup');
+    target.innerHTML = `<h2>Próximos retiros</h2>${data.upcoming.length ? `<ol>${data.upcoming.map(item =>
+      `<li><strong>${adminEscape(item.slotKey.replace('|', ' · '))}</strong> · ${adminEscape(item.orderId)} · ${adminEscape(item.buyer)} · Items ${item.itemNumbers.map(n => adminEscape(String(n).padStart(3, '0'))).join(', ')}</li>`).join('')}</ol>` : '<p>No hay retiros próximos.</p>'}`;
+  } catch (error) { target.innerHTML = `<h2>Próximos retiros</h2><p>${adminEscape(error.message)}</p>`; }
+}
+
+async function setupAdminPickup(order) {
+  const target = document.getElementById('admin-pickup-editor');
+  if (!target) return;
+  try {
+    const data = await adminFetch(`/api/admin/pickup?id=${encodeURIComponent(order.id)}`);
+    const appointment = data.appointment?.status === 'SCHEDULED' ? data.appointment : null;
+    target.innerHTML = `<h3>Retiro</h3>
+      ${appointment ? `<p><strong>Agendado:</strong> ${adminEscape(appointment.slotKey.replace('|', ' · '))}</p>` : '<p>Sin horario agendado.</p>'}
+      ${data.slots.length ? `<form data-admin-pickup-form>
+        <label>Horario <select name="slotKey" required><option value="">Seleccioná fecha y horario</option>
+          ${data.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
+            `<option value="${adminEscapeAttribute(slot.key)}">${adminEscape(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}</select></label>
+        <button class="primary-action" type="submit">${appointment ? 'Cambiar retiro' : 'Agendar retiro'}</button>
+      </form>` : '<p>Disponible después de confirmar el pago total.</p>'}
+      ${appointment ? '<button class="secondary-action" type="button" data-admin-cancel-pickup>Cancelar solo el retiro</button>' : ''}
+      <p class="form-error" data-admin-pickup-error role="alert" hidden></p>`;
+    const save = async slotKey => {
+      const error = target.querySelector('[data-admin-pickup-error]');
+      error.hidden = true;
+      try {
+        await adminFetch('/api/admin/pickup', { method: 'POST',
+          headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderId: order.id, slotKey }) });
+        await setupAdminPickup(order);
+        await loadUpcomingPickups();
+      } catch (problem) { error.textContent = problem.message; error.hidden = false; }
+    };
+    target.querySelector('form')?.addEventListener('submit', event => {
+      event.preventDefault();
+      save(new FormData(event.currentTarget).get('slotKey'));
+    });
+    target.querySelector('[data-admin-cancel-pickup]')?.addEventListener('click', () => save(null));
+  } catch (error) { target.innerHTML = `<h3>Retiro</h3><p>${adminEscape(error.message)}</p>`; }
 }
 
 
