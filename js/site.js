@@ -9,6 +9,8 @@ const DELAYED_PICKUP_NOTICE = 'Aunque el artículo esté pagado, si está marcad
 window.__staticCartReady = syncStaticCartFromServer({ migrateLegacy: true });
 
 window.addEventListener('load', async function () {
+  setupStaticMobileNavigation();
+
   await window.__staticCartReady;
   updateStaticCartCount();
 
@@ -36,6 +38,165 @@ window.addEventListener('load', async function () {
     setupCatalogCartButtons();
   }
 });
+
+
+function setupStaticMobileNavigation() {
+  const nav = document.querySelector('.site-header nav');
+
+  if (!nav || nav.querySelector('.menu-toggle')) {
+    return;
+  }
+
+  nav.classList.add('site-nav');
+
+  const cartLink = nav.querySelector('.cart-link');
+  const menuLinks = Array.from(
+    nav.querySelectorAll(':scope > a:not(.cart-link)')
+  );
+
+  if (!cartLink || !menuLinks.length) {
+    return;
+  }
+
+  const menuToggle = document.createElement('button');
+  menuToggle.className = 'menu-toggle';
+  menuToggle.type = 'button';
+  menuToggle.setAttribute('aria-expanded', 'false');
+  menuToggle.setAttribute('aria-controls', 'primary-navigation-links');
+  menuToggle.setAttribute('aria-label', 'Abrir menú');
+  menuToggle.innerHTML = '<span aria-hidden="true">☰</span>';
+
+  const menuContainer = document.createElement('div');
+  menuContainer.className = 'mobile-nav-links';
+  menuContainer.id = 'primary-navigation-links';
+
+  menuLinks.forEach((link) => {
+    menuContainer.appendChild(link);
+  });
+
+  nav.insertBefore(menuToggle, cartLink);
+  nav.insertBefore(menuContainer, cartLink);
+
+  const style = document.createElement('style');
+  style.id = 'static-mobile-navigation-styles';
+  style.textContent = `
+    .site-header .menu-toggle {
+      display: none;
+    }
+
+    .site-header .mobile-nav-links {
+      align-items: center;
+      gap: 28px;
+      display: flex;
+    }
+
+    @media (max-width: 700px) {
+      .site-header {
+        position: relative;
+      }
+
+      .site-header .site-nav {
+        margin-left: auto;
+        gap: 10px;
+        position: relative;
+      }
+
+      .site-header .menu-toggle {
+        width: 42px;
+        height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        color: var(--forest-dark);
+        align-items: center;
+        justify-content: center;
+        flex: none;
+        padding: 0;
+        font-size: 22px;
+        line-height: 1;
+        display: inline-flex;
+      }
+
+      .site-header .menu-toggle span {
+        font-size: 22px !important;
+        line-height: 1 !important;
+      }
+
+      .site-header .mobile-nav-links {
+        display: none;
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+        z-index: 1000;
+        min-width: 220px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--paper);
+        box-shadow: 0 14px 30px #1634292e;
+        align-items: stretch;
+        gap: 0;
+      }
+
+      .site-header .site-nav.is-open .mobile-nav-links {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .site-header .mobile-nav-links a {
+        display: block;
+        padding: 12px 14px;
+        border-radius: 7px;
+        white-space: nowrap;
+      }
+
+      .site-header .mobile-nav-links a:hover,
+      .site-header .mobile-nav-links a:focus-visible {
+        background: var(--cream);
+      }
+    }
+  `;
+  document.head.appendChild(style);
+
+  function setMenuOpen(open) {
+    nav.classList.toggle('is-open', open);
+    menuToggle.setAttribute('aria-expanded', String(open));
+    menuToggle.setAttribute(
+      'aria-label',
+      open ? 'Cerrar menú' : 'Abrir menú'
+    );
+    menuToggle.querySelector('span').textContent = open ? '×' : '☰';
+  }
+
+  menuToggle.addEventListener('click', function () {
+    setMenuOpen(!nav.classList.contains('is-open'));
+  });
+
+  menuContainer.querySelectorAll('a').forEach((link) => {
+    link.addEventListener('click', function () {
+      setMenuOpen(false);
+    });
+  });
+
+  document.addEventListener('click', function (event) {
+    if (!nav.contains(event.target)) {
+      setMenuOpen(false);
+    }
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      setMenuOpen(false);
+      menuToggle.focus();
+    }
+  });
+
+  window.addEventListener('resize', function () {
+    if (window.innerWidth > 700) {
+      setMenuOpen(false);
+    }
+  });
+}
 
 
 function getEmbeddedProductBySlug(slug) {
