@@ -44,11 +44,20 @@
 
 /* Production product-detail hierarchy and photo experience. */
 .product-page{padding-bottom:64px}
-.product-detail{grid-template-columns:minmax(0,1.13fr) minmax(340px,.87fr);align-items:start;gap:55px;padding-bottom:0;display:grid}
-.product-detail-copy{grid-column:2;grid-row:1;align-self:start;min-width:0;position:sticky;top:18px}
+.product-detail{grid-template-columns:minmax(0,1.22fr) minmax(0,1fr);align-items:start;gap:0 52px;padding-bottom:0;display:grid}
+.product-detail-copy{display:contents}
+.product-detail-copy>.detail-meta{grid-column:2;grid-row:1;margin-bottom:0}
+.product-detail-copy>h1{grid-column:2;grid-row:2}
+.product-detail-copy>.lead{grid-column:2;grid-row:3}
+.product-detail-copy>.product-notes{grid-column:2;grid-row:4}
+.product-detail-copy>.product-price-block{grid-column:2;grid-row:5}
+.product-detail-copy>.product-actions{grid-column:2;grid-row:6}
+.product-detail-copy>.payment-breakdown{grid-column:1;grid-row:7;align-self:start;margin:48px 0 0}
+.product-detail-copy>.logistics{grid-column:2;grid-row:7;align-self:stretch;margin:48px 0 0}
+.product-detail-copy>.reservation-rule{grid-column:1/-1;grid-row:8;margin:18px 0 0}
 .product-detail-copy>h1{letter-spacing:-.04em;margin:0 0 14px;font-family:Georgia,serif;font-size:clamp(38px,5vw,59px);font-weight:500;line-height:.98}
 .product-detail-copy>.lead{color:var(--muted);margin:0;line-height:1.65}
-.product-gallery{grid-column:1;grid-row:1;min-width:0}
+.product-gallery{grid-column:1;grid-row:1/span 6;align-self:start;min-width:0;scroll-margin-top:20px}
 .product-gallery-heading{margin-bottom:14px}
 .product-gallery-heading h2,.product-notes-heading h2{letter-spacing:-.025em;margin:5px 0 0;font-family:Georgia,serif;font-size:30px;font-weight:500}
 .product-notes{border:2px solid #bad1c5;background:#f5faf7;border-radius:12px;grid-template-columns:1fr;gap:8px;margin:24px 0;padding:20px;display:grid}
@@ -59,14 +68,16 @@
 .product-notes dd{margin:0;font-size:13px;line-height:1.5}
 .product-notes .known-defect{background:#fff1eb;border:1px solid #e5b7a7;border-radius:7px;margin-top:9px;padding:12px}
 .product-notes .known-defect dt,.product-notes .known-defect dd{color:#7b3d2d}
-.product-photo-teaser{border-top:1px solid var(--line);border-bottom:1px solid var(--line);gap:12px;margin:22px 0;padding:18px 0;display:grid}
+.product-photo-teaser{display:none}
 .product-photo-teaser>div:first-child{gap:2px;display:grid}
 .product-photo-teaser>div:first-child strong{font-family:Georgia,serif;font-size:19px;font-weight:600}
-.product-photo-teaser>div:first-child span,.product-photo-teaser small{color:var(--muted);font-size:11px}
+.product-photo-teaser>div:first-child span{color:var(--muted);font-size:11px}
 .product-photo-teaser-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;display:grid}
 .product-photo-teaser-grid button{background:var(--cream);border:1px solid var(--line);border-radius:9px;min-width:0;height:130px;padding:7px;position:relative;overflow:hidden}
 .product-photo-teaser-grid button:after{content:"Ampliar";color:#fff;background:#163429dc;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:800;position:absolute;right:7px;bottom:7px}
 .product-photo-teaser-grid img{object-fit:contain;width:100%;height:100%}
+.product-gallery-jump{color:var(--forest);border:1px solid var(--line);border-radius:8px;align-items:center;justify-content:space-between;min-height:48px;padding:10px 13px;font-size:13px;font-weight:850;display:flex}
+.product-gallery-jump:hover,.product-gallery-jump:focus-visible{background:#edf5f0;border-color:#a9c7b8}
 .product-price-block{margin:20px 0 14px}
 .product-price-block del{color:var(--muted);font-size:13px;display:block}
 .product-price-block .detail-price{margin:3px 0 0;display:block}
@@ -79,6 +90,7 @@
 .reservation-rule{margin:16px 0 0}
 .product-back-link{color:var(--forest);border-top:1px solid var(--line);margin-top:42px;padding:22px 0 0;font-size:13px;font-weight:800;display:block}
 .product-detail-route .site-footer small{display:none}
+.product-gallery .main-image{height:min(600px,50vw);max-height:600px}
 
 @media (max-width:900px){
   .breadcrumbs{align-items:flex-start;gap:6px;padding:16px 0 12px;overflow-wrap:anywhere}
@@ -97,21 +109,21 @@
   .product-notes-heading h2{font-size:28px;line-height:1.08}
   .product-notes dd{font-size:14px}
   .product-notes .known-defect{margin:9px -4px 0;padding:12px}
-  .product-photo-teaser{margin:18px 0 2px;padding:16px 0}
+  .product-photo-teaser{border-top:1px solid var(--line);border-bottom:1px solid var(--line);gap:12px;margin:18px 0 2px;padding:16px 0;display:grid}
   .product-photo-teaser-grid button{height:clamp(145px,42vw,210px)}
   .product-price-block{margin:18px 0 12px}
   .product-price-block .detail-price{font-size:32px}
   .product-actions{order:initial;gap:10px}
   .product-actions .primary-action,.product-social-actions .secondary-action{width:100%;min-height:52px}
-  .payment-breakdown{order:initial;margin:20px 0 0}
+  .product-detail-copy>.payment-breakdown{order:initial;margin:20px 0 0}
   .payment-breakdown div{font-size:12px}
-  .logistics{margin-top:20px;padding:18px}
+  .product-detail-copy>.logistics{margin-top:20px;padding:18px}
   .logistics strong{font-size:22px}
   .logistics ul{font-size:13px;line-height:1.65}
-  .reservation-rule{order:initial;margin:16px 0 0;font-size:12px}
+  .product-detail-copy>.reservation-rule{order:initial;margin:16px 0 0;font-size:12px}
   .product-gallery{order:initial;width:100%}
   .product-gallery-heading h2{font-size:30px}
-  .main-image{height:min(560px,112vw);padding:8px}
+  .product-gallery .main-image{height:min(560px,112vw);padding:8px}
   .product-gallery-thumbnails{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .product-gallery-thumbnails button{height:92px}
   .product-back-link{order:2;margin-top:4px;padding-top:20px}

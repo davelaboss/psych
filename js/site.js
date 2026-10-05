@@ -492,7 +492,18 @@ function renderProductDetail(product) {
                     <span>Tocá una foto para verla y ampliarla.</span>
                   </div>
                   <div class="product-photo-teaser-grid">${photoTeaser}</div>
-                  ${images.length > 2 ? `<small>${images.length} fotos en total</small>` : ''}
+                  ${
+                    images.length > 1
+                      ? `
+                        <a
+                          class="product-gallery-jump"
+                          href="/producto/${encodeURIComponent(product.slug)}#product-gallery"
+                        >
+                          Ver las ${images.length} fotos <span aria-hidden="true">↓</span>
+                        </a>
+                      `
+                      : ''
+                  }
                 </section>
               `
               : ''
@@ -654,7 +665,7 @@ function renderProductDetail(product) {
         ${
           images.length
             ? `
-              <section class="product-gallery" aria-labelledby="full-gallery-heading">
+              <section id="product-gallery" class="product-gallery" aria-labelledby="full-gallery-heading">
                 <div class="product-gallery-heading">
                   <span class="section-kicker">FOTOS</span>
                   <h2 id="full-gallery-heading">Galería completa</h2>
