@@ -81,17 +81,134 @@ export async function recentMarketingHistory(days = 45) {
   }));
 }
 
-export async function createMarketingDraft({ requestOrigin, slotDate, slotKey }) {
+async function queryCurrentMarketingPacket(queryable, slotDate, slotKey, lock = false) {
+  const result = await queryable.query(`SELECT * FROM marketing_email_packets
+    WHERE slot_date=$1 AND slot_key=$2 AND status<>'REPLACED'
+    ORDER BY CASE status
+      WHEN 'SENT' THEN 0
+      WHEN 'SENDING' THEN 1
+      ELSE 2
+    END, created_at DESC
+    LIMIT 1${lock ? ' FOR UPDATE' : ''}`, [slotDate, slotKey]);
+  return packetFromRow(result.rows[0]);
+}
+
+export async function getMarketingPacketForSlot(slotDate, slotKey) {
+  const database = await marketingDatabase();
+  return queryCurrentMarketingPacket(database.pool, slotDate, slotKey);
+}
+
+async function persistMarketingDraft({ packet, regenerate, expectedPacketId }) {
+  const database = await marketingDatabase();
+  const client = await database.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext('marketing-email-draft'),hashtext($1))",
+      [`${packet.slotDate}:${packet.slotKey}`]
+    );
+    const current = await queryCurrentMarketingPacket(
+      client,
+      packet.slotDate,
+      packet.slotKey,
+      true
+    );
+    if (!regenerate && current) {
+      await client.query('COMMIT');
+      return current;
+    }
+    if (regenerate) {
+      if (!current) throw Object.assign(new Error('No hay un borrador para regenerar.'), { status: 409 });
+      if (current.id !== expectedPacketId) {
+        await client.query('COMMIT');
+        return current;
+      }
+      if (!['DRAFT', 'FAILED'].includes(current.status)) {
+        throw Object.assign(new Error('Solo se puede regenerar un borrador que todavía no fue enviado.'), { status: 409 });
+      }
+      await client.query(`UPDATE marketing_email_packets
+        SET status='REPLACED',updated_at=clock_timestamp()
+        WHERE slot_date=$1 AND slot_key=$2 AND status IN ('DRAFT','FAILED')`,
+      [packet.slotDate, packet.slotKey]);
+    }
+
+    const saved = (await client.query(`INSERT INTO marketing_email_packets
+      (id,slot_date,slot_key,selection_seed,selected_products,subject,social_copy,
+        html_body,text_body,status,idempotency_key)
+      VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,'DRAFT',$10)
+      RETURNING *`, [
+      packet.id,
+      packet.slotDate,
+      packet.slotKey,
+      packet.seed,
+      JSON.stringify(packet.products),
+      packet.subject,
+      packet.socialCopy,
+      packet.html,
+      packet.text,
+      packet.idempotencyKey,
+    ])).rows[0];
+    await client.query('COMMIT');
+    return packetFromRow(saved);
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function resolveMarketingDraft({
+  requestOrigin,
+  slotDate,
+  slotKey,
+  regenerate = false,
+  dependencies = {},
+}) {
+  const findCurrent = dependencies.findCurrent || getMarketingPacketForSlot;
+  const loadProducts = dependencies.loadProducts || loadPurchasableCatalog;
+  const loadHistory = dependencies.loadHistory || recentMarketingHistory;
+  const persist = dependencies.persist || persistMarketingDraft;
+  const idFactory = dependencies.idFactory || randomUUID;
+  const current = await findCurrent(slotDate, slotKey);
+  if (current && !regenerate) return packetForClient(current);
+  if (regenerate && !current) {
+    throw Object.assign(new Error('No hay un borrador para regenerar.'), { status: 409 });
+  }
+  if (regenerate && !['DRAFT', 'FAILED'].includes(current.status)) {
+    throw Object.assign(
+      new Error('Solo se puede regenerar un borrador que todavía no fue enviado.'),
+      { status: 409 }
+    );
+  }
+
   const origin = marketingOrigin(requestOrigin);
-  const seed = randomUUID();
+  const seed = idFactory();
   const [products, history] = await Promise.all([
-    loadPurchasableCatalog(origin),
-    recentMarketingHistory(),
+    loadProducts(origin),
+    loadHistory(),
   ]);
-  const selected = selectMarketingProducts({ products, history, slotDate, slotKey, seed });
+  const selectionHistory = regenerate
+    ? [
+        ...history,
+        ...current.products.map((product) => ({
+          productId: product.id,
+          featuredAt: `${slotDate}T12:00:00Z`,
+          slotDate,
+          slotKey,
+        })),
+      ]
+    : history;
+  const selected = selectMarketingProducts({
+    products,
+    history: selectionHistory,
+    slotDate,
+    slotKey,
+    seed,
+  });
   const rendered = buildMarketingEmail({ slotKey, products: selected, origin });
   const packet = {
-    id: randomUUID(),
+    id: idFactory(),
     slotDate,
     slotKey,
     seed,
@@ -105,25 +222,12 @@ export async function createMarketingDraft({ requestOrigin, slotDate, slotKey })
     sentAt: null,
   };
   packet.idempotencyKey = `marketing/${slotDate}/${slotKey}/${packet.id}`;
-
-  const database = await marketingDatabase();
-  await database.pool.query(`INSERT INTO marketing_email_packets
-    (id,slot_date,slot_key,selection_seed,selected_products,subject,social_copy,
-      html_body,text_body,status,idempotency_key)
-    VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,'DRAFT',$10)`, [
-    packet.id,
-    packet.slotDate,
-    packet.slotKey,
-    packet.seed,
-    JSON.stringify(packet.products),
-    packet.subject,
-    packet.socialCopy,
-    packet.html,
-    packet.text,
-    packet.idempotencyKey,
-  ]);
-
-  return packetForClient(packet);
+  const saved = await persist({
+    packet,
+    regenerate,
+    expectedPacketId: current?.id || null,
+  });
+  return packetForClient(saved);
 }
 
 export async function getMarketingPacket(packetId) {
@@ -165,6 +269,12 @@ async function claimPacket(packetId) {
     if (row.status === 'SENT') {
       await client.query('COMMIT');
       return { packet: packetFromRow(row), alreadySent: true };
+    }
+    if (row.status === 'REPLACED') {
+      throw Object.assign(
+        new Error('Esta vista previa fue reemplazada. Volvé a abrir la fecha y franja actuales.'),
+        { status: 409 }
+      );
     }
     if (row.status === 'SENDING' && Date.now() - new Date(row.updated_at).getTime() < 5 * 60 * 1000) {
       throw Object.assign(new Error('Este correo ya se está enviando.'), { status: 409 });

@@ -1530,3 +1530,10 @@ Format:
 - Duplicate safety/history: PostgreSQL stores immutable draft packets, one send claim per date/slot, successful feature history, and a stable Resend idempotency key. Every selected product is reloaded and revalidated immediately before delivery.
 - Regression performed: JavaScript syntax checks; complete Node test suite (13 passing tests); diff whitespace check; live read-only Monday PM validation confirmed Items 022 and 049 eligible and Item 048 excluded as SOLD/zero remaining. Existing seller-notification tests remained green.
 - Scheduling: Not configured. Before automatic operation, the owner must confirm exact AM/PM times; then add a dedicated Netlify Scheduled Function with UTC schedules and configure the marketing environment variables. Production migration/application and owner iPhone/email verification remain post-merge steps.
+
+## 2026-10-05 — Marketing draft persistence refinement
+
+- Follow-up scope: Updated PR #10 without merging or deploying it. Product availability rules, JPEG attachments, copy templates, the unscheduled state, and unrelated admin behavior remain unchanged.
+- Draft behavior: PostgreSQL now exposes one current packet per date/slot. Opening a slot loads that packet; initial generation returns it rather than replacing it; explicit regeneration archives the prior unsent packet as `REPLACED` and persists the new selection. A stale replaced packet cannot be sent.
+- Send behavior: The admin sends the displayed packet ID; the immutable stored packet supplies the delivery content. Feature history is still recorded only after successful provider delivery, and the existing date/slot claim plus stable Resend idempotency key continue to guard against duplicates.
+- Regression performed: JavaScript syntax checks and the complete Node suite pass (14 tests), including persistent Monday AM navigation, replacement persistence, independent Monday PM state, displayed-draft payload delivery, stable duplicate-send keys, and sold/unavailable exclusion coverage.

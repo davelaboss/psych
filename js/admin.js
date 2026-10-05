@@ -16,6 +16,11 @@ const ADMIN_STATE = {
   reviewSearch: '',
   pricingSearch: '',
   marketingPacket: null,
+  marketingDate: '',
+  marketingSlotKey: '',
+  marketingLoadedKey: '',
+  marketingLoadingKey: '',
+  marketingError: '',
 };
 
 window.addEventListener('load', function () {
@@ -781,6 +786,11 @@ function marketingProductUrl(product) {
 }
 
 
+function marketingSelectionKey(date, slotKey) {
+  return `${date}:${slotKey}`;
+}
+
+
 function renderMarketingPacket(packet) {
   if (!packet) {
     return `
@@ -791,6 +801,9 @@ function renderMarketingPacket(packet) {
   }
 
   const sent = packet.status === 'SENT';
+  const sending = packet.status === 'SENDING';
+  const failed = packet.status === 'FAILED';
+  const statusLabel = sent ? 'Enviado' : sending ? 'Enviando' : failed ? 'Falló el envío' : 'Borrador';
   return `
     <section class="marketing-preview" aria-live="polite">
       <div class="marketing-preview-heading">
@@ -800,7 +813,7 @@ function renderMarketingPacket(packet) {
           <p>${adminEscape(packet.slotDate)} · ${adminEscape(packet.slotLabel)}</p>
         </div>
         <span class="admin-pill ${sent ? 'is-published' : ''}">
-          ${sent ? 'Enviado' : 'Borrador'}
+          ${statusLabel}
         </span>
       </div>
 
@@ -833,11 +846,11 @@ function renderMarketingPacket(packet) {
       </section>
 
       <div class="marketing-actions">
-        <button class="secondary-action" type="button" data-regenerate-marketing ${sent ? 'disabled' : ''}>
+        <button class="secondary-action" type="button" data-regenerate-marketing ${!['DRAFT', 'FAILED'].includes(packet.status) ? 'disabled' : ''}>
           Regenerar selección
         </button>
-        <button class="primary-action" type="button" data-send-marketing ${sent ? 'disabled' : ''}>
-          ${sent ? 'Enviado a Maria' : 'Enviar a Maria'}
+        <button class="primary-action" type="button" data-send-marketing ${sent || sending ? 'disabled' : ''}>
+          ${sent ? 'Enviado a Maria' : sending ? 'Enviando…' : 'Enviar a Maria'}
         </button>
       </div>
       <p class="form-error" data-marketing-action-error hidden></p>
@@ -848,7 +861,19 @@ function renderMarketingPacket(packet) {
 function renderMarketingTab() {
   const target = document.getElementById('admin-tab-content');
   const defaults = marketingDefaults();
-  const packet = ADMIN_STATE.marketingPacket;
+  if (!ADMIN_STATE.marketingDate) ADMIN_STATE.marketingDate = defaults.date;
+  if (!ADMIN_STATE.marketingSlotKey) ADMIN_STATE.marketingSlotKey = defaults.slotKey;
+  const selectionKey = marketingSelectionKey(
+    ADMIN_STATE.marketingDate,
+    ADMIN_STATE.marketingSlotKey
+  );
+  const shouldLoad = ADMIN_STATE.marketingLoadedKey !== selectionKey &&
+    ADMIN_STATE.marketingLoadingKey !== selectionKey;
+  if (shouldLoad) ADMIN_STATE.marketingLoadingKey = selectionKey;
+  const loading = ADMIN_STATE.marketingLoadingKey === selectionKey;
+  const packet = ADMIN_STATE.marketingLoadedKey === selectionKey
+    ? ADMIN_STATE.marketingPacket
+    : null;
   target.innerHTML = `
     <section class="admin-content-v2 marketing-admin">
       <header class="admin-section-heading">
@@ -862,33 +887,71 @@ function renderMarketingTab() {
       <form class="admin-panel-card marketing-generator" data-marketing-form>
         <label>
           <span>Fecha</span>
-          <input type="date" name="slotDate" value="${adminEscape(packet?.slotDate || defaults.date)}" required>
+          <input type="date" name="slotDate" value="${adminEscape(ADMIN_STATE.marketingDate)}" required>
         </label>
         <label>
           <span>Franja</span>
           <select name="slotKey" required>
             ${MARKETING_SLOTS.map(([key, label]) => `
-              <option value="${key}" ${(packet?.slotKey || defaults.slotKey) === key ? 'selected' : ''}>${label}</option>`).join('')}
+              <option value="${key}" ${ADMIN_STATE.marketingSlotKey === key ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
         </label>
-        <button class="primary-action" type="submit">
-          ${packet ? 'Generar nueva vista previa' : 'Generar vista previa'}
+        <button class="primary-action" type="submit" ${loading || packet ? 'disabled' : ''}>
+          ${loading ? 'Buscando…' : packet ? 'Vista previa guardada' : 'Generar vista previa'}
         </button>
-        <p class="form-error" data-marketing-error hidden></p>
+        <p class="form-error" data-marketing-error ${ADMIN_STATE.marketingError ? '' : 'hidden'}>${adminEscape(ADMIN_STATE.marketingError)}</p>
       </form>
 
       <div data-marketing-preview>
-        ${renderMarketingPacket(packet)}
+        ${loading ? `
+          <div class="marketing-empty">
+            <h3>Buscando vista previa guardada…</h3>
+            <p>La fecha y la franja conservan su propio borrador.</p>
+          </div>` : renderMarketingPacket(packet)}
       </div>
     </section>`;
 
   bindMarketingActions();
+  if (shouldLoad) void loadMarketingDraft(ADMIN_STATE.marketingDate, ADMIN_STATE.marketingSlotKey);
+}
+
+
+async function loadMarketingDraft(slotDate, slotKey) {
+  const selectionKey = marketingSelectionKey(slotDate, slotKey);
+  try {
+    const query = new URLSearchParams({ slotDate, slotKey });
+    const result = await adminFetch(`/api/admin/marketing-preview?${query}`);
+    if (marketingSelectionKey(ADMIN_STATE.marketingDate, ADMIN_STATE.marketingSlotKey) !== selectionKey) return;
+    ADMIN_STATE.marketingPacket = result.packet;
+    ADMIN_STATE.marketingLoadedKey = selectionKey;
+    ADMIN_STATE.marketingError = '';
+  } catch (error) {
+    if (marketingSelectionKey(ADMIN_STATE.marketingDate, ADMIN_STATE.marketingSlotKey) !== selectionKey) return;
+    ADMIN_STATE.marketingPacket = null;
+    ADMIN_STATE.marketingLoadedKey = selectionKey;
+    ADMIN_STATE.marketingError = error instanceof Error
+      ? error.message
+      : 'No se pudo buscar la vista previa guardada.';
+  } finally {
+    if (ADMIN_STATE.marketingLoadingKey === selectionKey) ADMIN_STATE.marketingLoadingKey = '';
+    if (marketingSelectionKey(ADMIN_STATE.marketingDate, ADMIN_STATE.marketingSlotKey) === selectionKey) {
+      renderMarketingTab();
+    }
+  }
 }
 
 
 function bindMarketingActions() {
   const form = document.querySelector('[data-marketing-form]');
-  const generate = async () => {
+  const selectSlot = (date, slotKey) => {
+    ADMIN_STATE.marketingDate = date;
+    ADMIN_STATE.marketingSlotKey = slotKey;
+    ADMIN_STATE.marketingPacket = null;
+    ADMIN_STATE.marketingLoadedKey = '';
+    ADMIN_STATE.marketingError = '';
+    renderMarketingTab();
+  };
+  const generate = async (regenerate = false) => {
     const errorBox = document.querySelector('[data-marketing-error]');
     const submit = form?.querySelector('button[type="submit"]');
     if (errorBox) errorBox.hidden = true;
@@ -904,9 +967,17 @@ function bindMarketingActions() {
         body: JSON.stringify({
           slotDate: String(data.get('slotDate') || ''),
           slotKey: String(data.get('slotKey') || ''),
+          regenerate,
         }),
       });
       ADMIN_STATE.marketingPacket = result.packet;
+      ADMIN_STATE.marketingDate = result.packet.slotDate;
+      ADMIN_STATE.marketingSlotKey = result.packet.slotKey;
+      ADMIN_STATE.marketingLoadedKey = marketingSelectionKey(
+        result.packet.slotDate,
+        result.packet.slotKey
+      );
+      ADMIN_STATE.marketingError = '';
       renderMarketingTab();
     } catch (error) {
       if (errorBox) {
@@ -922,7 +993,7 @@ function bindMarketingActions() {
 
   form?.addEventListener('submit', (event) => {
     event.preventDefault();
-    generate();
+    void generate(false);
   });
   form?.querySelector('input[name="slotDate"]')?.addEventListener('change', (event) => {
     const date = String(event.currentTarget.value || '');
@@ -930,9 +1001,15 @@ function bindMarketingActions() {
     const select = form.querySelector('select[name="slotKey"]');
     if (!day || !select) return;
     const period = String(select.value).endsWith('_PM') ? 'PM' : 'AM';
-    select.value = `${day}_${period}`;
+    selectSlot(date, `${day}_${period}`);
   });
-  document.querySelector('[data-regenerate-marketing]')?.addEventListener('click', generate);
+  form?.querySelector('select[name="slotKey"]')?.addEventListener('change', (event) => {
+    const date = String(form.querySelector('input[name="slotDate"]')?.value || '');
+    selectSlot(date, String(event.currentTarget.value || ''));
+  });
+  document.querySelector('[data-regenerate-marketing]')?.addEventListener('click', () => {
+    void generate(true);
+  });
   document.querySelector('[data-copy-marketing]')?.addEventListener('click', async (event) => {
     await navigator.clipboard.writeText(ADMIN_STATE.marketingPacket?.socialCopy || '');
     event.currentTarget.textContent = 'Copiado';
@@ -952,6 +1029,10 @@ function bindMarketingActions() {
         body: JSON.stringify({ packetId: packet.id }),
       });
       ADMIN_STATE.marketingPacket = result.packet;
+      ADMIN_STATE.marketingLoadedKey = marketingSelectionKey(
+        result.packet.slotDate,
+        result.packet.slotKey
+      );
       renderMarketingTab();
     } catch (error) {
       if (errorBox) {

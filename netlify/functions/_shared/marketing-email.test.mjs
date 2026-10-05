@@ -7,7 +7,10 @@ import {
   isMarketingEligible,
   selectMarketingProducts,
 } from './marketing-email.mjs';
-import { deliverMarketingEmail } from './marketing-email-service.mjs';
+import {
+  deliverMarketingEmail,
+  resolveMarketingDraft,
+} from './marketing-email-service.mjs';
 
 function product(number, overrides = {}) {
   return {
@@ -63,6 +66,61 @@ test('recently featured products rotate out while same-day AM and PM differ', ()
     seed: 'rotation-test',
   });
   assert.deepEqual(selected.map((item) => item.id).sort(), ['product-4', 'product-5']);
+});
+
+test('date and slot drafts persist independently and regeneration replaces only the selected draft', async () => {
+  const drafts = new Map();
+  const identifiers = [
+    'am-seed-1', 'am-packet-1',
+    'am-seed-2', 'am-packet-2',
+    'pm-seed-1', 'pm-packet-1',
+  ];
+  let productLoads = 0;
+  const keyFor = (slotDate, slotKey) => `${slotDate}:${slotKey}`;
+  const dependencies = {
+    findCurrent: async (slotDate, slotKey) => drafts.get(keyFor(slotDate, slotKey)) || null,
+    loadProducts: async () => {
+      productLoads += 1;
+      return [1, 2, 3, 4, 5, 6, 7, 8].map(product);
+    },
+    loadHistory: async () => [],
+    idFactory: () => identifiers.shift(),
+    persist: async ({ packet, regenerate, expectedPacketId }) => {
+      const key = keyFor(packet.slotDate, packet.slotKey);
+      const current = drafts.get(key);
+      if (!regenerate && current) return current;
+      if (regenerate) assert.equal(current?.id, expectedPacketId);
+      drafts.set(key, packet);
+      return packet;
+    },
+  };
+  const input = {
+    requestOrigin: 'https://example.com',
+    slotDate: '2026-10-05',
+    slotKey: 'MONDAY_AM',
+    dependencies,
+  };
+
+  const firstAm = await resolveMarketingDraft(input);
+  const returnedAm = await resolveMarketingDraft(input);
+  assert.equal(returnedAm.id, firstAm.id);
+  assert.deepEqual(returnedAm.products, firstAm.products);
+  assert.equal(productLoads, 1);
+
+  const regeneratedAm = await resolveMarketingDraft({ ...input, regenerate: true });
+  assert.notEqual(regeneratedAm.id, firstAm.id);
+  assert.equal(
+    regeneratedAm.products.some((item) => firstAm.products.some((first) => first.id === item.id)),
+    false
+  );
+  const returnedRegeneration = await resolveMarketingDraft(input);
+  assert.equal(returnedRegeneration.id, regeneratedAm.id);
+  assert.deepEqual(returnedRegeneration.products, regeneratedAm.products);
+
+  const mondayPm = await resolveMarketingDraft({ ...input, slotKey: 'MONDAY_PM' });
+  assert.notEqual(mondayPm.id, regeneratedAm.id);
+  assert.equal(drafts.size, 2);
+  assert.equal((await resolveMarketingDraft(input)).id, regeneratedAm.id);
 });
 
 test('selector returns two good products instead of forcing a third bulky item', () => {
@@ -123,7 +181,7 @@ test('image attachments are generated as clearly named JPEG files', async () => 
   assert.ok(calls.every((url) => url.includes('fm=jpg')));
 });
 
-test('Resend delivery uses one recipient and a stable idempotency key', async () => {
+test('Resend delivery uses the displayed draft and a stable duplicate-send key', async () => {
   const previous = {
     key: process.env.RESEND_API_KEY,
     to: process.env.MARKETING_EMAIL_TO,
@@ -139,17 +197,22 @@ test('Resend delivery uses one recipient and a stable idempotency key', async ()
   };
   const packet = {
     subject: 'Venta de mudanza | Monday PM',
-    html: '<p>Correo</p>',
-    text: 'Correo',
+    html: '<p>Borrador mostrado</p>',
+    text: 'Borrador mostrado',
     idempotencyKey: 'marketing/2026-10-05/MONDAY_PM/packet-test',
   };
+  const attachments = [{ filename: 'Item-022.jpg', content: '/9j/2Q==', content_type: 'image/jpeg' }];
   try {
-    await deliverMarketingEmail({ packet, attachments: [], fetchImpl });
-    await deliverMarketingEmail({ packet, attachments: [], fetchImpl });
+    await deliverMarketingEmail({ packet, attachments, fetchImpl });
+    await deliverMarketingEmail({ packet, attachments, fetchImpl });
     assert.equal(requests.length, 2);
     for (const request of requests) {
       const payload = JSON.parse(request.options.body);
       assert.deepEqual(payload.to, ['maria@example.com']);
+      assert.equal(payload.subject, packet.subject);
+      assert.equal(payload.html, packet.html);
+      assert.equal(payload.text, packet.text);
+      assert.deepEqual(payload.attachments, attachments);
       assert.equal(request.options.headers['Idempotency-Key'], packet.idempotencyKey);
     }
   } finally {

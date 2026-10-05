@@ -28,10 +28,13 @@ Only successful sends enter rotation history. PostgreSQL stores that history in 
 The existing authenticated `/admin` page includes a **Marketing** tab:
 
 1. choose one of the ten weekday AM/PM slots and a date;
-2. generate a preview (no email is sent);
-3. review the copy, photos, and direct product links;
-4. optionally regenerate the selection;
-5. press **Enviar a Maria** once.
+2. automatically reopen the saved draft for that exact date and slot, if one exists;
+3. generate an initial preview only when that date and slot has no draft (no email is sent);
+4. review the copy, photos, and direct product links;
+5. optionally use **Regenerar selección** to explicitly replace the unsent draft;
+6. press **Enviar a Maria** once.
+
+Drafts are stored in PostgreSQL, so moving to another date/slot, changing admin tabs, or returning in a later session does not reshuffle the selection. AM and PM keep independent drafts. A replaced packet remains in the audit trail but cannot be sent from a stale browser tab.
 
 Immediately before delivery, every selected ID is reloaded through `loadCatalog()` and rechecked for current eligibility. If any selected item is no longer purchasable/public, sending stops and the seller is asked to regenerate.
 
@@ -43,7 +46,7 @@ At send time, the cover image for each selected product is requested through Net
 
 ## Duplicate protection
 
-Each saved preview has a stable Resend idempotency key. PostgreSQL also claims one packet per date/slot in `marketing_email_send_slots`. Repeated clicks, concurrent requests, and safe retries therefore do not intentionally create duplicate deliveries.
+Each saved preview has a stable Resend idempotency key. PostgreSQL also claims one packet per date/slot in `marketing_email_send_slots`. Repeated clicks, concurrent requests, stale replaced drafts, and safe retries therefore do not intentionally create duplicate deliveries. Rotation history is written only after Resend confirms a successful send.
 
 ## Environment configuration
 
