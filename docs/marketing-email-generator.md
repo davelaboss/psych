@@ -19,7 +19,7 @@ After loading that runtime projection, `isMarketingEligible()` applies a second 
 
 ## Selection and rotation
 
-The default is three products. The selector prefers category and price-band variety, gives a deterministic visual-strength preference based on current product metadata/photos, and prevents three bulky products from appearing together. It avoids products featured in the previous 14 days and products already used in the other same-day slot when at least two fresh alternatives exist. If only two suitable fresh products exist, it returns two.
+The default is three products. The selector prefers category and price-band variety, gives a deterministic visual-strength preference based on current product metadata/photos, and prevents three bulky products from appearing together. It avoids products featured in the previous 14 days and products in the currently persisted draft for the other same-day slot. This works regardless of whether AM or PM was created first and is recalculated when either draft is explicitly regenerated. If only two suitable non-overlapping products exist, it returns two; same-day duplication is used only when fewer than two non-overlapping eligible products remain.
 
 Only successful sends enter rotation history. PostgreSQL stores that history in `marketing_email_features`, linked to the immutable packet snapshot in `marketing_email_packets`.
 

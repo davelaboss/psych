@@ -1537,3 +1537,10 @@ Format:
 - Draft behavior: PostgreSQL now exposes one current packet per date/slot. Opening a slot loads that packet; initial generation returns it rather than replacing it; explicit regeneration archives the prior unsent packet as `REPLACED` and persists the new selection. A stale replaced packet cannot be sent.
 - Send behavior: The admin sends the displayed packet ID; the immutable stored packet supplies the delivery content. Feature history is still recorded only after successful provider delivery, and the existing date/slot claim plus stable Resend idempotency key continue to guard against duplicates.
 - Regression performed: JavaScript syntax checks and the complete Node suite pass (14 tests), including persistent Monday AM navigation, replacement persistence, independent Monday PM state, displayed-draft payload delivery, stable duplicate-send keys, and sold/unavailable exclusion coverage.
+
+## 2026-10-05 — Same-day AM/PM draft separation fix
+
+- Root cause: The selector received successful-send history but not the unsent persisted packet from the opposite slot, so two same-day drafts could independently choose the same item.
+- Fix: New draft generation and explicit regeneration now load the opposite date/slot packet and add its product IDs to the selector's same-day exclusion input. The opposite packet is read-only and is never replaced by this operation. Existing 14-day `SENT` history remains unchanged.
+- Fallback: With two non-overlapping eligible products, the second slot uses those two. Same-day duplication is permitted only when fewer than two non-overlapping eligible products remain, preserving the established two-product minimum.
+- Regression performed: Complete Node suite passes (20 tests), including the observed Item 115 and Item 056 overlaps, PM-first generation, AM and PM regeneration in both directions, constrained-inventory fallback, availability exclusions, attachments, saved drafts, and duplicate-send behavior.

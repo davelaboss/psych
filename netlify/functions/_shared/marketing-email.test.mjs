@@ -29,6 +29,37 @@ function product(number, overrides = {}) {
   };
 }
 
+function storedDraft(slotDate, slotKey, numbers, id = `${slotKey.toLowerCase()}-draft`) {
+  return {
+    id,
+    slotDate,
+    slotKey,
+    products: numbers.map(product),
+    subject: `Borrador ${slotKey}`,
+    socialCopy: `Borrador ${slotKey}`,
+    status: 'DRAFT',
+    sentAt: null,
+  };
+}
+
+function draftDependencies({ drafts, numbers, identifiers }) {
+  const keyFor = (slotDate, slotKey) => `${slotDate}:${slotKey}`;
+  return {
+    findCurrent: async (slotDate, slotKey) => drafts.get(keyFor(slotDate, slotKey)) || null,
+    loadProducts: async () => numbers.map(product),
+    loadHistory: async () => [],
+    idFactory: () => identifiers.shift(),
+    persist: async ({ packet, regenerate, expectedPacketId }) => {
+      const key = keyFor(packet.slotDate, packet.slotKey);
+      const current = drafts.get(key);
+      if (!regenerate && current) return current;
+      if (regenerate) assert.equal(current?.id, expectedPacketId);
+      drafts.set(key, packet);
+      return packet;
+    },
+  };
+}
+
 test('eligibility excludes every non-public or non-purchasable state', () => {
   assert.equal(isMarketingEligible(product(1)), true);
   for (const candidate of [
@@ -121,6 +152,135 @@ test('date and slot drafts persist independently and regeneration replaces only 
   assert.notEqual(mondayPm.id, regeneratedAm.id);
   assert.equal(drafts.size, 2);
   assert.equal((await resolveMarketingDraft(input)).id, regeneratedAm.id);
+});
+
+test('Monday PM excludes persisted Monday AM Item 115 and its other products', async () => {
+  const slotDate = '2026-10-05';
+  const drafts = new Map([
+    [`${slotDate}:MONDAY_AM`, storedDraft(slotDate, 'MONDAY_AM', [115, 275, 312])],
+  ]);
+  const packet = await resolveMarketingDraft({
+    requestOrigin: 'https://example.com',
+    slotDate,
+    slotKey: 'MONDAY_PM',
+    dependencies: draftDependencies({
+      drafts,
+      numbers: [115, 275, 312, 259, 122, 401, 402],
+      identifiers: ['monday-pm-seed', 'monday-pm-packet'],
+    }),
+  });
+  assert.equal(packet.products.some((item) => [115, 275, 312].includes(item.itemNumber)), false);
+});
+
+test('Tuesday PM excludes persisted Tuesday AM Item 056 and its other products', async () => {
+  const slotDate = '2026-10-06';
+  const drafts = new Map([
+    [`${slotDate}:TUESDAY_AM`, storedDraft(slotDate, 'TUESDAY_AM', [259, 56, 106])],
+  ]);
+  const packet = await resolveMarketingDraft({
+    requestOrigin: 'https://example.com',
+    slotDate,
+    slotKey: 'TUESDAY_PM',
+    dependencies: draftDependencies({
+      drafts,
+      numbers: [259, 56, 106, 294, 109, 403, 404],
+      identifiers: ['tuesday-pm-seed', 'tuesday-pm-packet'],
+    }),
+  });
+  assert.equal(packet.products.some((item) => [259, 56, 106].includes(item.itemNumber)), false);
+});
+
+test('AM excludes the persisted same-day PM draft when PM was generated first', async () => {
+  const slotDate = '2026-10-05';
+  const drafts = new Map([
+    [`${slotDate}:MONDAY_PM`, storedDraft(slotDate, 'MONDAY_PM', [115, 259, 122])],
+  ]);
+  const packet = await resolveMarketingDraft({
+    requestOrigin: 'https://example.com',
+    slotDate,
+    slotKey: 'MONDAY_AM',
+    dependencies: draftDependencies({
+      drafts,
+      numbers: [115, 259, 122, 275, 312, 405],
+      identifiers: ['monday-am-seed', 'monday-am-packet'],
+    }),
+  });
+  assert.equal(packet.products.some((item) => [115, 259, 122].includes(item.itemNumber)), false);
+});
+
+test('regenerating AM avoids persisted PM products without changing the PM draft', async () => {
+  const slotDate = '2026-10-05';
+  const pm = storedDraft(slotDate, 'MONDAY_PM', [259, 122, 401], 'saved-pm');
+  const drafts = new Map([
+    [`${slotDate}:MONDAY_AM`, storedDraft(slotDate, 'MONDAY_AM', [115, 275, 312], 'old-am')],
+    [`${slotDate}:MONDAY_PM`, pm],
+  ]);
+  const regenerated = await resolveMarketingDraft({
+    requestOrigin: 'https://example.com',
+    slotDate,
+    slotKey: 'MONDAY_AM',
+    regenerate: true,
+    dependencies: draftDependencies({
+      drafts,
+      numbers: [115, 275, 312, 259, 122, 401, 501, 502, 503],
+      identifiers: ['new-am-seed', 'new-am-packet'],
+    }),
+  });
+  assert.deepEqual(regenerated.products.map((item) => item.itemNumber).sort(), [501, 502, 503]);
+  assert.equal(drafts.get(`${slotDate}:MONDAY_PM`), pm);
+});
+
+test('regenerating PM avoids persisted AM products without changing the AM draft', async () => {
+  const slotDate = '2026-10-06';
+  const am = storedDraft(slotDate, 'TUESDAY_AM', [259, 56, 106], 'saved-am');
+  const drafts = new Map([
+    [`${slotDate}:TUESDAY_AM`, am],
+    [`${slotDate}:TUESDAY_PM`, storedDraft(slotDate, 'TUESDAY_PM', [56, 294, 109], 'old-pm')],
+  ]);
+  const regenerated = await resolveMarketingDraft({
+    requestOrigin: 'https://example.com',
+    slotDate,
+    slotKey: 'TUESDAY_PM',
+    regenerate: true,
+    dependencies: draftDependencies({
+      drafts,
+      numbers: [259, 56, 106, 294, 109, 601, 602, 603, 604],
+      identifiers: ['new-pm-seed', 'new-pm-packet'],
+    }),
+  });
+  assert.equal(regenerated.products.some((item) => [259, 56, 106].includes(item.itemNumber)), false);
+  assert.equal(drafts.get(`${slotDate}:TUESDAY_AM`), am);
+});
+
+test('same-day fallback avoids overlap with five eligible products and permits it only below the minimum', async () => {
+  const slotDate = '2026-10-05';
+  const makeDrafts = () => new Map([
+    [`${slotDate}:MONDAY_AM`, storedDraft(slotDate, 'MONDAY_AM', [1, 2, 3])],
+  ]);
+  const fiveProducts = await resolveMarketingDraft({
+    requestOrigin: 'https://example.com',
+    slotDate,
+    slotKey: 'MONDAY_PM',
+    dependencies: draftDependencies({
+      drafts: makeDrafts(),
+      numbers: [1, 2, 3, 4, 5],
+      identifiers: ['five-seed', 'five-packet'],
+    }),
+  });
+  assert.deepEqual(fiveProducts.products.map((item) => item.itemNumber).sort(), [4, 5]);
+
+  const fourProducts = await resolveMarketingDraft({
+    requestOrigin: 'https://example.com',
+    slotDate,
+    slotKey: 'MONDAY_PM',
+    dependencies: draftDependencies({
+      drafts: makeDrafts(),
+      numbers: [1, 2, 3, 4],
+      identifiers: ['four-seed', 'four-packet'],
+    }),
+  });
+  assert.equal(fourProducts.products.length, 3);
+  assert.equal(fourProducts.products.some((item) => [1, 2, 3].includes(item.itemNumber)), true);
 });
 
 test('selector returns two good products instead of forcing a third bulky item', () => {

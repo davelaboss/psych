@@ -41,6 +41,22 @@ function marketingOrigin(fallback) {
   ).replace(/\/$/, '');
 }
 
+function oppositeMarketingSlot(slotKey) {
+  return slotKey.endsWith('_AM')
+    ? `${slotKey.slice(0, -3)}_PM`
+    : `${slotKey.slice(0, -3)}_AM`;
+}
+
+function packetSelectionHistory(packet) {
+  if (!packet) return [];
+  return packet.products.map((product) => ({
+    productId: product.id,
+    featuredAt: `${packet.slotDate}T12:00:00Z`,
+    slotDate: packet.slotDate,
+    slotKey: packet.slotKey,
+  }));
+}
+
 function packetFromRow(row) {
   if (!row) return null;
   const slotDate = typeof row.slot_date === 'string'
@@ -184,21 +200,17 @@ export async function resolveMarketingDraft({
 
   const origin = marketingOrigin(requestOrigin);
   const seed = idFactory();
-  const [products, history] = await Promise.all([
+  const oppositeSlotKey = oppositeMarketingSlot(slotKey);
+  const [products, history, oppositePacket] = await Promise.all([
     loadProducts(origin),
     loadHistory(),
+    findCurrent(slotDate, oppositeSlotKey),
   ]);
-  const selectionHistory = regenerate
-    ? [
-        ...history,
-        ...current.products.map((product) => ({
-          productId: product.id,
-          featuredAt: `${slotDate}T12:00:00Z`,
-          slotDate,
-          slotKey,
-        })),
-      ]
-    : history;
+  const selectionHistory = [
+    ...history,
+    ...packetSelectionHistory(oppositePacket),
+    ...(regenerate ? packetSelectionHistory(current) : []),
+  ];
   const selected = selectMarketingProducts({
     products,
     history: selectionHistory,
