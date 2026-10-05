@@ -8,36 +8,45 @@ const NO_DELIVERY_NOTICE = 'No realizamos entregas. El comprador debe retirar su
 const DELAYED_PICKUP_NOTICE = 'Aunque el artículo esté pagado, si está marcado para retiro posterior deberá permanecer con nosotros hasta la fecha de retiro indicada.';
 window.__staticCartReady = syncStaticCartFromServer({ migrateLegacy: true });
 
-window.addEventListener('load', async function () {
+async function bootStaticStorefront() {
   setupStaticMobileNavigation();
 
-  await window.__staticCartReady;
-  updateStaticCartCount();
-
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
-
-  if (path === '/carrito') {
-    await renderCartPage();
-    return;
-  }
 
   if (path.startsWith('/producto/')) {
     const slug = decodeURIComponent(path.slice('/producto/'.length));
     const product = getEmbeddedProductBySlug(slug);
 
     if (!product) {
+      document.documentElement.classList.remove('product-route-pending');
       console.error('No se encontró el producto:', slug);
       return;
     }
 
     renderProductDetail(product);
+    await window.__staticCartReady;
+    updateStaticCartCount();
+    return;
+  }
+
+  await window.__staticCartReady;
+  updateStaticCartCount();
+
+  if (path === '/carrito') {
+    await renderCartPage();
     return;
   }
 
   if (path === '/' || path === '/index.html') {
     setupCatalogCartButtons();
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootStaticStorefront, { once: true });
+} else {
+  bootStaticStorefront();
+}
 
 
 function setupStaticMobileNavigation() {
@@ -297,6 +306,7 @@ function renderProductDetail(product) {
   }
 
   document.title = product.title + ' | Venta de Mudanza';
+  document.body.classList.add('product-detail-route');
 
   const price = formatPYG(product.askingPricePYG);
   const dueNow = dueNowForProduct(product);
@@ -321,12 +331,16 @@ function renderProductDetail(product) {
       product.knownDefects
     );
 
-  const gallery = (product.images || [])
+  const images = Array.isArray(product.images)
+    ? product.images.filter(Boolean)
+    : [];
+
+  const gallery = images
     .map((image, index) => {
       return `
         <button
           type="button"
-          onclick="document.getElementById('main-product-image').src='/${stripLeadingSlash(image)}'"
+          data-photo-index="${index}"
           aria-label="Ver foto ${index + 1}"
         >
           <img
@@ -336,6 +350,22 @@ function renderProductDetail(product) {
         </button>
       `;
     })
+    .join('');
+
+  const photoTeaser = images
+    .slice(0, 2)
+    .map((image, index) => `
+      <button
+        type="button"
+        data-photo-index="${index}"
+        aria-label="Abrir foto ${index + 1} de ${images.length}"
+      >
+        <img
+          src="/${stripLeadingSlash(image)}"
+          alt="${escapeHtml(product.title)}, foto ${index + 1}"
+        >
+      </button>
+    `)
     .join('');
 
   const accessories =
@@ -382,26 +412,7 @@ function renderProductDetail(product) {
       </aside>
 
       <div class="product-detail">
-
-        <div class="product-gallery">
-          <button class="main-image" type="button">
-            <img
-              id="main-product-image"
-              src="/${stripLeadingSlash(product.images?.[0] || '')}"
-              alt="${escapeHtml(product.title)}"
-            >
-          </button>
-
-          ${
-            product.images && product.images.length > 1
-              ? `<div class="product-gallery-thumbnails">${gallery}</div>`
-              : ''
-          }
-        </div>
-
-        <div class="product-information">
-          <div class="product-summary">
-
+        <div class="product-detail-copy">
           <div class="product-meta detail-meta">
             <span>
               ITEM ${String(product.itemNumber).padStart(3, '0')}
@@ -422,28 +433,140 @@ function renderProductDetail(product) {
 
           <h1>${escapeHtml(product.title)}</h1>
 
-          ${
-            product.originalPricePYG
-              ? `<del>${formatPYG(product.originalPricePYG)}</del>`
-              : ''
-          }
-
-          <strong class="detail-price">
-            ${price}
-            ${product.quantityTotal > 1 ? ' por unidad' : ''}
-          </strong>
-
-          ${
-            product.quantityTotal > 1
-              ? `<p>${product.quantityRemaining} unidades disponibles</p>`
-              : ''
-          }
-
-          </div>
-
           <p class="lead">
             ${escapeHtml(product.description).replace(/\\n/g, '<br>')}
           </p>
+
+          <section class="product-notes" aria-labelledby="product-details-heading">
+            <div class="product-notes-heading">
+              <span class="section-kicker">DETALLES</span>
+              <h2 id="product-details-heading">Lo que tenés que saber</h2>
+            </div>
+
+            <dl>
+              <div>
+                <dt>Estado</dt>
+                <dd>${escapeHtml(conditionText || 'Ver estado en las fotos y observaciones.')}</dd>
+              </div>
+
+              ${
+                product.conditionNotes
+                  ? `
+                    <div>
+                      <dt>Observaciones</dt>
+                      <dd>${escapeHtml(product.conditionNotes)}</dd>
+                    </div>
+                  `
+                  : ''
+              }
+
+              ${
+                knownDefectText
+                  ? `
+                    <div class="known-defect">
+                      <dt>Defectos conocidos</dt>
+                      <dd>${escapeHtml(knownDefectText)}</dd>
+                    </div>
+                  `
+                  : ''
+              }
+
+              <div>
+                <dt>Accesorios incluidos</dt>
+                <dd>${escapeHtml(accessories)}</dd>
+              </div>
+
+              <div>
+                <dt>Disponibilidad</dt>
+                <dd>${escapeHtml(statusText)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          ${
+            photoTeaser
+              ? `
+                <section class="product-photo-teaser" aria-labelledby="photo-teaser-heading">
+                  <div>
+                    <strong id="photo-teaser-heading">Fotos del artículo</strong>
+                    <span>Tocá una foto para verla y ampliarla.</span>
+                  </div>
+                  <div class="product-photo-teaser-grid">${photoTeaser}</div>
+                  ${images.length > 2 ? `<small>${images.length} fotos en total</small>` : ''}
+                </section>
+              `
+              : ''
+          }
+
+          <div class="product-price-block">
+            ${
+              product.originalPricePYG
+                ? `<del>${formatPYG(product.originalPricePYG)}</del>`
+                : ''
+            }
+
+            <strong class="detail-price">
+              ${price}
+              ${product.quantityTotal > 1 ? ' por unidad' : ''}
+            </strong>
+
+            ${
+              product.quantityTotal > 1
+                ? `<span>${product.quantityRemaining} unidades disponibles</span>`
+                : ''
+            }
+          </div>
+
+          <div class="product-actions">
+            <button
+              id="product-cart-button"
+              class="primary-action"
+              type="button"
+              ${product.status !== 'AVAILABLE' ? 'disabled' : ''}
+            >
+              ${
+                product.status === 'SOLD' || product.status === 'PICKED_UP'
+                  ? 'Vendido'
+                  : product.status !== 'AVAILABLE'
+                    ? 'No disponible'
+                    : product.saleMode === 'DELAYED'
+                      ? 'Reservar este artículo'
+                      : 'Agregar al carrito'
+              }
+            </button>
+
+            <div class="product-social-actions">
+              <a
+                class="secondary-action"
+                href="https://wa.me/595972588347?text=${encodeURIComponent(
+                  'Hola, quisiera consultar sobre ' +
+                  product.title +
+                  ' (Item ' +
+                  String(product.itemNumber).padStart(3, '0') +
+                  ').'
+                )}"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Consultar por WhatsApp
+              </a>
+
+              <a
+                class="text-action"
+                href="https://wa.me/595972588347?text=${encodeURIComponent(
+                  'Mirá este artículo de la venta de mudanza: ' +
+                  product.title +
+                  ' · ' +
+                  formatPYG(product.askingPricePYG) +
+                  '.'
+                )}"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Compartir por WhatsApp
+              </a>
+            </div>
+          </div>
 
           <div class="payment-breakdown">
             <div>
@@ -494,188 +617,75 @@ function renderProductDetail(product) {
             </div>
           </div>
 
-          <div class="product-actions">
-            <button
-              id="product-cart-button"
-              class="primary-action"
-              type="button"
-              ${product.status !== 'AVAILABLE' ? 'disabled' : ''}
-            >
+          <section class="logistics" aria-labelledby="pickup-heading">
+            <strong id="pickup-heading">Para el retiro</strong>
+            <div>
+              <span class="section-kicker">ESTE ARTÍCULO</span>
               ${
-                product.status === 'SOLD' || product.status === 'PICKED_UP'
-                  ? 'Vendido'
-                  : product.status !== 'AVAILABLE'
-                    ? 'No disponible'
-                    : product.saleMode === 'DELAYED'
-                      ? 'Reservar este artículo'
-                      : 'Agregar al carrito'
-              }
-            </button>
-
-            <a
-              class="secondary-action"
-              href="https://wa.me/595972588347?text=${encodeURIComponent(
-                'Hola, quisiera consultar sobre ' +
-                product.title +
-                ' (Item ' +
-                String(product.itemNumber).padStart(3, '0') +
-                ').'
-              )}"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Consultar por WhatsApp
-            </a>
-
-            <a
-              class="text-action"
-              style="display:inline-flex;align-items:center;gap:.4rem"
-              href="https://wa.me/595972588347?text=${encodeURIComponent(
-                'Mirá este artículo de la venta de mudanza: ' +
-                product.title +
-                ' · ' +
-                formatPYG(product.askingPricePYG) +
-                '.'
-              )}"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <svg
-                aria-hidden="true"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <circle cx="18" cy="5" r="3"></circle>
-                <circle cx="6" cy="12" r="3"></circle>
-                <circle cx="18" cy="19" r="3"></circle>
-                <line x1="8.6" y1="10.7" x2="15.4" y2="6.3"></line>
-                <line x1="8.6" y1="13.3" x2="15.4" y2="17.7"></line>
-              </svg>
-              Compartir por WhatsApp
-            </a>
-
-            <a class="text-action" href="/#articulos">
-              ← Volver al catálogo
-            </a>
-          </div>
-
-          <p class="reservation-rule">
-            Un mensaje de interés no reserva el artículo.
-            Queda garantizado únicamente después de que confirmemos
-            el pago correspondiente.
-          </p>
-
-          <div class="pickup-confirm final-sale-notice">
-            <strong>Todas las ventas son finales.</strong>
-            <span>La mayoría de los artículos son usados y se venden en el estado en que se encuentran, según las fotos y la descripción publicada. Al retirar tu compra, por favor revisá el artículo antes de llevártelo. Una vez que el artículo sale de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</span>
-            <span>${NO_DELIVERY_NOTICE}</span>
-            ${product.saleMode === 'DELAYED' ? `<span>${DELAYED_PICKUP_NOTICE}</span>` : ''}
-          </div>
-
-        </div>
-      </div>
-
-      <section class="product-notes">
-
-        <div>
-          <span class="section-kicker">DETALLES</span>
-          <h2>Lo que tenés que saber</h2>
-        </div>
-
-        <dl>
-          <div>
-            <dt>Item ID</dt>
-            <dd>Item ${String(product.itemNumber).padStart(3, '0')}</dd>
-          </div>
-
-          ${
-            conditionText
-              ? `
-                <div>
-                  <dt>Estado</dt>
-                  <dd>${escapeHtml(conditionText)}</dd>
-                </div>
-              `
-              : ''
-          }
-
-          ${
-            Number(product.itemNumber) <= 57 && product.conditionNotes
-              ? `
-                <div>
-                  <dt>Observaciones</dt>
-                  <dd>${escapeHtml(product.conditionNotes)}</dd>
-                </div>
-              `
-              : ''
-          }
-
-          ${
-            knownDefectText
-              ? `
-                <div>
-                  <dt>Defectos conocidos</dt>
-                  <dd>${escapeHtml(knownDefectText)}</dd>
-                </div>
-              `
-              : ''
-          }
-
-          <div>
-            <dt>Accesorios incluidos</dt>
-            <dd>${escapeHtml(accessories)}</dd>
-          </div>
-
-          <div>
-            <dt>Disponibilidad</dt>
-            <dd>${escapeHtml(statusText)}</dd>
-          </div>
-        </dl>
-
-        <div class="logistics">
-          <strong>Para el retiro</strong>
-
-          <div>
-            <span class="section-kicker">ESTE ARTÍCULO</span>
-
-            ${
-              itemLogistics
+                itemLogistics
                 ? `
                   <ul>
                     ${itemLogistics}
                   </ul>
                 `
-                : `
-                  <p>
-                    No tiene requisitos especiales de transporte
-                    o carga indicados.
-                  </p>
+                  : `
+                  <ul><li>Sin requisitos especiales de transporte o carga indicados.</li></ul>
                 `
             }
-          </div>
+            </div>
 
-          <div>
-            <span class="section-kicker">POLÍTICA GENERAL</span>
+            <div>
+              <span class="section-kicker">REGLAS GENERALES</span>
+              <ul>
+                <li>Retiro personal en San Lorenzo.</li>
+                <li>No hacemos entregas.</li>
+                <li>Revisá el artículo antes de llevártelo.</li>
+                <li>Una vez retirado, la venta es final.</li>
+              </ul>
+            </div>
+          </section>
 
-            <ul>
-              <li>Retiro personal en San Lorenzo, Barrio Santo Tomás.</li>
-              <li>El comprador organiza y cubre el transporte.</li>
-              <li>${NO_DELIVERY_NOTICE}</li>
-              <li>Antes de retirarte con los artículos, revisalos y asegurate de estar conforme. Una vez retirados del domicilio, la venta es final.</li>
-            </ul>
-          </div>
+          <p class="reservation-rule">
+            Un mensaje no reserva el artículo. La reserva queda confirmada
+            únicamente después de que confirmemos el pago.
+          </p>
         </div>
 
-      </section>
+        ${
+          images.length
+            ? `
+              <section class="product-gallery" aria-labelledby="full-gallery-heading">
+                <div class="product-gallery-heading">
+                  <span class="section-kicker">FOTOS</span>
+                  <h2 id="full-gallery-heading">Galería completa</h2>
+                </div>
+
+                <button class="main-image" type="button" data-photo-index="0">
+                  <img
+                    id="main-product-image"
+                    src="/${stripLeadingSlash(images[0])}"
+                    alt="${escapeHtml(product.title)}"
+                  >
+                </button>
+
+                ${
+                  images.length > 1
+                    ? `<div class="product-gallery-thumbnails">${gallery}</div>`
+                    : ''
+                }
+              </section>
+            `
+            : ''
+        }
+      </div>
+
+      <a class="product-back-link" href="/#articulos">
+        ← Volver al catálogo
+      </a>
     </section>
   `;
 
+  document.documentElement.classList.remove('product-route-pending');
   setupProductCartButton(product);
 }
 

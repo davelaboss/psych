@@ -8,19 +8,27 @@
     controls: {},
   };
 
-  window.addEventListener('load', boot);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
 
   async function boot() {
-    try {
-      installStyles();
+    installStyles();
+    const path = cleanPath();
 
+    if (path.startsWith('/producto/')) {
+      enhanceDetailPhotoAction();
+      installDetailLightbox();
+    }
+
+    try {
       const catalog = await fetchCatalog();
       state.products = dedupe(catalog)
         .sort((a, b) => Number(a.itemNumber) - Number(b.itemNumber));
 
       window.__catalogProducts = state.products;
-
-      const path = cleanPath();
 
       if (path.startsWith('/producto/')) {
         const slug = decodeURIComponent(path.slice('/producto/'.length));
@@ -31,7 +39,6 @@
         }
 
         enhanceDetailPhotoAction();
-        installDetailLightbox();
         return;
       }
 
@@ -209,7 +216,10 @@
     if (photoButton) {
       event.preventDefault();
       event.stopPropagation();
-      createLightbox(product.images || [], 0);
+      createLightbox(product.images || [], 0, {
+        detailUrl: `/producto/${encodeURIComponent(product.slug)}`,
+        opener: photoButton,
+      });
       return;
     }
 
@@ -537,7 +547,7 @@
       (event) => {
         const trigger =
           event.target.closest(
-            '.main-image, .product-gallery-thumbnails button'
+            '.product-photo-teaser button, .main-image, .product-gallery-thumbnails button'
           );
 
         if (!trigger) {
@@ -596,16 +606,15 @@
           initialIndex = 0;
         }
 
-        createLightbox(
-          images,
-          initialIndex
-        );
+        createLightbox(images, initialIndex, {
+          opener: trigger,
+        });
       },
       true
     );
   }
 
-  function createLightbox(images, initialIndex) {
+  function createLightbox(images, initialIndex, options = {}) {
     const clean =
       [
         ...new Set(
@@ -629,11 +638,17 @@
       );
 
     let zoom = 1;
+    let panX = 0;
+    let panY = 0;
     let dragging = false;
-    let startX = 0;
-    let startY = 0;
-    let scrollX = 0;
-    let scrollY = 0;
+    let dragStart = null;
+    let pinchStart = null;
+    const pointers = new Map();
+    const returnScrollY = window.scrollY;
+    const opener = options.opener instanceof HTMLElement
+      ? options.opener
+      : document.activeElement;
+    const previousBodyOverflow = document.body.style.overflow;
 
     const box =
       document.createElement('div');
@@ -668,6 +683,7 @@
             type="button"
             data-prev
             aria-label="Foto anterior"
+            ${clean.length === 1 ? 'disabled' : ''}
           >
             ‹
           </button>
@@ -687,6 +703,7 @@
             type="button"
             data-next
             aria-label="Foto siguiente"
+            ${clean.length === 1 ? 'disabled' : ''}
           >
             ›
           </button>
@@ -732,14 +749,21 @@
             Restablecer
           </button>
 
+          ${
+            options.detailUrl
+              ? `<a class="catalog-lightbox-detail" href="${escapeAttr(options.detailUrl)}">Ver detalles del artículo</a>`
+              : ''
+          }
+
           <span>
-            Rueda del mouse para zoom · arrastrá para mover
+            Pellizcá o usá +/− para ampliar · arrastrá para mover
           </span>
         </footer>
       </div>
     `;
 
     document.body.appendChild(box);
+    document.body.style.overflow = 'hidden';
 
     const canvas =
       box.querySelector(
@@ -843,11 +867,43 @@
         image.naturalHeight *
         scale;
 
+      panX = 0;
+      panY = 0;
       setZoom(1);
     }
 
-    function setZoom(next) {
-      zoom =
+    function clampPan() {
+      const maxX = Math.max(
+        0,
+        (baseW * zoom - canvas.clientWidth) / 2
+      );
+      const maxY = Math.max(
+        0,
+        (baseH * zoom - canvas.clientHeight) / 2
+      );
+
+      panX = Math.max(-maxX, Math.min(maxX, panX));
+      panY = Math.max(-maxY, Math.min(maxY, panY));
+    }
+
+    function renderZoom() {
+      clampPan();
+
+      image.style.width = `${Math.round(baseW * zoom)}px`;
+      image.style.height = `${Math.round(baseH * zoom)}px`;
+      image.style.maxWidth = 'none';
+      image.style.maxHeight = 'none';
+      image.style.left = '50%';
+      image.style.top = '50%';
+      image.style.transform = `translate(calc(-50% + ${panX}px), calc(-50% + ${panY}px))`;
+
+      label.textContent = `${Math.round(zoom * 100)}%`;
+      canvas.classList.toggle('can-pan', zoom > 1);
+    }
+
+    function setZoom(next, focalPoint) {
+      const previousZoom = zoom;
+      const nextZoom =
         Math.max(
           1,
           Math.min(
@@ -856,43 +912,32 @@
           )
         );
 
-      image.style.width =
-        `${Math.round(
-          baseW * zoom
-        )}px`;
+      if (focalPoint && previousZoom > 0 && nextZoom !== previousZoom) {
+        const focalX = focalPoint.x - canvas.clientWidth / 2;
+        const focalY = focalPoint.y - canvas.clientHeight / 2;
+        const ratio = nextZoom / previousZoom;
+        panX = focalX - (focalX - panX) * ratio;
+        panY = focalY - (focalY - panY) * ratio;
+      }
 
-      image.style.height =
-        `${Math.round(
-          baseH * zoom
-        )}px`;
-
-      image.style.maxWidth =
-        'none';
-
-      image.style.maxHeight =
-        'none';
-
-      label.textContent =
-        `${Math.round(
-          zoom * 100
-        )}%`;
-
-      canvas.classList.toggle(
-        'can-pan',
-        zoom > 1
-      );
+      zoom = nextZoom;
 
       if (zoom === 1) {
-        canvas.scrollLeft = 0;
-        canvas.scrollTop = 0;
+        panX = 0;
+        panY = 0;
       }
+
+      renderZoom();
     }
 
     function show() {
       zoom = 1;
+      panX = 0;
+      panY = 0;
 
       image.src =
         clean[index];
+      image.alt = `Foto ${index + 1} de ${clean.length}`;
 
       count.textContent =
         `${index + 1} de ${clean.length}`;
@@ -950,12 +995,21 @@
     }
 
     function close() {
+      pointers.clear();
+      document.body.style.overflow = previousBodyOverflow;
       box.remove();
 
       document.removeEventListener(
         'keydown',
         keys
       );
+
+      window.scrollTo(0, returnScrollY);
+      window.requestAnimationFrame(() => {
+        if (opener instanceof HTMLElement && opener.isConnected) {
+          opener.focus({ preventScroll: true });
+        }
+      });
     }
 
     function keys(event) {
@@ -990,13 +1044,19 @@
       (event) => {
         event.preventDefault();
 
+        const rect = canvas.getBoundingClientRect();
+
         setZoom(
           zoom +
           (
             event.deltaY < 0
               ? .2
               : -.2
-          )
+          ),
+          {
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top,
+          }
         );
       },
       {
@@ -1007,19 +1067,42 @@
     canvas.addEventListener(
       'pointerdown',
       (event) => {
-        if (zoom <= 1) {
-          return;
-        }
-
-        dragging = true;
-        startX = event.clientX;
-        startY = event.clientY;
-        scrollX = canvas.scrollLeft;
-        scrollY = canvas.scrollTop;
-
         canvas.setPointerCapture(
           event.pointerId
         );
+
+        pointers.set(event.pointerId, {
+          x: event.clientX,
+          y: event.clientY,
+        });
+
+        if (pointers.size >= 2) {
+          const [first, second] = [...pointers.values()];
+          const rect = canvas.getBoundingClientRect();
+          const centerX = (first.x + second.x) / 2 - rect.left;
+          const centerY = (first.y + second.y) / 2 - rect.top;
+
+          pinchStart = {
+            distance: Math.hypot(second.x - first.x, second.y - first.y) || 1,
+            zoom,
+            imageX: (centerX - canvas.clientWidth / 2 - panX) / zoom,
+            imageY: (centerY - canvas.clientHeight / 2 - panY) / zoom,
+          };
+          dragging = false;
+          dragStart = null;
+          canvas.classList.remove('dragging');
+          return;
+        }
+
+        if (zoom <= 1) return;
+
+        dragging = true;
+        dragStart = {
+          x: event.clientX,
+          y: event.clientY,
+          panX,
+          panY,
+        };
 
         canvas.classList.add(
           'dragging'
@@ -1030,45 +1113,90 @@
     canvas.addEventListener(
       'pointermove',
       (event) => {
-        if (!dragging) {
+        if (!pointers.has(event.pointerId)) {
           return;
         }
 
-        canvas.scrollLeft =
-          scrollX -
-          (
-            event.clientX -
-            startX
+        pointers.set(event.pointerId, {
+          x: event.clientX,
+          y: event.clientY,
+        });
+
+        if (pointers.size >= 2 && pinchStart) {
+          const [first, second] = [...pointers.values()];
+          const rect = canvas.getBoundingClientRect();
+          const centerX = (first.x + second.x) / 2 - rect.left;
+          const centerY = (first.y + second.y) / 2 - rect.top;
+          const distance = Math.hypot(
+            second.x - first.x,
+            second.y - first.y
           );
 
-        canvas.scrollTop =
-          scrollY -
-          (
-            event.clientY -
-            startY
+          zoom = Math.max(
+            1,
+            Math.min(4, pinchStart.zoom * distance / pinchStart.distance)
           );
+          panX = centerX - canvas.clientWidth / 2 - pinchStart.imageX * zoom;
+          panY = centerY - canvas.clientHeight / 2 - pinchStart.imageY * zoom;
+          renderZoom();
+          return;
+        }
+
+        if (!dragging || !dragStart) return;
+
+        panX = dragStart.panX + event.clientX - dragStart.x;
+        panY = dragStart.panY + event.clientY - dragStart.y;
+        renderZoom();
       }
     );
 
-    canvas.addEventListener(
-      'pointerup',
-      () => {
+    function endPointer(event) {
+      pointers.delete(event.pointerId);
+
+      if (pointers.size < 2) {
+        pinchStart = null;
+      }
+
+      if (pointers.size === 1 && zoom > 1) {
+        const remaining = [...pointers.values()][0];
+        dragging = true;
+        dragStart = {
+          x: remaining.x,
+          y: remaining.y,
+          panX,
+          panY,
+        };
+        canvas.classList.add('dragging');
+      } else {
         dragging = false;
-
-        canvas.classList.remove(
-          'dragging'
-        );
+        dragStart = null;
+        canvas.classList.remove('dragging');
       }
-    );
+
+      if (zoom === 1) {
+        panX = 0;
+        panY = 0;
+        renderZoom();
+      }
+    }
+
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
 
     image.addEventListener(
       'dblclick',
-      () =>
+      (event) => {
+        const rect = canvas.getBoundingClientRect();
         setZoom(
           zoom === 1
             ? 2
-            : 1
-        )
+            : 1,
+          {
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top,
+          }
+        );
+      }
     );
 
     box
@@ -1181,21 +1309,25 @@
       .catalog-lightbox-dialog{width:min(1450px,100%);height:min(920px,calc(100vh - 36px));display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;overflow:hidden;color:#fff;background:#151a17;border:1px solid rgba(255,255,255,.18);border-radius:12px}
       .catalog-lightbox header{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:10px 12px 10px 16px;border-bottom:1px solid rgba(255,255,255,.15)}
       .catalog-lightbox button{min-height:40px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:#252c28;color:#fff;font-weight:800;cursor:pointer}
+      .catalog-lightbox button:disabled{opacity:.3;cursor:default}
       .catalog-lightbox .catalog-lightbox-close{width:52px;height:52px;min-height:52px;padding:0;font-size:30px;line-height:1;display:grid;place-items:center}
       .catalog-lightbox-stage{min-height:0;display:grid;grid-template-columns:54px minmax(0,1fr) 54px;gap:8px;padding:12px}
       .catalog-lightbox-stage>button{align-self:center;width:48px;font-size:30px}
-      .catalog-lightbox-canvas{min-width:0;min-height:0;overflow:auto;display:grid;place-items:center;background:#0c100e;border-radius:8px;cursor:zoom-in;touch-action:none}
+      .catalog-lightbox-canvas{min-width:0;min-height:0;overflow:hidden;position:relative;background:#0c100e;border-radius:8px;cursor:zoom-in;touch-action:none;overscroll-behavior:contain}
       .catalog-lightbox-canvas.can-pan{cursor:grab}.catalog-lightbox-canvas.dragging{cursor:grabbing}
-      .catalog-lightbox-canvas img{display:block;object-fit:contain;user-select:none}
+      .catalog-lightbox-canvas img{display:block;position:absolute;object-fit:contain;user-select:none;will-change:width,height,transform}
       .catalog-lightbox-thumbs{display:flex;gap:10px;overflow-x:auto;padding:10px 14px;border-top:1px solid rgba(255,255,255,.12);background:#111612}
       .catalog-lightbox-thumbs button{flex:0 0 auto;width:78px;height:78px;min-height:78px;padding:4px;border:2px solid transparent;background:#252c28}
       .catalog-lightbox-thumbs button.is-active{border-color:#fff}
       .catalog-lightbox-thumbs img{width:100%;height:100%;object-fit:cover;border-radius:4px;display:block}
       .catalog-lightbox footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;padding:12px 16px;border-top:1px solid rgba(255,255,255,.15)}
       .catalog-lightbox footer button{padding:4px 12px}.catalog-lightbox footer span{color:#c7d0cb;font-size:12px}
+      .catalog-lightbox-detail{display:inline-grid;place-items:center;min-height:40px;padding:4px 14px;border:1px solid #fff;border-radius:8px;background:#fff;color:#153d2f;font-weight:850}
       .main-image{position:relative!important;cursor:zoom-in!important}
       .main-image .image-enlarge-hint{position:absolute;right:12px;bottom:12px;z-index:2}
       .product-gallery-thumbnails button{cursor:zoom-in!important}
+      @media (max-width:700px){.catalog-lightbox{padding:0}.catalog-lightbox-dialog{width:100%;height:100dvh;border:0;border-radius:0}.catalog-lightbox-stage{grid-template-columns:42px minmax(0,1fr) 42px;gap:3px;padding:6px}.catalog-lightbox-stage>button{width:40px;min-height:52px;padding:0}.catalog-lightbox-thumbs{padding:7px 10px}.catalog-lightbox-thumbs button{width:64px;height:58px;min-height:58px}.catalog-lightbox footer{gap:7px;padding:8px 10px}.catalog-lightbox footer>span{flex-basis:100%;text-align:center}.catalog-lightbox-detail{order:2}.catalog-lightbox footer>span{order:3}}
+      @media (max-height:520px) and (orientation:landscape){.catalog-lightbox header{padding:4px 8px 4px 12px}.catalog-lightbox .catalog-lightbox-close{width:42px;height:42px;min-height:42px}.catalog-lightbox-thumbs{display:none}.catalog-lightbox footer{padding:5px 8px}.catalog-lightbox footer>span{display:none}}
     `;
     document.head.appendChild(style);
   }
