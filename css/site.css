@@ -44,29 +44,24 @@
 
 /* Production product-detail hierarchy and photo experience. */
 .product-page{padding-bottom:64px}
-.product-detail{grid-template-columns:minmax(0,1.22fr) minmax(0,1fr);align-items:start;gap:0 52px;padding-bottom:0;display:grid}
-.product-detail-copy{display:contents}
-.product-detail-copy>.detail-meta{grid-column:2;grid-row:1;margin-bottom:0}
-.product-detail-copy>h1{grid-column:2;grid-row:2}
-.product-detail-copy>.lead{grid-column:2;grid-row:3}
-.product-detail-copy>.product-notes{grid-column:2;grid-row:4}
-.product-detail-copy>.product-price-block{grid-column:2;grid-row:5}
-.product-detail-copy>.product-actions{grid-column:2;grid-row:6}
-.product-detail-copy>.payment-breakdown{grid-column:1;grid-row:7;align-self:start;margin:48px 0 0}
-.product-detail-copy>.logistics{grid-column:2;grid-row:7;align-self:stretch;margin:48px 0 0}
-.product-detail-copy>.reservation-rule{grid-column:1/-1;grid-row:8;margin:18px 0 0}
-.product-detail-copy>h1{letter-spacing:-.04em;margin:0 0 14px;font-family:Georgia,serif;font-size:clamp(38px,5vw,59px);font-weight:500;line-height:.98}
-.product-detail-copy>.lead{color:var(--muted);margin:0;line-height:1.65}
-.product-gallery{grid-column:1;grid-row:1/span 6;align-self:start;min-width:0;scroll-margin-top:20px}
-.product-gallery-heading{margin-bottom:14px}
-.product-gallery-heading h2,.product-notes-heading h2{letter-spacing:-.025em;margin:5px 0 0;font-family:Georgia,serif;font-size:30px;font-weight:500}
-.product-notes{border:2px solid #bad1c5;background:#f5faf7;border-radius:12px;grid-template-columns:1fr;gap:8px;margin:24px 0;padding:20px;display:grid}
-.product-notes dl{margin:0}
-.product-notes dl div{border-bottom:1px solid #d8e4dd;padding:12px 0}
+.product-detail{grid-template-columns:minmax(0,3fr) minmax(0,5fr);align-items:start;gap:0 34px;padding-bottom:0;display:grid}
+.product-detail-copy{grid-column:2;grid-row:1;min-width:0;display:flex;flex-direction:column}
+.product-detail-left{grid-column:1;grid-row:1;min-width:0;display:flex;flex-direction:column}
+.product-detail>.reservation-rule{grid-column:1/-1;grid-row:2;margin:16px 0 0}
+.product-detail-copy>.detail-meta{margin-bottom:0}
+.product-detail-copy>h1{letter-spacing:-.04em;margin:0 0 10px;font-family:Georgia,serif;font-size:clamp(36px,3.3vw,46px);font-weight:500;line-height:1}
+.product-detail-copy>.lead{color:var(--muted);margin:0;line-height:1.5}
+.product-gallery{order:1;min-width:0;scroll-margin-top:20px}
+.product-detail-left>.logistics{order:2;margin:16px 0 0;padding:16px;gap:12px}
+.product-gallery-heading{margin-bottom:10px}
+.product-gallery-heading h2,.product-notes-heading h2{letter-spacing:-.025em;margin:4px 0 0;font-family:Georgia,serif;font-size:26px;font-weight:500}
+.product-notes{border:2px solid #bad1c5;background:#f5faf7;border-radius:12px;grid-template-columns:1fr;gap:6px;margin:16px 0;padding:15px 16px;display:grid}
+.product-notes dl{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px;margin:0;display:grid}
+.product-notes dl div{border-bottom:1px solid #d8e4dd;padding:8px 0}
 .product-notes dl div:last-child{border-bottom:0;padding-bottom:0}
 .product-notes dt{color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;font-size:10px;font-weight:850}
 .product-notes dd{margin:0;font-size:13px;line-height:1.5}
-.product-notes .known-defect{background:#fff1eb;border:1px solid #e5b7a7;border-radius:7px;margin-top:9px;padding:12px}
+.product-notes .known-defect{background:#fff1eb;border:1px solid #e5b7a7;border-radius:7px;margin-top:5px;padding:9px}
 .product-notes .known-defect dt,.product-notes .known-defect dd{color:#7b3d2d}
 .product-photo-teaser{display:none}
 .product-photo-teaser>div:first-child{gap:2px;display:grid}
@@ -78,11 +73,11 @@
 .product-photo-teaser-grid img{object-fit:contain;width:100%;height:100%}
 .product-gallery-jump{color:var(--forest);border:1px solid var(--line);border-radius:8px;align-items:center;justify-content:space-between;min-height:48px;padding:10px 13px;font-size:13px;font-weight:850;display:flex}
 .product-gallery-jump:hover,.product-gallery-jump:focus-visible{background:#edf5f0;border-color:#a9c7b8}
-.product-price-block{margin:20px 0 14px}
+.product-price-block{margin:14px 0 10px}
 .product-price-block del{color:var(--muted);font-size:13px;display:block}
 .product-price-block .detail-price{margin:3px 0 0;display:block}
 .product-price-block>span{color:var(--muted);margin-top:3px;font-size:12px;display:block}
-.product-social-actions{gap:8px;display:grid}
+.product-social-actions{grid-template-columns:1fr 1fr;gap:8px;display:grid}
 .product-social-actions .text-action{display:inline-grid;place-items:center;min-height:40px}
 .logistics{margin:22px 0 0;display:grid;gap:16px}
 .logistics>div{display:grid;gap:5px}
@@ -90,7 +85,10 @@
 .reservation-rule{margin:16px 0 0}
 .product-back-link{color:var(--forest);border-top:1px solid var(--line);margin-top:42px;padding:22px 0 0;font-size:13px;font-weight:800;display:block}
 .product-detail-route .site-footer small{display:none}
-.product-gallery .main-image{height:min(600px,50vw);max-height:600px}
+.product-detail-copy>.payment-breakdown{margin:14px 0 0}
+.product-detail-copy>.payment-breakdown div{min-height:38px;padding:8px 12px}
+.product-gallery .main-image{height:min(360px,31vw);max-height:360px}
+.product-gallery-thumbnails button{height:80px}
 
 @media (max-width:900px){
   .breadcrumbs{align-items:flex-start;gap:6px;padding:16px 0 12px;overflow-wrap:anywhere}
@@ -99,31 +97,34 @@
   .product-page{gap:16px;padding-bottom:44px;display:flex;flex-direction:column}
   .mobile-product-policy{order:0;padding:11px 13px;display:grid}
   .mobile-product-policy ul{list-style:disc}
-  .product-detail{order:1;gap:28px;display:flex;flex-direction:column}
-  .product-detail-copy{width:100%;position:static;display:flex;flex-direction:column}
-  .product-detail-copy>*{order:initial}
-  .detail-meta{margin:0 0 12px}
-  .product-detail-copy>h1{margin-bottom:12px;font-size:clamp(34px,10vw,46px)}
-  .product-detail-copy>.lead{font-size:15px;line-height:1.55}
+  .product-detail{order:1;gap:0;display:flex;flex-direction:column}
+  .product-detail-copy,.product-detail-left{display:contents}
+  .detail-meta{order:1;margin:0 0 12px}
+  .product-detail-copy>h1{order:2;margin-bottom:12px;font-size:clamp(34px,10vw,46px)}
+  .product-detail-copy>.lead{order:3;font-size:15px;line-height:1.55}
   .product-notes{order:initial;margin:20px 0 4px;padding:18px 16px}
+  .product-detail-copy>.product-notes{order:4}
   .product-notes-heading h2{font-size:28px;line-height:1.08}
+  .product-notes dl{display:block}
+  .product-notes dl div{padding:12px 0}
   .product-notes dd{font-size:14px}
   .product-notes .known-defect{margin:9px -4px 0;padding:12px}
-  .product-photo-teaser{border-top:1px solid var(--line);border-bottom:1px solid var(--line);gap:12px;margin:18px 0 2px;padding:16px 0;display:grid}
+  .product-photo-teaser{order:5;border-top:1px solid var(--line);border-bottom:1px solid var(--line);gap:12px;margin:18px 0 2px;padding:16px 0;display:grid}
   .product-photo-teaser-grid button{height:clamp(145px,42vw,210px)}
-  .product-price-block{margin:18px 0 12px}
+  .product-price-block{order:6;margin:18px 0 12px}
   .product-price-block .detail-price{font-size:32px}
-  .product-actions{order:initial;gap:10px}
+  .product-actions{order:7;gap:10px}
   .product-actions .primary-action,.product-social-actions .secondary-action{width:100%;min-height:52px}
-  .product-detail-copy>.payment-breakdown{order:initial;margin:20px 0 0}
-  .payment-breakdown div{font-size:12px}
-  .product-detail-copy>.logistics{margin-top:20px;padding:18px}
+  .product-social-actions{grid-template-columns:1fr}
+  .product-detail-copy>.payment-breakdown{order:8;margin:20px 0 0}
+  .payment-breakdown div,.product-detail-copy>.payment-breakdown div{min-height:45px;padding:11px 14px;font-size:12px}
+  .product-detail-left>.logistics{order:9;margin-top:20px;padding:18px;gap:16px}
   .logistics strong{font-size:22px}
   .logistics ul{font-size:13px;line-height:1.65}
-  .product-detail-copy>.reservation-rule{order:initial;margin:16px 0 0;font-size:12px}
-  .product-gallery{order:initial;width:100%}
+  .product-detail>.reservation-rule{order:10;margin:16px 0 0;font-size:12px}
+  .product-gallery{order:11;width:100%;margin-top:28px}
   .product-gallery-heading h2{font-size:30px}
-  .product-gallery .main-image{height:min(560px,112vw);padding:8px}
+  .product-gallery .main-image{height:min(560px,112vw);max-height:600px;padding:8px}
   .product-gallery-thumbnails{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .product-gallery-thumbnails button{height:92px}
   .product-back-link{order:2;margin-top:4px;padding-top:20px}

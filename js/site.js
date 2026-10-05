@@ -627,7 +627,9 @@ function renderProductDetail(product) {
               </strong>
             </div>
           </div>
+        </div>
 
+        <div class="product-detail-left">
           <section class="logistics" aria-labelledby="pickup-heading">
             <strong id="pickup-heading">Para el retiro</strong>
             <div>
@@ -656,38 +658,38 @@ function renderProductDetail(product) {
             </div>
           </section>
 
-          <p class="reservation-rule">
-            Un mensaje no reserva el artículo. La reserva queda confirmada
-            únicamente después de que confirmemos el pago.
-          </p>
+          ${
+            images.length
+              ? `
+                <section id="product-gallery" class="product-gallery" aria-labelledby="full-gallery-heading">
+                  <div class="product-gallery-heading">
+                    <span class="section-kicker">FOTOS</span>
+                    <h2 id="full-gallery-heading">Galería completa</h2>
+                  </div>
+
+                  <button class="main-image" type="button" data-photo-index="0">
+                    <img
+                      id="main-product-image"
+                      src="/${stripLeadingSlash(images[0])}"
+                      alt="${escapeHtml(product.title)}"
+                    >
+                  </button>
+
+                  ${
+                    images.length > 1
+                      ? `<div class="product-gallery-thumbnails">${gallery}</div>`
+                      : ''
+                  }
+                </section>
+              `
+              : ''
+          }
         </div>
 
-        ${
-          images.length
-            ? `
-              <section id="product-gallery" class="product-gallery" aria-labelledby="full-gallery-heading">
-                <div class="product-gallery-heading">
-                  <span class="section-kicker">FOTOS</span>
-                  <h2 id="full-gallery-heading">Galería completa</h2>
-                </div>
-
-                <button class="main-image" type="button" data-photo-index="0">
-                  <img
-                    id="main-product-image"
-                    src="/${stripLeadingSlash(images[0])}"
-                    alt="${escapeHtml(product.title)}"
-                  >
-                </button>
-
-                ${
-                  images.length > 1
-                    ? `<div class="product-gallery-thumbnails">${gallery}</div>`
-                    : ''
-                }
-              </section>
-            `
-            : ''
-        }
+        <p class="reservation-rule">
+          Un mensaje no reserva el artículo. La reserva queda confirmada
+          únicamente después de que confirmemos el pago.
+        </p>
       </div>
 
       <a class="product-back-link" href="/#articulos">
