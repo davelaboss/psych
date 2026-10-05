@@ -1,6 +1,6 @@
 # Psych Website — Project Master
 
-Last updated: 2026-10-01
+Last updated: 2026-10-05
 
 This file is the authoritative human-readable project record for the Psych website.
 
@@ -1519,3 +1519,14 @@ Format:
 - Integrated application checkpoint: `d251b5fda9fe93b68d8c2fafc3f9ecf5c2e98f13`. Catalog membership and the six-field payment page were preserved during cart integration. Postgres remains authoritative for reservations, order snapshots, and committed inventory; receipt upload does not confirm payment.
 - Validation environment: the separate `psych-cart-holds-staging` Netlify project, with isolated Postgres and fake bank/order/receipt fixtures. No production data changes or production deployment are part of this baseline correction.
 - Combined regression gate with the corrected 305 baseline: PASS. Rechecked catalog identities, the absence of Item 017, SOLD Items 151/308, all 305 product routes and 605 images, 148 Volume 3 products, quantity races with direct SQL inspection, 20-minute reservations, release/expiration, checkout transitions and failure retries, receipt/payment separation, idempotent seller confirmation, committed-stock availability, delayed pickup, and database invariants. Browser verification of search, filters, sorting, detail/lightbox, cart, private checkout, all six bank fields, alias copy, and receipt flow was performed against the identical application checkpoint; the current rendered catalog was also rechecked at 305. Disposable staging operational records were reset and directly verified empty afterward. Application code remains unchanged by this baseline correction.
+
+## 2026-10-05 — Marketing Email Generator v1 implemented
+
+- Owner/chat: Marketing Email Generator for the estate/moving-sale site.
+- Branch: `codex/marketing-email-generator`, based on current `origin/main`; merge and production deployment remain intentionally pending.
+- Authoritative selection source: the existing `loadCatalog()` runtime projection (base catalog plus strong-consistency Netlify Blob overrides plus PostgreSQL committed inventory), tightened for marketing by `readPurchasableInventory()`, which subtracts all active unexpired cart/order reservations from PostgreSQL. Missing operational-inventory rows fail closed. Static homepage markup is never used by itself to decide availability.
+- Result: Added ten reusable weekday AM/PM Paraguayan-Spanish templates, rules-based three-product selection with category/price/visual variety, no three bulky products, same-day AM/PM separation, 14-day rotation, and two-product fallback. Added an authenticated `/admin` Marketing tab with preview, copy, current photos, direct links, regeneration, and one-recipient send action.
+- Email delivery: Reuses `RESEND_API_KEY`; the recipient comes only from `MARKETING_EMAIL_TO`; sender comes from `MARKETING_EMAIL_FROM` or the existing `SELLER_NOTIFICATION_FROM`. Cover images are transformed by Netlify Image CDN into 1600 px JPEG attachments named `Item-NNN.jpg`. No real test email was sent.
+- Duplicate safety/history: PostgreSQL stores immutable draft packets, one send claim per date/slot, successful feature history, and a stable Resend idempotency key. Every selected product is reloaded and revalidated immediately before delivery.
+- Regression performed: JavaScript syntax checks; complete Node test suite (13 passing tests); diff whitespace check; live read-only Monday PM validation confirmed Items 022 and 049 eligible and Item 048 excluded as SOLD/zero remaining. Existing seller-notification tests remained green.
+- Scheduling: Not configured. Before automatic operation, the owner must confirm exact AM/PM times; then add a dedicated Netlify Scheduled Function with UTC schedules and configure the marketing environment variables. Production migration/application and owner iPhone/email verification remain post-merge steps.

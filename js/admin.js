@@ -15,6 +15,7 @@ const ADMIN_STATE = {
   inventoryStatus: 'ALL',
   reviewSearch: '',
   pricingSearch: '',
+  marketingPacket: null,
 };
 
 window.addEventListener('load', function () {
@@ -452,6 +453,7 @@ function buildAdminStats(
 
 function renderAdminShell() {
   injectAdminStyles();
+  injectMarketingStyles();
 
   const main =
     document.querySelector('main');
@@ -546,6 +548,11 @@ function renderAdminShell() {
         ${adminTabButton(
           'batches',
           'Lotes'
+        )}
+
+        ${adminTabButton(
+          'marketing',
+          'Marketing'
         )}
       </nav>
 
@@ -697,7 +704,264 @@ function renderAdminTab() {
     return;
   }
 
+  if (
+    ADMIN_STATE.activeTab ===
+    'marketing'
+  ) {
+    renderMarketingTab();
+    return;
+  }
+
   renderOverviewTab();
+}
+
+
+const MARKETING_SLOTS = [
+  ['MONDAY_AM', 'Monday AM'],
+  ['MONDAY_PM', 'Monday PM'],
+  ['TUESDAY_AM', 'Tuesday AM'],
+  ['TUESDAY_PM', 'Tuesday PM'],
+  ['WEDNESDAY_AM', 'Wednesday AM'],
+  ['WEDNESDAY_PM', 'Wednesday PM'],
+  ['THURSDAY_AM', 'Thursday AM'],
+  ['THURSDAY_PM', 'Thursday PM'],
+  ['FRIDAY_AM', 'Friday AM'],
+  ['FRIDAY_PM', 'Friday PM'],
+];
+
+const MARKETING_DAY_KEYS = [
+  '',
+  'MONDAY',
+  'TUESDAY',
+  'WEDNESDAY',
+  'THURSDAY',
+  'FRIDAY',
+  '',
+];
+
+
+function marketingDefaults() {
+  const parts = new Intl.DateTimeFormat(
+    'en-CA',
+    {
+      timeZone: 'America/Asuncion',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'long',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }
+  ).formatToParts(new Date());
+  const value = (type) =>
+    parts.find((part) => part.type === type)?.value || '';
+  let date = `${value('year')}-${value('month')}-${value('day')}`;
+  let weekday = value('weekday').toUpperCase();
+  const cursor = new Date(`${date}T12:00:00Z`);
+  while (!MARKETING_DAY_KEYS[cursor.getUTCDay()]) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  if (cursor.toISOString().slice(0, 10) !== date) {
+    date = cursor.toISOString().slice(0, 10);
+    weekday = MARKETING_DAY_KEYS[cursor.getUTCDay()];
+  }
+  const period = Number(value('hour')) < 13 ? 'AM' : 'PM';
+  const slotKey = `${weekday}_${period}`;
+  return {
+    date,
+    slotKey: MARKETING_SLOTS.some(([key]) => key === slotKey)
+      ? slotKey
+      : 'MONDAY_AM',
+  };
+}
+
+
+function marketingProductUrl(product) {
+  return `/producto/${encodeURIComponent(product.slug)}`;
+}
+
+
+function renderMarketingPacket(packet) {
+  if (!packet) {
+    return `
+      <div class="marketing-empty">
+        <h3>Prepará una vista previa</h3>
+        <p>La selección usa el estado público actual y no envía ningún correo.</p>
+      </div>`;
+  }
+
+  const sent = packet.status === 'SENT';
+  return `
+    <section class="marketing-preview" aria-live="polite">
+      <div class="marketing-preview-heading">
+        <div>
+          <span class="section-kicker">VISTA PREVIA</span>
+          <h3>${adminEscape(packet.subject)}</h3>
+          <p>${adminEscape(packet.slotDate)} · ${adminEscape(packet.slotLabel)}</p>
+        </div>
+        <span class="admin-pill ${sent ? 'is-published' : ''}">
+          ${sent ? 'Enviado' : 'Borrador'}
+        </span>
+      </div>
+
+      <section class="marketing-copy-card">
+        <div class="marketing-section-title">
+          <h4>1. LISTO PARA COPIAR Y PEGAR</h4>
+          <button class="secondary-action" type="button" data-copy-marketing>Copiar texto</button>
+        </div>
+        <pre>${adminEscape(packet.socialCopy)}</pre>
+      </section>
+
+      <section>
+        <h4>2. FOTOS PARA PUBLICAR</h4>
+        <div class="marketing-photo-grid">
+          ${packet.products.map((product) => `
+            <article>
+              <img src="${adminEscape(product.images[0])}" alt="${adminEscape(`Item ${String(product.itemNumber).padStart(3, '0')} — ${product.title}`)}">
+              <strong>Item ${String(product.itemNumber).padStart(3, '0')}</strong>
+              <span>${adminEscape(product.title)}</span>
+            </article>`).join('')}
+        </div>
+      </section>
+
+      <section class="marketing-links">
+        <h4>3. ENLACES DIRECTOS</h4>
+        <ul>
+          ${packet.products.map((product) => `
+            <li><a href="${marketingProductUrl(product)}" target="_blank" rel="noreferrer">Item ${String(product.itemNumber).padStart(3, '0')} — ${adminEscape(product.title)} ↗</a></li>`).join('')}
+        </ul>
+      </section>
+
+      <div class="marketing-actions">
+        <button class="secondary-action" type="button" data-regenerate-marketing ${sent ? 'disabled' : ''}>
+          Regenerar selección
+        </button>
+        <button class="primary-action" type="button" data-send-marketing ${sent ? 'disabled' : ''}>
+          ${sent ? 'Enviado a Maria' : 'Enviar a Maria'}
+        </button>
+      </div>
+      <p class="form-error" data-marketing-action-error hidden></p>
+    </section>`;
+}
+
+
+function renderMarketingTab() {
+  const target = document.getElementById('admin-tab-content');
+  const defaults = marketingDefaults();
+  const packet = ADMIN_STATE.marketingPacket;
+  target.innerHTML = `
+    <section class="admin-content-v2 marketing-admin">
+      <header class="admin-section-heading">
+        <div>
+          <span class="section-kicker">CORREO DE MARKETING</span>
+          <h2>Publicación lista para Maria</h2>
+          <p>Generá, revisá y enviá un solo correo con productos disponibles en este momento.</p>
+        </div>
+      </header>
+
+      <form class="admin-panel-card marketing-generator" data-marketing-form>
+        <label>
+          <span>Fecha</span>
+          <input type="date" name="slotDate" value="${adminEscape(packet?.slotDate || defaults.date)}" required>
+        </label>
+        <label>
+          <span>Franja</span>
+          <select name="slotKey" required>
+            ${MARKETING_SLOTS.map(([key, label]) => `
+              <option value="${key}" ${(packet?.slotKey || defaults.slotKey) === key ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </label>
+        <button class="primary-action" type="submit">
+          ${packet ? 'Generar nueva vista previa' : 'Generar vista previa'}
+        </button>
+        <p class="form-error" data-marketing-error hidden></p>
+      </form>
+
+      <div data-marketing-preview>
+        ${renderMarketingPacket(packet)}
+      </div>
+    </section>`;
+
+  bindMarketingActions();
+}
+
+
+function bindMarketingActions() {
+  const form = document.querySelector('[data-marketing-form]');
+  const generate = async () => {
+    const errorBox = document.querySelector('[data-marketing-error]');
+    const submit = form?.querySelector('button[type="submit"]');
+    if (errorBox) errorBox.hidden = true;
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = 'Generando…';
+    }
+    try {
+      const data = new FormData(form);
+      const result = await adminFetch('/api/admin/marketing-preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          slotDate: String(data.get('slotDate') || ''),
+          slotKey: String(data.get('slotKey') || ''),
+        }),
+      });
+      ADMIN_STATE.marketingPacket = result.packet;
+      renderMarketingTab();
+    } catch (error) {
+      if (errorBox) {
+        errorBox.textContent = error instanceof Error ? error.message : 'No se pudo generar la vista previa.';
+        errorBox.hidden = false;
+      }
+      if (submit) {
+        submit.disabled = false;
+        submit.textContent = 'Generar vista previa';
+      }
+    }
+  };
+
+  form?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    generate();
+  });
+  form?.querySelector('input[name="slotDate"]')?.addEventListener('change', (event) => {
+    const date = String(event.currentTarget.value || '');
+    const day = MARKETING_DAY_KEYS[new Date(`${date}T12:00:00Z`).getUTCDay()];
+    const select = form.querySelector('select[name="slotKey"]');
+    if (!day || !select) return;
+    const period = String(select.value).endsWith('_PM') ? 'PM' : 'AM';
+    select.value = `${day}_${period}`;
+  });
+  document.querySelector('[data-regenerate-marketing]')?.addEventListener('click', generate);
+  document.querySelector('[data-copy-marketing]')?.addEventListener('click', async (event) => {
+    await navigator.clipboard.writeText(ADMIN_STATE.marketingPacket?.socialCopy || '');
+    event.currentTarget.textContent = 'Copiado';
+  });
+  document.querySelector('[data-send-marketing]')?.addEventListener('click', async (event) => {
+    const packet = ADMIN_STATE.marketingPacket;
+    if (!packet || !window.confirm('¿Enviar este correo una sola vez a Maria?')) return;
+    const button = event.currentTarget;
+    const errorBox = document.querySelector('[data-marketing-action-error]');
+    button.disabled = true;
+    button.textContent = 'Enviando…';
+    if (errorBox) errorBox.hidden = true;
+    try {
+      const result = await adminFetch('/api/admin/marketing-send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ packetId: packet.id }),
+      });
+      ADMIN_STATE.marketingPacket = result.packet;
+      renderMarketingTab();
+    } catch (error) {
+      if (errorBox) {
+        errorBox.textContent = error instanceof Error ? error.message : 'No se pudo enviar el correo.';
+        errorBox.hidden = false;
+      }
+      button.disabled = false;
+      button.textContent = 'Enviar a Maria';
+    }
+  });
 }
 
 
@@ -5838,4 +6102,45 @@ function adminPaymentType(type) {
     FULL: 'Pago total',
     PENDING: 'Pendiente de clasificación',
   })[type] || type || '';
+}
+
+
+function injectMarketingStyles() {
+  if (document.getElementById('marketing-admin-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'marketing-admin-styles';
+  style.textContent = `
+    .marketing-admin { display: grid; gap: 22px; }
+    .marketing-generator { display: grid; grid-template-columns: minmax(170px, .8fr) minmax(190px, 1fr) auto; gap: 14px; align-items: end; }
+    .marketing-generator label { display: grid; gap: 7px; font-weight: 700; }
+    .marketing-generator input, .marketing-generator select { min-height: 46px; border: 1px solid #cfc7b9; border-radius: 10px; padding: 9px 11px; background: #fff; color: #26231f; font: inherit; }
+    .marketing-generator .form-error { grid-column: 1 / -1; }
+    .marketing-empty { padding: 42px 24px; border: 1px dashed #bdb4a5; border-radius: 16px; text-align: center; background: #faf8f4; }
+    .marketing-empty h3, .marketing-empty p { margin: 0; }
+    .marketing-empty p { margin-top: 8px; color: #655f56; }
+    .marketing-preview { display: grid; gap: 24px; padding: 22px; border: 1px solid #d7d0c5; border-radius: 18px; background: #fff; }
+    .marketing-preview-heading, .marketing-section-title, .marketing-actions { display: flex; gap: 14px; align-items: center; justify-content: space-between; }
+    .marketing-preview-heading h3 { margin: 5px 0 0; }
+    .marketing-preview-heading p { margin: 5px 0 0; color: #655f56; }
+    .marketing-preview h4 { margin: 0 0 12px; font-size: .92rem; letter-spacing: .04em; }
+    .marketing-section-title h4 { margin: 0; }
+    .marketing-copy-card { padding: 18px; border-radius: 14px; background: #f5f1e9; }
+    .marketing-copy-card pre { margin: 16px 0 0; white-space: pre-wrap; word-break: break-word; font: inherit; line-height: 1.55; }
+    .marketing-photo-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .marketing-photo-grid article { display: grid; align-content: start; gap: 5px; overflow: hidden; border: 1px solid #ded8cd; border-radius: 12px; padding-bottom: 12px; }
+    .marketing-photo-grid img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #f2eee7; }
+    .marketing-photo-grid strong, .marketing-photo-grid span { padding: 0 12px; }
+    .marketing-photo-grid span { color: #655f56; line-height: 1.35; }
+    .marketing-links ul { display: grid; gap: 10px; margin: 0; padding-left: 20px; }
+    .marketing-links a { color: #145c45; font-weight: 700; }
+    .marketing-actions { justify-content: flex-end; padding-top: 4px; }
+    @media (max-width: 720px) {
+      .marketing-generator { grid-template-columns: 1fr; }
+      .marketing-generator .form-error { grid-column: 1; }
+      .marketing-photo-grid { grid-template-columns: 1fr; }
+      .marketing-preview-heading, .marketing-section-title, .marketing-actions { align-items: stretch; flex-direction: column; }
+      .marketing-actions button { width: 100%; }
+    }
+  `;
+  document.head.appendChild(style);
 }

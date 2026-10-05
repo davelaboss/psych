@@ -489,6 +489,22 @@ export async function readCommittedInventory() {
   return new Map(rows.map(row => [row.product_id, row]));
 }
 
+export async function readPurchasableInventory() {
+  const rows = (await database().pool.query(`
+    SELECT inventory.product_id,inventory.capacity,inventory.committed_quantity,
+      GREATEST(0,inventory.capacity-inventory.committed_quantity-COALESCE((
+        SELECT sum(reservation.quantity)
+        FROM inventory_reservations reservation
+        WHERE reservation.product_id=inventory.product_id
+          AND ((reservation.phase='CART' AND reservation.expires_at>clock_timestamp())
+            OR (reservation.phase='ORDER' AND
+              (reservation.expires_at IS NULL OR reservation.expires_at>clock_timestamp())))
+      ),0)) AS purchasable_quantity
+    FROM operational_inventory inventory
+  `)).rows;
+  return new Map(rows.map(row => [row.product_id, row]));
+}
+
 export async function updateProductCapacity(productId, capacity) {
   return inventoryTransaction(async client => {
     await productLocks(client, [productId], { [productId]: capacity });
