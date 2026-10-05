@@ -12,6 +12,8 @@
 /api/admin/pickup              /.netlify/functions/admin-pickup             200
 /api/orders/receipt            /.netlify/functions/upload-receipt           200
 /api/admin/legacy-inventory    /.netlify/functions/admin-legacy-inventory   200
+/api/admin/marketing-preview   /.netlify/functions/admin-marketing-preview  200
+/api/admin/marketing-send      /.netlify/functions/admin-marketing-send     200
 
 /producto/*             /index.html                            200
 /carrito                /index.html                            200

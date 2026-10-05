@@ -5,5 +5,7 @@ source/package-lock.json
 # Local Netlify folder
 .env
 .netlify/
+netlify/functions/*.zip
+netlify/functions/manifest.json
 node_modules/
 deno.lock

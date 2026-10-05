@@ -2,6 +2,9 @@
   "name": "psych-sale-site",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test netlify/functions/_shared/*.test.mjs"
+  },
   "dependencies": {
     "@netlify/blobs": "^11.1.0",
     "@netlify/database": "2.0.1"
