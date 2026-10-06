@@ -200,18 +200,18 @@ test('frozen batch changes require and produce revision changes', () => {
 });
 
 test('schema prevents duplicate eligible open batches', async () => {
-  const sql = await readFile(new URL('../../database/migrations/20261006_032430_fulfillment_batches.sql', import.meta.url), 'utf8');
+  const sql = await readFile(new URL('../../database/migrations/20261009_fulfillment_batches.sql', import.meta.url), 'utf8');
   assert.match(sql, /CREATE UNIQUE INDEX fulfillment_batches_auto_open/);
   assert.match(sql, /WHERE status = 'OPEN'[\s\S]*auto_attach = true[\s\S]*merged_into_batch_id IS NULL/);
 });
 
 test('schema prevents duplicate order and product membership', async () => {
-  const sql = await readFile(new URL('../../database/migrations/20261006_032430_fulfillment_batches.sql', import.meta.url), 'utf8');
+  const sql = await readFile(new URL('../../database/migrations/20261009_fulfillment_batches.sql', import.meta.url), 'utf8');
   assert.match(sql, /PRIMARY KEY \(order_id, product_id\)/);
 });
 
 test('migration SQL text encodes string-only ASCII normalization and malformed JSON guards', async () => {
-  const sql = await readFile(new URL('../../database/migrations/20261006_032430_fulfillment_batches.sql', import.meta.url), 'utf8');
+  const sql = await readFile(new URL('../../database/migrations/20261009_fulfillment_batches.sql', import.meta.url), 'utf8');
   assert.match(sql, /jsonb_typeof\(item\.value->'pickupWindowStart'\) = 'string'/);
   assert.match(sql, /jsonb_typeof\(item\.value->'pickupWindowEnd'\) = 'string'/);
   assert.match(sql, /jsonb_typeof\(item\.value->'productId'\) = 'string'/);
