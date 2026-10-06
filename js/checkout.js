@@ -1,4 +1,4 @@
-﻿// File: js/checkout.js
+// File: js/checkout.js
 
 const CHECKOUT_CART_KEY =
   'mudanza-demo-cart';
@@ -168,13 +168,13 @@ async function renderCheckoutPage() {
 
   try {
     const response = await fetch('/.netlify/functions/volume2-catalog', { cache: 'no-store' });
-    if (!response.ok) throw new Error('No se pudo cargar el catÃ¡logo.');
+    if (!response.ok) throw new Error('No se pudo cargar el catálogo.');
     const data = await response.json();
-    if (!Array.isArray(data.products)) throw new Error('El catÃ¡logo no tiene el formato esperado.');
+    if (!Array.isArray(data.products)) throw new Error('El catálogo no tiene el formato esperado.');
     window.__catalogProducts = data.products;
   } catch (error) {
     console.error('Checkout:', error);
-    main.innerHTML = '<section class="empty-cart"><h1>No se pudo cargar el catÃ¡logo.</h1><p>IntentÃ¡ nuevamente en unos minutos.</p></section>';
+    main.innerHTML = '<section class="empty-cart"><h1>No se pudo cargar el catálogo.</h1><p>Intentá nuevamente en unos minutos.</p></section>';
     return;
   }
 
@@ -198,15 +198,15 @@ async function renderCheckoutPage() {
     main.innerHTML = `
       <section class="empty-cart">
         <span>Finalizar compra</span>
-        <h1>Tu carrito estÃ¡ vacÃ­o.</h1>
+        <h1>Tu carrito está vacío.</h1>
         <p>
-          VolvÃ© al catÃ¡logo para elegir artÃ­culos.
+          Volvé al catálogo para elegir artículos.
         </p>
         <a
           class="primary-action"
           href="/#articulos"
         >
-          Ver artÃ­culos
+          Ver artículos
         </a>
       </section>
     `;
@@ -326,16 +326,16 @@ async function renderCheckoutPage() {
         </h1>
 
         <p>
-          Tu pedido quedarÃ¡ reservado por 2 horas mientras realizÃ¡s la transferencia.
-          Si no enviÃ¡s el comprobante dentro de ese plazo, la reserva puede vencer y
-          los artÃ­culos pueden volver a estar disponibles.
+          Tu pedido quedará reservado por 2 horas mientras realizás la transferencia.
+          Si no enviás el comprobante dentro de ese plazo, la reserva puede vencer y
+          los artículos pueden volver a estar disponibles.
         </p>
         ${leaseExpiresAt ? `<p class="cart-lease-countdown" id="checkout-lease-countdown" data-expires-at="${leaseExpiresAt}">Tu carrito queda reservado por <strong></strong>.</p>` : ''}
         ${leaseExpiresAt ? `
           <div class="pickup-confirm" id="checkout-cart-extension" ${cart.extensionUsed ? '' : 'hidden'}>
-            <strong>${cart.extensionUsed ? 'Reserva extendida' : 'Â¿NecesitÃ¡s mÃ¡s tiempo?'}</strong>
-            <span>${cart.extensionUsed ? 'TenÃ©s 20 minutos adicionales para terminar tu compra.' : 'PodÃ©s extender tu reserva una vez por 20 minutos para terminar de comprar.'}</span>
-            ${cart.extensionUsed ? '' : '<button class="secondary-action" type="button" id="extend-checkout-reservation">Necesito mÃ¡s tiempo (+20 min)</button>'}
+            <strong>${cart.extensionUsed ? 'Reserva extendida' : '¿Necesitás más tiempo?'}</strong>
+            <span>${cart.extensionUsed ? 'Tenés 20 minutos adicionales para terminar tu compra.' : 'Podés extender tu reserva una vez por 20 minutos para terminar de comprar.'}</span>
+            ${cart.extensionUsed ? '' : '<button class="secondary-action" type="button" id="extend-checkout-reservation">Necesito más tiempo (+20 min)</button>'}
           </div>
         ` : ''}
       </div>
@@ -348,7 +348,7 @@ async function renderCheckoutPage() {
         >
           <section class="final-sale-policy" aria-labelledby="checkout-final-sale-title">
             <h2 id="checkout-final-sale-title">Todas las ventas son finales.</h2>
-            <p>La mayorÃ­a de los artÃ­culos son usados y se venden en el estado en que se encuentran, segÃºn las fotos y la descripciÃ³n publicada. Al retirar tu compra, por favor revisÃ¡ el artÃ­culo antes de llevÃ¡rtelo. Una vez que el artÃ­culo sale de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</p>
+            <p>La mayoría de los artículos son usados y se venden en el estado en que se encuentran, según las fotos y la descripción publicada. Al retirar tu compra, por favor revisá el artículo antes de llevártelo. Una vez que el artículo sale de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</p>
             <p>${NO_DELIVERY_NOTICE}</p>
             ${items.some(({ product }) => product.saleMode === 'DELAYED') ? `<p>${DELAYED_PICKUP_NOTICE}</p>` : ''}
           </section>
@@ -373,7 +373,7 @@ async function renderCheckoutPage() {
               value="true"
               required
             >
-            <span>Entiendo que la mayorÃ­a de los artÃ­culos son usados y que todas las ventas son finales. RevisarÃ© los artÃ­culos al retirarlos y entiendo que, una vez retirados del domicilio, no se aceptan devoluciones, cambios ni reembolsos.</span>
+            <span>Entiendo que la mayoría de los artículos son usados y que todas las ventas son finales. Revisaré los artículos al retirarlos y entiendo que, una vez retirados del domicilio, no se aceptan devoluciones, cambios ni reembolsos.</span>
           </label>
 
           <label>
@@ -421,8 +421,8 @@ async function renderCheckoutPage() {
           </button>
 
           <small>
-            Al continuar, los artÃ­culos quedan reservados durante 2 horas mientras
-            realizÃ¡s la transferencia y cargÃ¡s el comprobante.
+            Al continuar, los artículos quedan reservados durante 2 horas mientras
+            realizás la transferencia y cargás el comprobante.
           </small>
         </form>
 
@@ -525,7 +525,7 @@ async function renderCheckoutPage() {
           new FormData(form);
 
         if (data.get('finalSaleAcknowledged') !== 'true') {
-          errorBox.textContent = 'DebÃ©s aceptar la polÃ­tica de venta final antes de crear el pedido.';
+          errorBox.textContent = 'Debés aceptar la política de venta final antes de crear el pedido.';
           errorBox.hidden = false;
           return;
         }
@@ -533,7 +533,7 @@ async function renderCheckoutPage() {
         button.disabled = true;
 
         button.textContent =
-          'Creando pedidoâ€¦';
+          'Creando pedido…';
 
         errorBox.hidden = true;
 
@@ -714,7 +714,7 @@ async function renderOrderPage() {
           Falta el enlace privado.
         </h1>
         <p>
-          AbrÃ­ el enlace original que
+          Abrí el enlace original que
           recibiste al realizar la compra.
         </p>
       </section>
@@ -727,7 +727,7 @@ async function renderOrderPage() {
     <section class="empty-cart">
       <span>Mi pedido</span>
       <h1>
-        Cargando pedidoâ€¦
+        Cargando pedido…
       </h1>
     </section>
   `;
@@ -780,7 +780,7 @@ async function renderOrderPage() {
           ${escapeHtml(
             error instanceof Error
               ? error.message
-              : 'IntentÃ¡ nuevamente.'
+              : 'Intentá nuevamente.'
           )}
         </p>
       </section>
@@ -805,11 +805,11 @@ function displayOrder(
           <p>${escapeHtml(order.id)}</p>
         </div>
         <section class="checkout-card" role="status">
-          <p>Este pedido fue cancelado por el vendedor. Los artÃ­culos fueron liberados y ya no estÃ¡n reservados para este pedido.</p>
-          <p>No realices una transferencia ni subas un comprobante para este pedido. Si ya transferiste, contactÃ¡ al vendedor.</p>
-          <h2>ArtÃ­culos del pedido cancelado</h2>
+          <p>Este pedido fue cancelado por el vendedor. Los artículos fueron liberados y ya no están reservados para este pedido.</p>
+          <p>No realices una transferencia ni subas un comprobante para este pedido. Si ya transferiste, contactá al vendedor.</p>
+          <h2>Artículos del pedido cancelado</h2>
           <ul>${order.items.map(item => `<li><strong>${orderItemLabel(item)}</strong><br><span>Cantidad: ${item.quantity}</span></li>`).join('')}</ul>
-          <a class="secondary-action" href="/">Volver al catÃ¡logo</a>
+          <a class="secondary-action" href="/">Volver al catálogo</a>
           <a class="secondary-action" href="https://wa.me/595972588347?text=${encodeURIComponent(`Hola, quisiera consultar por mi pedido cancelado ${order.id}.`)}" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>
         </section>
       </section>
@@ -914,12 +914,12 @@ function displayOrder(
         </div>
         <section class="reservation-expired-card" role="alert">
           <span>RESERVA VENCIDA</span>
-          <h2>Tu reserva venciÃ³. No realices la transferencia todavÃ­a.</h2>
-          <p>Uno o mÃ¡s artÃ­culos ya no estÃ¡n disponibles para renovar este pedido completo. No cargues un comprobante ni transfieras dinero.</p>
+          <h2>Tu reserva venció. No realices la transferencia todavía.</h2>
+          <p>Uno o más artículos ya no están disponibles para renovar este pedido completo. No cargues un comprobante ni transfieras dinero.</p>
           <p>Consultanos antes de intentar una nueva compra.</p>
         </section>
         <section class="checkout-card">
-          <h2>ArtÃ­culos del pedido</h2>
+          <h2>Artículos del pedido</h2>
           ${items}
         </section>
         <a class="secondary-action" href="https://wa.me/595972588347?text=${encodeURIComponent(`Hola, quisiera consultar por la reserva vencida de mi pedido ${order.id}.`)}" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>
@@ -931,9 +931,9 @@ function displayOrder(
 
   const paymentHistory = payments.map((payment, index) => `
     <article class="payment-history-entry">
-      <strong>Comprobante ${index + 1} Â· ${paymentTypeLabel(payment.type)}</strong>
-      <span>${payment.amountPYG == null ? 'Pendiente de verificaciÃ³n' : formatPYG(payment.amountPYG)}</span>
-      <span>${payment.verificationStatus === 'CONFIRMED' ? 'Confirmado' : 'Pendiente de verificaciÃ³n'}</span>
+      <strong>Comprobante ${index + 1} · ${paymentTypeLabel(payment.type)}</strong>
+      <span>${payment.amountPYG == null ? 'Pendiente de verificación' : formatPYG(payment.amountPYG)}</span>
+      <span>${payment.verificationStatus === 'CONFIRMED' ? 'Confirmado' : 'Pendiente de verificación'}</span>
     </article>
   `).join('');
 
@@ -972,7 +972,7 @@ function displayOrder(
 
       <section class="checkout-card final-sale-policy" aria-labelledby="order-final-sale-title">
         <h2 id="order-final-sale-title">Todas las ventas son finales.</h2>
-        <p>La mayorÃ­a de los artÃ­culos son usados y se venden en el estado en que se encuentran, segÃºn las fotos y la descripciÃ³n publicada. Al retirar tu compra, por favor revisÃ¡ el artÃ­culo antes de llevÃ¡rtelo. Una vez que el artÃ­culo sale de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</p>
+        <p>La mayoría de los artículos son usados y se venden en el estado en que se encuentran, según las fotos y la descripción publicada. Al retirar tu compra, por favor revisá el artículo antes de llevártelo. Una vez que el artículo sale de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</p>
         <p>${NO_DELIVERY_NOTICE}</p>
         ${order.items.some((item) => item.saleMode === 'DELAYED') ? `<p>${DELAYED_PICKUP_NOTICE}</p>` : ''}
       </section>
@@ -981,7 +981,7 @@ function displayOrder(
         <section class="reservation-deadline-card" role="status">
           <span>RESERVA DEL PEDIDO</span>
           <strong>Reservado hasta: ${escapeHtml(formatOrderDeadline(order.holdExpiresAt))}</strong>
-          <p>Los artÃ­culos estÃ¡n reservados mientras completÃ¡s la transferencia y enviÃ¡s el comprobante.</p>
+          <p>Los artículos están reservados mientras completás la transferencia y enviás el comprobante.</p>
           ${order.reservationRenewed ? '<p><strong>Tu reserva fue renovada por 2 horas.</strong></p>' : ''}
         </section>
       ` : ''}
@@ -992,7 +992,7 @@ function displayOrder(
           class="checkout-card"
         >
           <h2>
-            ArtÃ­culos
+            Artículos
           </h2>
 
           ${items}
@@ -1069,7 +1069,7 @@ function displayOrder(
                   <span>
                     Ahora verificaremos que
                     los fondos hayan ingresado
-                    a la cuenta. No necesitÃ¡s
+                    a la cuenta. No necesitás
                     volver a cargarlo.
                   </span>
                 </div>
@@ -1082,7 +1082,7 @@ function displayOrder(
 
       <section class="checkout-card" id="pickup-scheduler" aria-live="polite">
         <h2>Retiro</h2>
-        <p>Cargando horarios de retiroâ€¦</p>
+        <p>Cargando horarios de retiro…</p>
       </section>
 
       <a
@@ -1124,24 +1124,24 @@ async function setupPickupScheduler(order, access) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los horarios.');
     const appointment = data.appointment?.status === 'SCHEDULED' ? data.appointment : null;
-    const current = appointment?.slotKey ? appointment.slotKey.replace('|', ' Â· ') : '';
+    const current = appointment?.slotKey ? appointment.slotKey.replace('|', ' · ') : '';
     target.innerHTML = `<h2>Retiro</h2>
       <div class="pickup-policy-reminder">
-        <strong>Antes de retirarte con los artÃ­culos, revisalos y asegurate de estar conforme. Una vez retirados del domicilio, la venta es final.</strong>
+        <strong>Antes de retirarte con los artículos, revisalos y asegurate de estar conforme. Una vez retirados del domicilio, la venta es final.</strong>
         <span>${NO_DELIVERY_NOTICE}</span>
         ${order.items.some((item) => item.saleMode === 'DELAYED') ? `<span>${DELAYED_PICKUP_NOTICE}</span>` : ''}
       </div>
       ${appointment ? `<p><strong>Horario confirmado:</strong> ${escapeHtml(current)}</p>` : ''}
       ${data.eligible ? `<form id="pickup-scheduler-form">
-        <label for="pickup-slot">${appointment ? 'Cambiar horario' : 'ElegÃ­ un horario'}</label>
+        <label for="pickup-slot">${appointment ? 'Cambiar horario' : 'Elegí un horario'}</label>
         <select id="pickup-slot" name="slotKey" required>
-          <option value="">SeleccionÃ¡ fecha y horario</option>
+          <option value="">Seleccioná fecha y horario</option>
           ${data.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
-            `<option value="${escapeHtml(slot.key)}">${escapeHtml(slot.key.replace('|', ' Â· '))} Â· ${slot.remaining} lugar(es)</option>`).join('')}
+            `<option value="${escapeHtml(slot.key)}">${escapeHtml(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}
         </select>
         <button class="primary-action" type="submit">${appointment ? 'Cambiar retiro' : 'Agendar retiro'}</button>
         <p class="form-error" id="pickup-scheduler-error" role="alert" hidden></p>
-      </form>` : `<p>${order.status === 'CANCELLED' ? 'Pedido cancelado.' : 'PodrÃ¡s agendar cuando el vendedor confirme el pago total.'}</p>`}`;
+      </form>` : `<p>${order.status === 'CANCELLED' ? 'Pedido cancelado.' : 'Podrás agendar cuando el vendedor confirme el pago total.'}</p>`}`;
     target.querySelector('form')?.addEventListener('submit', async event => {
       event.preventDefault();
       const button = target.querySelector('button[type="submit"]');
@@ -1182,8 +1182,8 @@ function renderBankSection(
 
         <span>
           No realices la transferencia
-          todavÃ­a. Los datos bancarios
-          se estÃ¡n configurando.
+          todavía. Los datos bancarios
+          se están configurando.
         </span>
       </div>
     `;
@@ -1230,7 +1230,7 @@ function renderBankSection(
         </div>
 
         <div>
-          <dt>NÂ° de cuenta</dt>
+          <dt>N° de cuenta</dt>
           <dd>
             ${escapeHtml(
               order.bank.accountNumber
@@ -1268,10 +1268,10 @@ function renderBankSection(
       </div>
 
       ${finalPayment
-        ? `<p>TransferÃ­ el saldo pendiente de <strong>${formatPYG(order.remainingBalancePYG)}</strong>.</p>`
+        ? `<p>Transferí el saldo pendiente de <strong>${formatPYG(order.remainingBalancePYG)}</strong>.</p>`
         : Number(order.totals.futureBalancePYG || 0) > 0
-          ? `<p>PodÃ©s transferir la seÃ±a de <strong>${formatPYG(order.totals.dueNowPYG)}</strong> o el pago total de <strong>${formatPYG(order.totals.totalPYG)}</strong>. El vendedor registrarÃ¡ el importe verificado.</p>`
-          : `<p>TransferÃ­ exactamente <strong>${formatPYG(order.totals.totalPYG)}</strong>.</p>`
+          ? `<p>Podés transferir la seña de <strong>${formatPYG(order.totals.dueNowPYG)}</strong> o el pago total de <strong>${formatPYG(order.totals.totalPYG)}</strong>. El vendedor registrará el importe verificado.</p>`
+          : `<p>Transferí exactamente <strong>${formatPYG(order.totals.totalPYG)}</strong>.</p>`
       }
 
       <form
@@ -1279,11 +1279,11 @@ function renderBankSection(
         class="receipt-upload-highlight"
         aria-labelledby="receipt-upload-heading"
       >
-        <h3 id="receipt-upload-heading">${finalPayment ? 'DespuÃ©s de transferir el saldo, subÃ­ tu comprobante aquÃ­' : 'DespuÃ©s de transferir, subÃ­ tu comprobante aquÃ­'}</h3>
-        <p>Necesitamos que cargues el comprobante en esta pÃ¡gina para poder verificar tu pago. No lo envÃ­es solamente por WhatsApp.</p>
+        <h3 id="receipt-upload-heading">${finalPayment ? 'Después de transferir el saldo, subí tu comprobante aquí' : 'Después de transferir, subí tu comprobante aquí'}</h3>
+        <p>Necesitamos que cargues el comprobante en esta página para poder verificar tu pago. No lo envíes solamente por WhatsApp.</p>
         <label>
           <span>
-            ElegÃ­ el archivo de tu comprobante
+            Elegí el archivo de tu comprobante
           </span>
 
           <input
@@ -1310,7 +1310,7 @@ function renderBankSection(
 
         <small>
           JPEG, PNG, WebP o PDF.
-          MÃ¡ximo 3 MB.
+          Máximo 3 MB.
         </small>
         <p class="receipt-verification-note">Subir el comprobante no confirma el pago. El vendedor debe verificar que los fondos hayan ingresado.</p>
       </form>
@@ -1340,7 +1340,7 @@ function setupBankAliasCopy(alias) {
 
       aliasValue.focus();
       aliasValue.select();
-      status.textContent = 'Alias seleccionado; copiÃ¡lo.';
+      status.textContent = 'Alias seleccionado; copiálo.';
     }
   });
 }
@@ -1390,7 +1390,7 @@ function setupReceiptUpload(
       button.disabled = true;
 
       button.textContent =
-        'Enviando comprobanteâ€¦';
+        'Enviando comprobante…';
 
       errorBox.hidden = true;
 
@@ -1465,7 +1465,7 @@ function orderStatusLabel(status) {
       'Pago confirmado',
 
     DEPOSIT_CONFIRMED:
-      'SeÃ±a confirmada',
+      'Seña confirmada',
   
     READY_TO_SCHEDULE:
       'Listo para coordinar retiro',
@@ -1494,10 +1494,10 @@ function formatOrderDeadline(value) {
 
 function paymentTypeLabel(type) {
   return ({
-    DEPOSIT: 'SeÃ±a',
+    DEPOSIT: 'Seña',
     FINAL: 'Pago del saldo',
     FULL: 'Pago total',
-    PENDING: 'Pendiente de clasificaciÃ³n',
+    PENDING: 'Pendiente de clasificación',
   })[type] || type || '';
 }
 
@@ -1505,7 +1505,7 @@ function paymentTypeLabel(type) {
 function orderItemLabel(item) {
   const number = item.itemNumber == null
     ? ''
-    : `Item ${String(item.itemNumber).padStart(3, '0')} Â· `;
+    : `Item ${String(item.itemNumber).padStart(3, '0')} · `;
   return `${escapeHtml(number)}${escapeHtml(item.title)}`;
 }
 
@@ -1524,7 +1524,7 @@ function startCheckoutLeaseCountdown() {
       target.textContent = 'vencida';
       const button = document.querySelector('#checkout-form button[type="submit"]');
       if (button) button.disabled = true;
-      wrapper.textContent = 'La reserva temporal venciÃ³ y este artÃ­culo volviÃ³ a estar disponible.';
+      wrapper.textContent = 'La reserva temporal venció y este artículo volvió a estar disponible.';
       clearInterval(startCheckoutLeaseCountdown.timer);
       return;
     }
@@ -1557,7 +1557,7 @@ function setupCheckoutReservationExtension() {
       if (extension) {
         extension.dataset.used = 'true';
         extension.hidden = false;
-        extension.innerHTML = '<strong>Reserva extendida</strong><span>TenÃ©s 20 minutos adicionales para terminar tu compra.</span>';
+        extension.innerHTML = '<strong>Reserva extendida</strong><span>Tenés 20 minutos adicionales para terminar tu compra.</span>';
       }
       startCheckoutLeaseCountdown();
     } catch (error) {
