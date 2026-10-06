@@ -6,6 +6,7 @@
 /api/admin/upload-receipt      /.netlify/functions/admin-upload-receipt     200
 /api/admin/buyer-groups        /.netlify/functions/admin-buyer-groups       200
 /api/admin/assign-buyer-group  /.netlify/functions/admin-assign-buyer-group 200
+/api/admin/fulfillment-batches /.netlify/functions/admin-fulfillment-batches 200
 /api/orders/create             /.netlify/functions/create-order             200
 /api/orders/get                /.netlify/functions/get-order                200
 /api/orders/pickup             /.netlify/functions/customer-pickup          200

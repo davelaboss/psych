@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { database, inventoryTransaction } from './inventory-database.mjs';
 
 const GROUP_LOCK = 20261003;
+const reassignmentConflict = () => Object.assign(
+  new Error('Este pedido ya pertenece a una planilla de preparación y su comprador no se puede reasignar.'),
+  { status: 409, code: 'FULFILLMENT_BUYER_REASSIGNMENT_BLOCKED' }
+);
 
 export function normalizeBuyerName(value) {
   return String(value || '')
@@ -70,7 +74,7 @@ async function ensureOrderGroup(client, row) {
   ])).rows[0];
 }
 
-async function ensureAllBuyerGroups(client) {
+export async function ensureAllBuyerGroups(client) {
   await client.query('SELECT pg_advisory_xact_lock($1)', [GROUP_LOCK]);
   const rows = (await client.query(`SELECT order_id, order_snapshot
     FROM checkout_attempts
@@ -78,9 +82,11 @@ async function ensureAllBuyerGroups(client) {
   for (const row of rows) await ensureOrderGroup(client, row);
 }
 
-export async function listBuyerGroups() {
-  await inventoryTransaction(ensureAllBuyerGroups);
-  const rows = (await database().pool.query(`SELECT
+export async function listBuyerGroups(dependencies = {}) {
+  const runTransaction = dependencies.transaction || inventoryTransaction;
+  const query = dependencies.query || ((sql, params) => database().pool.query(sql, params));
+  await runTransaction(ensureAllBuyerGroups);
+  const rows = (await query(`SELECT
       g.buyer_group_id,
       g.display_name,
       g.display_phone,
@@ -106,7 +112,8 @@ export async function listBuyerGroups() {
       orders: [],
       confirmedItems: [],
     };
-    const order = row.order_snapshot;
+    const order = row.order_snapshot && typeof row.order_snapshot === 'object' &&
+      !Array.isArray(row.order_snapshot) ? row.order_snapshot : {};
     const confirmed = Boolean(row.committed_at) && order.status !== 'CANCELLED';
     group.orders.push({
       id: row.order_id,
@@ -118,7 +125,8 @@ export async function listBuyerGroups() {
       autoMatchBlocked: row.auto_match_blocked,
     });
     if (confirmed) {
-      for (const item of order.items || []) {
+      for (const item of Array.isArray(order.items) ? order.items : []) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
         group.confirmedItems.push({
           orderId: row.order_id,
           productId: item.productId,
@@ -135,6 +143,25 @@ export async function listBuyerGroups() {
   return [...groups.values()];
 }
 
+export async function assertBuyerGroupReassignmentAllowed(client, {
+  action,
+  orderId,
+  previousGroupId,
+}) {
+  if (!['MERGE', 'SEPARATE'].includes(action)) return;
+  const protectedOrder = action === 'MERGE'
+    ? (await client.query(`SELECT 1
+        FROM fulfillment_batch_items item
+        JOIN buyer_group_orders membership USING (order_id)
+        WHERE membership.buyer_group_id=$1
+        LIMIT 1`, [previousGroupId])).rows[0]
+    : (await client.query(`SELECT 1
+        FROM fulfillment_batch_items
+        WHERE order_id=$1
+        LIMIT 1`, [orderId])).rows[0];
+  if (protectedOrder) throw reassignmentConflict();
+}
+
 export async function assignBuyerGroup({ orderId, action, targetBuyerGroupId }) {
   return inventoryTransaction(async client => {
     await ensureAllBuyerGroups(client);
@@ -144,6 +171,11 @@ export async function assignBuyerGroup({ orderId, action, targetBuyerGroupId }) 
     const current = (await client.query(`SELECT * FROM buyer_group_orders
       WHERE order_id=$1 FOR UPDATE`, [orderId])).rows[0];
     const previousGroupId = current.buyer_group_id;
+    await assertBuyerGroupReassignmentAllowed(client, {
+      action,
+      orderId,
+      previousGroupId,
+    });
 
     if (action === 'MERGE') {
       const target = (await client.query(`SELECT buyer_group_id FROM buyer_groups
