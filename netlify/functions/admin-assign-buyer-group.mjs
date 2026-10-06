@@ -21,6 +21,7 @@ export default async function handler(request) {
   } catch (error) {
     return jsonResponse({
       error: error instanceof Error ? error.message : 'No se pudo guardar el comprador.',
+      code: error?.code || null,
     }, Number(error?.status || 500));
   }
 }
