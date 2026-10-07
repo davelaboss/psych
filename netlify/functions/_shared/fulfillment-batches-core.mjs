@@ -83,7 +83,9 @@ export function assertExpectedRevision(batch, expectedRevision) {
 
 export function nextStatus(currentStatus, action) {
   if (action === 'PREPARE' && currentStatus === 'OPEN') return 'PREPARED';
-  if (action === 'DELIVER' && currentStatus === 'PREPARED') return 'DELIVERED';
+  if (action === 'DELIVER' && ['PREPARED', 'LEGACY_FROZEN'].includes(currentStatus)) {
+    return 'DELIVERED';
+  }
   if (action === 'REOPEN' && ['PREPARED', 'LEGACY_FROZEN'].includes(currentStatus)) return 'OPEN';
   throw Object.assign(new Error('El lote ya no admite esa acción.'), {
     status: 409,

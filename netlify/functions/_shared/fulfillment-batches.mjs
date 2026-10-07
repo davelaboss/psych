@@ -217,11 +217,19 @@ async function recordEvent(client, {
   ]);
 }
 
-async function transitionBatch(client, { batchId, action, expectedRevision }) {
+export async function transitionBatch(client, {
+  batchId,
+  action,
+  expectedRevision,
+  confirmFrozen,
+}) {
   const rows = await lockBatches(client, [batchId]);
   const batch = rows.get(batchId);
   if (batch.merged_into_batch_id) throw conflict('Este lote ya fue combinado con otro.');
   assertExpectedRevision({ revision: batch.revision }, expectedRevision);
+  if (action === 'DELIVER' && batch.status === 'LEGACY_FROZEN' && confirmFrozen !== true) {
+    throw conflict('Confirmá expresamente que el lote histórico ya fue entregado.');
+  }
   const status = nextStatus(batch.status, action);
 
   if (action === 'REOPEN') {
@@ -254,6 +262,9 @@ async function transitionBatch(client, { batchId, action, expectedRevision }) {
     targetBatchId: batchId,
     items,
     revisions: { before: Number(batch.revision), after: Number(updated.revision) },
+    context: action === 'DELIVER' && batch.status === 'LEGACY_FROZEN'
+      ? { reason: 'HISTORICAL_DELIVERY_CONFIRMED' }
+      : {},
   });
   return loadFulfillmentBatches(client, [batchId]);
 }

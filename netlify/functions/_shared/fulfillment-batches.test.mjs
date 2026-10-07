@@ -17,6 +17,7 @@ import {
   ensureFulfillmentAssignments,
   loadFulfillmentBatches,
   separateItems,
+  transitionBatch,
 } from './fulfillment-batches.mjs';
 import { createFulfillmentBatchesHandler } from '../admin-fulfillment-batches.mjs';
 
@@ -143,8 +144,149 @@ test('reprint data remains the persisted prepared membership', () => {
 
 test('delivery is terminal for automatic attachment', () => {
   assert.equal(nextStatus('PREPARED', 'DELIVER'), 'DELIVERED');
+  assert.equal(nextStatus('LEGACY_FROZEN', 'DELIVER'), 'DELIVERED');
+  assert.throws(() => nextStatus('OPEN', 'DELIVER'), /ya no admite/);
   assert.equal(chooseAutoAttachBatch([open({ status: 'DELIVERED', autoAttach: false })], buyer, 'IMMEDIATE'), null);
+  assert.throws(() => nextStatus('DELIVERED', 'DELIVER'), /ya no admite/);
   assert.throws(() => nextStatus('DELIVERED', 'REOPEN'), /ya no admite/);
+});
+
+function transitionClient({
+  status,
+  revision = 4,
+  preparedAt = '2026-09-20T10:00:00.000Z',
+  mergedIntoBatchId = null,
+}) {
+  const batchId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const itemRows = [{ order_id: 'ORDER-1', product_id: 'item-062' }];
+  const queries = [];
+  const events = [];
+  let batch = {
+    fulfillment_batch_id: batchId,
+    buyer_group_id: buyer,
+    timing_key: 'IMMEDIATE',
+    status,
+    auto_attach: false,
+    revision,
+    prepared_at: preparedAt,
+    delivered_at: null,
+    merged_into_batch_id: mergedIntoBatchId,
+    created_at: '2026-09-01T10:00:00.000Z',
+    updated_at: '2026-09-20T10:00:00.000Z',
+  };
+  const client = {
+    async query(sql, params = []) {
+      queries.push({ sql, params });
+      if (sql.includes('SELECT * FROM fulfillment_batches')) return { rows: [batch] };
+      if (sql.includes('SELECT order_id,product_id')) return { rows: itemRows };
+      if (sql.includes('UPDATE fulfillment_batches SET')) {
+        batch = {
+          ...batch,
+          status: params[1],
+          auto_attach: params[2],
+          delivered_at: params[3] === 'DELIVER' ? '2026-10-07T12:00:00.000Z' : batch.delivered_at,
+          revision: batch.revision + 1,
+          updated_at: '2026-10-07T12:00:00.000Z',
+        };
+        return { rows: [batch] };
+      }
+      if (sql.includes('INSERT INTO fulfillment_batch_events')) {
+        events.push(params);
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes('FROM fulfillment_batches batch')) {
+        return { rows: itemRows.map(item => ({
+          ...batch,
+          batch_created_at: batch.created_at,
+          batch_updated_at: batch.updated_at,
+          display_name: 'Virginia Villasboa',
+          display_phone: '123',
+          ...item,
+          assignment_mode: 'MANUAL_SEPARATE',
+          order_snapshot: { items: [{ productId: item.product_id, title: 'Máquina de pan', quantity: 1 }] },
+          order_created_at: '2026-09-01T09:00:00.000Z',
+        })) };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+  };
+  return { batchId, client, events, itemRows, queries };
+}
+
+test('legacy delivery requires explicit frozen confirmation before writes', async () => {
+  const fixture = transitionClient({ status: 'LEGACY_FROZEN' });
+  await assert.rejects(() => transitionBatch(fixture.client, {
+    batchId: fixture.batchId,
+    action: 'DELIVER',
+    expectedRevision: 4,
+    confirmFrozen: false,
+  }), /Confirmá expresamente/);
+  assert.equal(fixture.queries.filter(({ sql }) => /^\s*(?:INSERT|UPDATE|DELETE)\b/.test(sql)).length, 0);
+});
+
+test('merged batches remain ineligible for delivery before writes', async () => {
+  const fixture = transitionClient({
+    status: 'LEGACY_FROZEN',
+    mergedIntoBatchId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  });
+  await assert.rejects(() => transitionBatch(fixture.client, {
+    batchId: fixture.batchId,
+    action: 'DELIVER',
+    expectedRevision: 4,
+    confirmFrozen: true,
+  }), /combinado con otro/);
+  assert.equal(fixture.queries.filter(({ sql }) => /^\s*(?:INSERT|UPDATE|DELETE)\b/.test(sql)).length, 0);
+});
+
+test('confirmed historical delivery preserves membership and records historical audit context', async () => {
+  const preparedAt = '2026-09-20T10:00:00.000Z';
+  const fixture = transitionClient({ status: 'LEGACY_FROZEN', preparedAt });
+  const [delivered] = await transitionBatch(fixture.client, {
+    batchId: fixture.batchId,
+    action: 'DELIVER',
+    expectedRevision: 4,
+    confirmFrozen: true,
+  });
+
+  assert.equal(delivered.status, 'DELIVERED');
+  assert.ok(delivered.deliveredAt);
+  assert.equal(delivered.preparedAt, new Date(preparedAt).getTime());
+  assert.equal(delivered.autoAttach, false);
+  assert.equal(delivered.revision, 5);
+  assert.deepEqual(delivered.items.map(({ orderId, productId }) => ({ orderId, productId })), [
+    { orderId: 'ORDER-1', productId: 'item-062' },
+  ]);
+  const batchUpdates = fixture.queries.filter(({ sql }) => sql.includes('UPDATE fulfillment_batches SET'));
+  assert.equal(batchUpdates.length, 1);
+  assert.deepEqual(batchUpdates[0].params.slice(1), ['DELIVERED', false, 'DELIVER']);
+  assert.match(batchUpdates[0].sql, /prepared_at=CASE[\s\S]*ELSE prepared_at END/);
+  assert.match(batchUpdates[0].sql, /delivered_at=CASE WHEN \$4='DELIVER' THEN clock_timestamp\(\)/);
+  assert.match(batchUpdates[0].sql, /revision=revision\+1/);
+  assert.equal(fixture.queries.filter(({ sql }) =>
+    /(?:INSERT INTO|UPDATE|DELETE FROM) fulfillment_batch_items/.test(sql)).length, 0);
+  assert.equal(fixture.events.length, 1);
+  assert.equal(fixture.events[0][0], 'DELIVER');
+  assert.deepEqual(JSON.parse(fixture.events[0][4]), [
+    { orderId: 'ORDER-1', productId: 'item-062' },
+  ]);
+  assert.deepEqual(JSON.parse(fixture.events[0][5]), { before: 4, after: 5 });
+  assert.deepEqual(JSON.parse(fixture.events[0][6]), {
+    reason: 'HISTORICAL_DELIVERY_CONFIRMED',
+  });
+});
+
+test('prepared delivery remains normal and does not receive historical audit context', async () => {
+  const fixture = transitionClient({ status: 'PREPARED' });
+  const [delivered] = await transitionBatch(fixture.client, {
+    batchId: fixture.batchId,
+    action: 'DELIVER',
+    expectedRevision: 4,
+  });
+  assert.equal(delivered.status, 'DELIVERED');
+  assert.equal(delivered.revision, 5);
+  assert.equal(fixture.events.length, 1);
+  assert.equal(fixture.events[0][0], 'DELIVER');
+  assert.deepEqual(JSON.parse(fixture.events[0][6]), {});
 });
 
 test('reopen accepts the current revision and restores open state', () => {
@@ -296,6 +438,19 @@ test('admin prepares on the server before invoking print', async () => {
   const body = source.slice(start, end);
   assert.ok(body.indexOf("action: 'PREPARE'") < body.indexOf('printFulfillmentBatch(batchId)'));
   assert.match(body, /await updateFulfillmentBatch/);
+});
+
+test('admin offers delivery only for prepared and legacy frozen batches with distinct confirmation', async () => {
+  const source = await readFile(new URL('../../../js/admin.js', import.meta.url), 'utf8');
+  assert.match(source, /\['PREPARED', 'LEGACY_FROZEN'\]\.includes\(batch\.status\)[\s\S]*data-deliver-batch/);
+  const start = source.indexOf('async function deliverFulfillmentBatch');
+  const end = source.indexOf('async function reopenFulfillmentBatch', start);
+  const body = source.slice(start, end);
+  assert.match(body, /batch\.status === 'LEGACY_FROZEN'/);
+  assert.match(body, /¿Confirmar que este lote histórico ya fue entregado\?/);
+  assert.match(body, /sin reabrir ni volver a preparar el lote/);
+  assert.match(body, /if \(isHistorical\) payload\.confirmFrozen = true/);
+  assert.match(body, /: '¿Confirmar que este lote fue entregado\?'/);
 });
 
 test('server materializes confirmed items before any batch mutation', async () => {
