@@ -818,14 +818,28 @@ function displayOrder(
     return;
   }
 
-  const status =
-    orderStatusLabel(
-      order.status
-    );
-
   const payments = order.payments || [];
   const paidAmount = Number(order.paidAmountPYG || 0);
   const remainingBalance = Number(order.remainingBalancePYG ?? order.totals.totalPYG);
+  const orderTotal = Number(order.totals.totalPYG || 0);
+  const dueNow = Number(order.totals.dueNowPYG || 0);
+  const delayedOrder = order.items.some(item => item.saleMode === 'DELAYED');
+  const depositShortfall = Math.max(0, dueNow - paidAmount);
+  const overpayment = Math.max(0, paidAmount - orderTotal);
+  const expectedNow = delayedOrder && Date.now() < Date.parse('2026-12-01T00:00:00-03:00')
+    ? depositShortfall : remainingBalance;
+  const paymentState = paidAmount >= orderTotal && orderTotal > 0
+    ? 'FULLY_PAID'
+    : paidAmount > 0 && paidAmount < dueNow
+      ? 'PARTIALLY_PAID'
+      : dueNow < orderTotal && paidAmount >= dueNow && paidAmount < orderTotal
+        ? 'DEPOSIT_SATISFIED'
+        : paidAmount > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+  const status = ({
+    PARTIALLY_PAID: 'Pago parcial confirmado',
+    DEPOSIT_SATISFIED: 'Seña confirmada',
+    FULLY_PAID: 'Pago completo',
+  })[paymentState] || orderStatusLabel(order.status);
 
   const items =
     order.items
@@ -929,11 +943,10 @@ function displayOrder(
     return;
   }
 
-  const paymentHistory = payments.map((payment, index) => `
+  const paymentHistory = payments.map((payment) => `
     <article class="payment-history-entry">
-      <strong>Comprobante ${index + 1} · ${paymentTypeLabel(payment.type)}</strong>
-      <span>${payment.amountPYG == null ? 'Pendiente de verificación' : formatPYG(payment.amountPYG)}</span>
-      <span>${payment.verificationStatus === 'CONFIRMED' ? 'Confirmado' : 'Pendiente de verificación'}</span>
+      <strong>${escapeHtml(formatPaymentDate(payment.confirmedAt))}</strong>
+      <span>${formatPYG(payment.amountPYG)}</span>
     </article>
   `).join('');
 
@@ -1001,14 +1014,12 @@ function displayOrder(
         <aside
           class="cart-summary"
         >
-          <span class="section-kicker">
-            PAGO
-          </span>
+          <span class="section-kicker">RESUMEN DE PAGO</span>
 
           <dl>
             <div>
               <dt>
-                Valor total
+                Total del pedido
               </dt>
 
               <dd>
@@ -1023,7 +1034,7 @@ function displayOrder(
               class="summary-due"
             >
               <dt>
-                Pagado
+                Pagado confirmado
               </dt>
 
               <dd>
@@ -1044,6 +1055,12 @@ function displayOrder(
                 )}
               </dd>
             </div>
+            ${delayedOrder ? `
+              <div><dt>Seña requerida</dt><dd>${formatPYG(dueNow)}</dd></div>
+              <div><dt>Faltante de seña</dt><dd>${formatPYG(depositShortfall)}</dd></div>
+              <div><dt>Importe esperado ahora</dt><dd>${formatPYG(expectedNow)}</dd></div>
+            ` : ''}
+            ${overpayment > 0 ? `<div><dt>Saldo a favor</dt><dd>${formatPYG(overpayment)}</dd></div>` : ''}
           </dl>
 
           ${
@@ -1191,7 +1208,7 @@ function renderBankSection(
 
   return `
     <div class="bank-details">
-      <h3>${finalPayment ? 'Pago del saldo' : 'Datos para transferencia'}</h3>
+      <h3>${finalPayment ? 'Pagos adicionales' : 'Datos para transferencia'}</h3>
 
       ${finalPayment ? `
         <dl>
@@ -1268,7 +1285,7 @@ function renderBankSection(
       </div>
 
       ${finalPayment
-        ? `<p>Transferí el saldo pendiente de <strong>${formatPYG(order.remainingBalancePYG)}</strong>.</p>`
+        ? `<p>Podés realizar un pago adicional de hasta <strong>${formatPYG(order.remainingBalancePYG)}</strong>. Cada importe se descuenta del saldo cuando el vendedor lo verifica.</p>`
         : Number(order.totals.futureBalancePYG || 0) > 0
           ? `<p>Podés transferir la seña de <strong>${formatPYG(order.totals.dueNowPYG)}</strong> o el pago total de <strong>${formatPYG(order.totals.totalPYG)}</strong>. El vendedor registrará el importe verificado.</p>`
           : `<p>Transferí exactamente <strong>${formatPYG(order.totals.totalPYG)}</strong>.</p>`
@@ -1488,6 +1505,16 @@ function formatOrderDeadline(value) {
   return new Date(Number(value)).toLocaleString('es-PY', {
     dateStyle: 'medium',
     timeStyle: 'short',
+  });
+}
+
+
+function formatPaymentDate(value) {
+  if (!value) return 'Fecha no disponible';
+  return new Date(Number(value)).toLocaleDateString('es-PY', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
   });
 }
 

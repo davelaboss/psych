@@ -1,6 +1,12 @@
 import { getDatabase } from '@netlify/database';
 import { createHash } from 'node:crypto';
-import { withPaymentState } from './order-payments.mjs';
+import {
+  appendPaymentNote,
+  applyPaymentConfirmation,
+  confirmationRequiresInventoryCommit,
+  reconcileLegacyPayment as reconcileLegacyPaymentState,
+  withPaymentState,
+} from './order-payments.mjs';
 import { queueOrderNotifications } from './seller-notifications.mjs';
 
 const RESERVED = 'Este artículo está temporalmente reservado por otro comprador.';
@@ -367,41 +373,30 @@ export async function recordOrderReceipt(orderId, receipt) {
     return snapshot;
   });
 }
-export async function confirmOrderPayment(orderId, paymentId, requestedType) {
+export async function confirmOrderPayment(orderId, confirmation) {
   return inventoryTransaction(async client => {
     const locked = await orderLock(client, orderId);
     if (!locked) return false;
     const { row, rows } = locked;
     const current = withPaymentState(row.order_snapshot);
     if (current.status === 'CANCELLED') return false;
-    const index = current.payments.findIndex(payment => payment.id === paymentId) >= 0
-      ? current.payments.findIndex(payment => payment.id === paymentId)
-      : current.payments.findIndex(payment => payment.verificationStatus === 'PENDING');
-    if (index < 0) {
-      if (!paymentId && current.payments.length && current.payments.every(payment => payment.verificationStatus === 'CONFIRMED')) return current;
-      return false;
-    }
-    const existing = current.payments[index];
-    const inferredType = row.committed_at ? 'FINAL'
-      : current.totals.futureBalancePYG > 0 ? 'DEPOSIT' : 'FULL';
-    const type = String(requestedType || inferredType).toUpperCase();
-    if (existing.verificationStatus === 'CONFIRMED') {
-      if (existing.type !== type) throw fail('Este pago ya fue confirmado con otra clasificación.');
-      return current;
-    }
-    const total = Number(current.totals.totalPYG || 0);
-    const paid = Number(current.paidAmountPYG || 0);
-    if (type === 'DEPOSIT' && (row.committed_at || paid > 0 || Number(current.totals.dueNowPYG) >= total)) {
+    const type = String(confirmation?.paymentType || '').toUpperCase();
+    const targetPayment = current.payments.find(payment => payment.id === confirmation?.paymentId);
+    const confirmingPendingPayment = targetPayment?.verificationStatus !== 'CONFIRMED';
+    if (confirmingPendingPayment && type === 'DEPOSIT' && (row.committed_at || current.confirmedPaidPYG > 0 ||
+        Number(current.totals.dueNowPYG) >= Number(current.totals.totalPYG))) {
       throw fail('Este pedido no admite una seña separada.');
     }
-    if (type === 'FULL' && (row.committed_at || paid > 0)) throw fail('Este pedido ya tiene un pago confirmado.');
-    if (type === 'FINAL' && (!row.committed_at || paid <= 0)) throw fail('Primero debe confirmarse la seña.');
-    if (!['DEPOSIT', 'FULL', 'FINAL'].includes(type)) throw fail('Tipo de pago inválido.');
-    const amount = type === 'DEPOSIT' ? Number(current.totals.dueNowPYG || 0)
-      : type === 'FULL' ? total : Number(current.remainingBalancePYG || 0);
-    if (amount <= 0 || paid + amount > total) throw fail('El pago supera el saldo pendiente.');
+    if (confirmingPendingPayment && type === 'FULL' && (row.committed_at || current.confirmedPaidPYG > 0)) {
+      throw fail('Este pedido ya tiene un pago confirmado.');
+    }
+    if (confirmingPendingPayment && type === 'FINAL' && (!row.committed_at || current.confirmedPaidPYG <= 0)) {
+      throw fail('Primero debe confirmarse un pago inicial.');
+    }
     const timestamp = await now(client);
-    if (!row.committed_at) {
+    const result = applyPaymentConfirmation(current, { ...confirmation, paymentType: type, timestamp });
+    if (result.idempotent) return result.order;
+    if (confirmationRequiresInventoryCommit(row.committed_at, result)) {
       const orderRows = rows.filter(item => item.phase === 'ORDER');
       if (!orderRows.length) return false;
       for (const item of orderRows) {
@@ -411,26 +406,48 @@ export async function confirmOrderPayment(orderId, paymentId, requestedType) {
       await client.query("UPDATE inventory_reservations SET phase='COMMITTED',expires_at=NULL,updated_at=clock_timestamp() WHERE order_id=$1 AND phase='ORDER'", [orderId]);
     }
     await cancelOrderReservationEvents(client, orderId);
-    const payments = current.payments.map((payment, paymentIndex) => paymentIndex === index
-      ? { ...payment, type, amountPYG: amount, verificationStatus: 'CONFIRMED', confirmedAt: timestamp }
-      : payment);
-    const paidAmountPYG = paid + amount;
-    const remainingBalancePYG = Math.max(0, total - paidAmountPYG);
-    const isDelayed = current.items.some(item => item.saleMode === 'DELAYED');
-    const status = remainingBalancePYG > 0 ? 'DEPOSIT_CONFIRMED'
-      : isDelayed ? 'PAID_IN_FULL' : 'PAYMENT_CONFIRMED';
-    const snapshot = { ...current, payments, paidAmountPYG, remainingBalancePYG, status,
-      initialPaymentConfirmedAt: current.initialPaymentConfirmedAt || timestamp,
-      ...(type === 'FINAL' ? { finalPaymentConfirmedAt: timestamp } : {}), updatedAt: timestamp };
+    const snapshot = result.order;
     await client.query('UPDATE checkout_attempts SET committed_at=COALESCE(committed_at,$2),order_snapshot=$3,projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1',
       [orderId, new Date(timestamp), JSON.stringify(snapshot)]);
-    await queueOrderNotifications(client, { key: `payment:${existing.id}`, order: snapshot,
-      type: 'PAYMENT_CONFIRMED', details: { paymentType: type } });
+    await queueOrderNotifications(client, { key: `payment:${confirmation.paymentId}`, order: snapshot,
+      type: 'PAYMENT_CONFIRMED', details: { paymentType: type,
+        verifiedAmountPYG: Number(confirmation.verifiedAmountPYG),
+        previousConfirmedPaidPYG: result.previousConfirmedPaidPYG,
+        paymentState: snapshot.paymentState } });
     return snapshot;
   });
 }
-export async function commitInventoryHold(orderId) {
-  return Boolean(await confirmOrderPayment(orderId));
+
+export async function addOrderPaymentNote(orderId, noteInput) {
+  return inventoryTransaction(async client => {
+    const locked = await orderLock(client, orderId);
+    if (!locked) return false;
+    const timestamp = await now(client);
+    const snapshot = withPaymentState(appendPaymentNote(locked.row.order_snapshot,
+      { ...noteInput, timestamp }), timestamp);
+    await client.query(`UPDATE checkout_attempts SET order_snapshot=$2,
+      projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1`,
+    [orderId, JSON.stringify(snapshot)]);
+    return snapshot;
+  });
+}
+
+export async function reconcileOrderLegacyPayment(orderId, reconciliation) {
+  return inventoryTransaction(async client => {
+    const locked = await orderLock(client, orderId);
+    if (!locked) return false;
+    const timestamp = await now(client);
+    const snapshot = reconcileLegacyPaymentState(locked.row.order_snapshot,
+      { ...reconciliation, timestamp });
+    await client.query(`UPDATE checkout_attempts SET order_snapshot=$2,
+      projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1`,
+    [orderId, JSON.stringify(snapshot)]);
+    return snapshot;
+  });
+}
+
+export async function commitInventoryHold() {
+  throw fail('La confirmación requiere el identificador y el importe verificado del pago.');
 }
 export async function cancelOrder(orderId) {
   return inventoryTransaction(async client => {
