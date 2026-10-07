@@ -1,6 +1,6 @@
 import {
   jsonResponse,
-  loadCatalog,
+  loadPublicCatalog,
 } from './_shared/commerce.mjs';
 
 
@@ -14,12 +14,17 @@ export default async function handler(request) {
 
   const origin =
     new URL(request.url).origin;
+  const requestedSlug =
+    new URL(request.url).searchParams.get('slug') || '';
 
-  const products =
-    await loadCatalog(origin);
+  const {
+    products,
+    deliveredProduct,
+  } = await loadPublicCatalog(origin, { requestedSlug });
 
   return jsonResponse({
     ok: true,
     products,
+    deliveredProduct,
   });
 }

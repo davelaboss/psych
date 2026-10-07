@@ -450,6 +450,85 @@ export async function loadCatalog(origin) {
 }
 
 
+function publicStatus(product) {
+  return String(product?.status || '').trim().toUpperCase();
+}
+
+
+export function projectPublicCatalog(products, deliveryRows, requestedSlug = '') {
+  const deliveryByProduct = new Map();
+
+  for (const row of Array.isArray(deliveryRows) ? deliveryRows : []) {
+    const productId = String(row?.product_id ?? row?.productId ?? '').trim();
+    if (!productId) continue;
+
+    const state = deliveryByProduct.get(productId) || {
+      activeLines: 0,
+      memberships: 0,
+      allDelivered: true,
+      ambiguousQuantity: false,
+    };
+    const quantity = Number(row?.quantity);
+    const hasMembership = Boolean(row?.fulfillment_batch_id ?? row?.fulfillmentBatchId);
+    const batchStatus = String(row?.batch_status ?? row?.batchStatus ?? '').toUpperCase();
+    const mergedIntoBatchId = row?.merged_into_batch_id ?? row?.mergedIntoBatchId ?? null;
+
+    state.activeLines += 1;
+    if (hasMembership) state.memberships += 1;
+    if (!Number.isFinite(quantity) || quantity !== 1) state.ambiguousQuantity = true;
+    if (!hasMembership || mergedIntoBatchId || batchStatus !== 'DELIVERED') {
+      state.allDelivered = false;
+    }
+    deliveryByProduct.set(productId, state);
+  }
+
+  const visible = [];
+  const hiddenDelivered = [];
+
+  for (const product of Array.isArray(products) ? products : []) {
+    if (['UNLISTED', 'NEEDS_REVIEW'].includes(publicStatus(product))) continue;
+
+    const remaining = Number(product?.quantityRemaining ?? 0);
+    const delivery = deliveryByProduct.get(String(product?.id || ''));
+    const hideAsDelivered = remaining <= 0 &&
+      delivery?.activeLines > 0 &&
+      delivery.memberships === delivery.activeLines &&
+      delivery.allDelivered &&
+      !delivery.ambiguousQuantity;
+
+    if (hideAsDelivered) hiddenDelivered.push(product);
+    else visible.push(product);
+  }
+
+  const slug = String(requestedSlug || '').trim();
+  const deliveredProduct = slug
+    ? hiddenDelivered.find(product => product?.slug === slug)
+    : null;
+
+  return {
+    products: visible,
+    deliveredProduct: deliveredProduct ? {
+      id: deliveredProduct.id,
+      slug: deliveredProduct.slug,
+      title: deliveredProduct.title,
+      itemNumber: deliveredProduct.itemNumber,
+      category: deliveredProduct.category,
+    } : null,
+  };
+}
+
+
+export async function loadPublicCatalog(origin, options = {}, dependencies = {}) {
+  const loadAuthoritativeCatalog = dependencies.loadCatalog || loadCatalog;
+  const readDeliveryRows = dependencies.readFulfillmentDeliveryRows || readFulfillmentDeliveryRows;
+  const [products, deliveryRows] = await Promise.all([
+    loadAuthoritativeCatalog(origin),
+    readDeliveryRows(),
+  ]);
+  return projectPublicCatalog(products, deliveryRows, options.requestedSlug);
+}
+
+
 const ITEM_058_FREEZER_DEFECT_NOTE =
   'Desgaste por uso normal con detalles. Burlete superior con pequeño corte que no afecta el sellado. Compartimiento inferior con reparación de una grieta.';
 
@@ -484,7 +563,11 @@ export {
   commitInventoryHold, confirmOrderPayment, updateProductCapacity, cancelOrder,
   refreshOrderReservation,
 } from './inventory-database.mjs';
-import { listOrderSnapshots, readCommittedInventory } from './inventory-database.mjs';
+import {
+  listOrderSnapshots,
+  readCommittedInventory,
+  readFulfillmentDeliveryRows,
+} from './inventory-database.mjs';
 import { recoverOrderBlob, readRecoverableOrder } from './order-recovery.mjs';
 import { publicPayments, withPaymentState } from './order-payments.mjs';
 

@@ -6,6 +6,7 @@
     products: [],
     filtered: [],
     controls: {},
+    deliveredProduct: null,
   };
 
   if (document.readyState === 'loading') {
@@ -24,18 +25,25 @@
     }
 
     try {
-      const catalog = await fetchCatalog();
-      state.products = dedupe(catalog)
+      const requestedSlug = path.startsWith('/producto/')
+        ? decodeURIComponent(path.slice('/producto/'.length))
+        : '';
+      const catalog = await fetchCatalog(requestedSlug);
+      state.products = dedupe(catalog.products)
         .sort((a, b) => Number(a.itemNumber) - Number(b.itemNumber));
+      state.deliveredProduct = catalog.deliveredProduct;
 
       window.__catalogProducts = state.products;
 
       if (path.startsWith('/producto/')) {
-        const slug = decodeURIComponent(path.slice('/producto/'.length));
-        const product = state.products.find((item) => item.slug === slug);
+        const product = state.products.find((item) => item.slug === requestedSlug);
 
         if (product && typeof window.renderProductDetail === 'function') {
           window.renderProductDetail(product);
+        } else if (state.deliveredProduct?.slug === requestedSlug) {
+          renderDeliveredProductView(state.deliveredProduct);
+        } else {
+          renderUnavailableProductView();
         }
 
         enhanceDetailPhotoAction();
@@ -61,8 +69,10 @@
     return window.location.pathname.replace(/\/+$/, '') || '/';
   }
 
-  async function fetchCatalog() {
-    const response = await fetch('/.netlify/functions/volume2-catalog', {
+  async function fetchCatalog(requestedSlug = '') {
+    const url = new URL('/.netlify/functions/volume2-catalog', window.location.origin);
+    if (requestedSlug) url.searchParams.set('slug', requestedSlug);
+    const response = await fetch(url, {
       cache: 'no-store',
     });
 
@@ -72,7 +82,47 @@
       throw new Error(data.error || 'No se pudo cargar el catálogo.');
     }
 
-    return Array.isArray(data.products) ? data.products : [];
+    return {
+      products: Array.isArray(data.products) ? data.products : [],
+      deliveredProduct: data.deliveredProduct && typeof data.deliveredProduct === 'object'
+        ? data.deliveredProduct
+        : null,
+    };
+  }
+
+
+  function renderDeliveredProductView(product) {
+    const main = document.querySelector('main');
+    if (!main) return;
+    document.title = `${product.title || 'Artículo entregado'} | Venta de Mudanza`;
+    document.body.classList.add('product-detail-route');
+    main.innerHTML = `
+      <section class="empty-cart delivered-product-view">
+        <span>VENTA FINALIZADA</span>
+        <h1>${escapeHtml(product.title || 'Artículo entregado')}</h1>
+        <p><strong>Este artículo ya fue vendido y entregado.</strong></p>
+        <p>Te invitamos a ver otros artículos disponibles.</p>
+        <a class="primary-action" href="/#articulos">Ver artículos disponibles</a>
+      </section>
+    `;
+    document.documentElement.classList.remove('product-route-pending');
+  }
+
+
+  function renderUnavailableProductView() {
+    const main = document.querySelector('main');
+    if (!main) return;
+    document.title = 'Artículo no disponible | Venta de Mudanza';
+    document.body.classList.add('product-detail-route');
+    main.innerHTML = `
+      <section class="empty-cart unavailable-product-view">
+        <span>NO DISPONIBLE</span>
+        <h1>No encontramos ese artículo.</h1>
+        <p>Puede haberse retirado de la venta o estar pendiente de revisión.</p>
+        <a class="primary-action" href="/#articulos">Volver al catálogo</a>
+      </section>
+    `;
+    document.documentElement.classList.remove('product-route-pending');
   }
 
 

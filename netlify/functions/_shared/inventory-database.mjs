@@ -505,6 +505,45 @@ export async function readPurchasableInventory() {
   return new Map(rows.map(row => [row.product_id, row]));
 }
 
+export async function readFulfillmentDeliveryRows() {
+  return (await database().pool.query(`
+    SELECT
+      attempt.order_id,
+      normalized.product_id,
+      CASE
+        WHEN jsonb_typeof(item.value->'quantity') = 'number'
+          THEN (item.value->>'quantity')::numeric
+        WHEN jsonb_typeof(item.value->'quantity') = 'string'
+          AND btrim(item.value->>'quantity', E' \t\r\n') ~ '^[0-9]+([.][0-9]+)?$'
+          THEN btrim(item.value->>'quantity', E' \t\r\n')::numeric
+        ELSE NULL
+      END AS quantity,
+      membership.fulfillment_batch_id,
+      batch.status AS batch_status,
+      batch.merged_into_batch_id
+    FROM checkout_attempts attempt
+    CROSS JOIN LATERAL jsonb_array_elements(CASE
+      WHEN jsonb_typeof(attempt.order_snapshot->'items') = 'array'
+        THEN attempt.order_snapshot->'items'
+      ELSE '[]'::jsonb
+    END) item(value)
+    CROSS JOIN LATERAL (SELECT CASE
+      WHEN jsonb_typeof(item.value->'productId') = 'string'
+        THEN btrim(item.value->>'productId', E' \t\r\n')
+      ELSE ''
+    END AS product_id) normalized
+    LEFT JOIN fulfillment_batch_items membership
+      ON membership.order_id = attempt.order_id
+      AND membership.product_id = normalized.product_id
+    LEFT JOIN fulfillment_batches batch
+      ON batch.fulfillment_batch_id = membership.fulfillment_batch_id
+    WHERE attempt.committed_at IS NOT NULL
+      AND COALESCE(attempt.order_snapshot->>'status', '') <> 'CANCELLED'
+      AND normalized.product_id <> ''
+    ORDER BY normalized.product_id, attempt.order_id
+  `)).rows;
+}
+
 export async function updateProductCapacity(productId, capacity) {
   return inventoryTransaction(async client => {
     await productLocks(client, [productId], { [productId]: capacity });
