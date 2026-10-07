@@ -4013,7 +4013,7 @@ function renderBuyerSheetsTab() {
                   Imprimir nuevamente
                 </button>
               `}
-              ${batch.status === 'PREPARED' ? `
+              ${['PREPARED', 'LEGACY_FROZEN'].includes(batch.status) ? `
                 <button class="secondary-action" type="button" data-deliver-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
                   Marcar entregado
                 </button>
@@ -4139,9 +4139,16 @@ async function prepareAndPrintFulfillmentBatch(batchId) {
 
 async function deliverFulfillmentBatch(batchId) {
   const batch = fulfillmentBatchById(batchId);
-  if (!batch || !window.confirm('¿Confirmar que este lote fue entregado?')) return;
+  if (!batch) return;
+  const isHistorical = batch.status === 'LEGACY_FROZEN';
+  const confirmation = isHistorical
+    ? '¿Confirmar que este lote histórico ya fue entregado? Esta acción registra la entrega sin reabrir ni volver a preparar el lote.'
+    : '¿Confirmar que este lote fue entregado?';
+  if (!window.confirm(confirmation)) return;
   try {
-    await updateFulfillmentBatch({ action: 'DELIVER', batchId, expectedRevision: batch.revision });
+    const payload = { action: 'DELIVER', batchId, expectedRevision: batch.revision };
+    if (isHistorical) payload.confirmFrozen = true;
+    await updateFulfillmentBatch(payload);
   } catch (error) {
     alert(error instanceof Error ? error.message : 'No se pudo marcar el lote como entregado.');
   }
