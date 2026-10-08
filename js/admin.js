@@ -4496,20 +4496,23 @@ function renderLegacyReviewGroup(title, entries) {
     <section class="admin-order-list-v2">
       <h4>${adminEscape(title)}</h4>
       ${entries.map(entry => `
-        <article class="admin-order-row-v2" data-legacy-review-card>
-          <div>
-            <strong>${adminEscape(entry.orderId)}</strong>
-            <span>${adminEscape(entry.customer)}</span>
-            <small>Pago: ${adminEscape(entry.paymentId)}</small>
+        <article class="legacy-review-card" data-legacy-review-card>
+          <div class="legacy-review-identity">
+            <span><strong>Pedido:</strong> <span class="legacy-review-order-id">${adminEscape(entry.orderId)}</span></span>
+            <span><strong>Cliente:</strong> ${adminEscape(entry.customer)}</span>
           </div>
-          <div>
+          <div class="legacy-review-details">
             <span>Importe: <strong>${adminMoney(entry.amountPYG)}</strong></span>
             <span>Origen actual: <strong>${adminEscape(entry.currentSource)}</strong></span>
             <span>Base propuesta: <strong>${adminEscape(entry.basis)}</strong></span>
-            <span>${adminEscape(entry.evidenceLabel)}</span>
+            <span>Pago: <strong class="legacy-review-payment-id">${adminEscape(entry.paymentId)}</strong></span>
+            <span>Evidencia: ${adminEscape(entry.evidenceLabel)}</span>
           </div>
-          <p><strong>Nota interna propuesta:</strong> ${adminEscape(entry.proposedNote)}</p>
-          <div>
+          <div class="legacy-review-note">
+            <strong>Nota interna propuesta:</strong>
+            <p>${adminEscape(entry.proposedNote)}</p>
+          </div>
+          <div class="legacy-review-actions">
             ${entry.receiptAvailable ? `
               <button class="secondary-action" type="button"
                 data-legacy-review-receipt
@@ -4529,7 +4532,7 @@ function renderLegacyReviewGroup(title, entries) {
               </button>
             ` : `<strong role="alert">${adminEscape(entry.stateMessage)}</strong>`}
           </div>
-          <p class="form-error" data-legacy-review-error role="alert" hidden></p>
+          <p class="form-error legacy-review-error" data-legacy-review-error role="alert" hidden></p>
         </article>
       `).join('')}
     </section>
@@ -4545,6 +4548,13 @@ async function loadLegacyReconciliationReviewQueue() {
     const priority = data.queue.filter(entry => entry.section === 'PRIORITY');
     const ordinary = data.queue.filter(entry => entry.section === 'ORDINARY');
     const special = data.queue.filter(entry => entry.section === 'SPECIAL');
+    const remaining = Number(data.remaining || 0);
+    const approvedCount = Number(data.approvedCount || 0);
+    const reconciledCount = Math.max(approvedCount - remaining, 0);
+    const queueStatus =
+      `${remaining} pendiente${remaining === 1 ? '' : 's'} de ` +
+      `${approvedCount} aprobado${approvedCount === 1 ? '' : 's'} · ` +
+      `${reconciledCount} ya reconciliado${reconciledCount === 1 ? '' : 's'}`;
     target.innerHTML = `
       <div class="admin-section-heading-v2">
         <div>
@@ -4552,7 +4562,7 @@ async function loadLegacyReconciliationReviewQueue() {
           <h3>Reconciliación histórica revisada</h3>
           <p>Cada pago requiere confirmación individual. No se infieren importes.</p>
         </div>
-        <strong>${Number(data.remaining || 0)} pendiente${Number(data.remaining || 0) === 1 ? '' : 's'}</strong>
+        <strong class="legacy-review-count">${adminEscape(queueStatus)}</strong>
       </div>
       ${ADMIN_LEGACY_REVIEW_SUCCESS
         ? `<p role="status"><strong>${adminEscape(ADMIN_LEGACY_REVIEW_SUCCESS)}</strong></p>`
@@ -6205,6 +6215,80 @@ function injectAdminStyles() {
       color: var(--muted);
     }
 
+    .legacy-review-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 14px;
+      min-width: 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+      background: #fffdfa;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .legacy-review-identity,
+    .legacy-review-details {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .legacy-review-identity {
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .legacy-review-identity > span,
+    .legacy-review-details > span {
+      min-width: 0;
+      line-height: 1.5;
+    }
+
+    .legacy-review-order-id,
+    .legacy-review-payment-id,
+    .legacy-review-note p {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .legacy-review-note {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: var(--cream);
+      border-radius: 8px;
+    }
+
+    .legacy-review-note p {
+      margin: 6px 0 0;
+      white-space: normal;
+      line-height: 1.55;
+    }
+
+    .legacy-review-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .legacy-review-actions button {
+      min-width: 0;
+      white-space: normal;
+    }
+
+    .legacy-review-error {
+      margin: 0;
+    }
+
+    .legacy-review-count {
+      max-width: 320px;
+      text-align: right;
+      line-height: 1.4;
+    }
+
     .admin-order-tools-v2 {
       display: grid;
       gap: 10px;
@@ -6714,6 +6798,20 @@ function injectAdminStyles() {
 
       .admin-inline-detail {
         grid-column: 1;
+      }
+
+      .legacy-review-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
+      .legacy-review-actions button {
+        width: 100%;
+      }
+
+      .legacy-review-count {
+        max-width: none;
+        text-align: left;
       }
     }
   `;
