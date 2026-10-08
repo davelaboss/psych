@@ -51,7 +51,9 @@ test('receipt emails use the approved verification copy and private order link',
 
 test('full payment for immediate and delayed orders links directly to the pickup scheduler', () => {
   for (const saleMode of ['IMMEDIATE', 'DELAYED']) {
-    const text = render('PAYMENT_CONFIRMED', { items: [{ saleMode }] });
+    const text = render('PAYMENT_CONFIRMED', {
+      paidAmountPYG: 100_000, remainingBalancePYG: 0, items: [{ saleMode }],
+    }, { paymentState: 'FULLY_PAID', verifiedAmountPYG: 100_000, previousConfirmedPaidPYG: 0 });
     assertEnvelope(text);
     assert.match(text, /Confirmamos el pago total de tu pedido VM-2026-TEST\./);
     assert.match(text, /Ya podés elegir el horario de retiro desde este enlace:/);
@@ -60,10 +62,58 @@ test('full payment for immediate and delayed orders links directly to the pickup
 });
 
 test('deposit confirmation keeps delayed orders on the private order page', () => {
-  const text = render('PAYMENT_CONFIRMED', { remainingBalancePYG: 75000, items: [{ saleMode: 'DELAYED' }] });
+  const text = render('PAYMENT_CONFIRMED', {
+    remainingBalancePYG: 75_000,
+    paidAmountPYG: 25_000,
+    totals: { dueNowPYG: 25_000 },
+    items: [{ saleMode: 'DELAYED' }],
+  }, { paymentState: 'DEPOSIT_SATISFIED', verifiedAmountPYG: 25_000, previousConfirmedPaidPYG: 0 });
   assertEnvelope(text);
-  assert.match(text, /Confirmamos la seña/);
+  assert.match(text, /La seña de tu pedido VM-2026-TEST está completa/);
   assertOneOrderAction(text);
+});
+
+test('payment confirmation copy distinguishes partial, installment, and fully paid states', () => {
+  const partial = render('PAYMENT_CONFIRMED', {
+    remainingBalancePYG: 1_505_000,
+    paidAmountPYG: 495_000,
+    depositShortfallPYG: 5_000,
+    totals: { dueNowPYG: 500_000 },
+    items: [{ saleMode: 'DELAYED' }],
+  }, { paymentState: 'PARTIALLY_PAID', verifiedAmountPYG: 495_000, previousConfirmedPaidPYG: 0 });
+  assert.match(partial, /pago parcial de Gs\. 495\.000/i);
+  assertOneOrderAction(partial);
+
+  const installment = render('PAYMENT_CONFIRMED', {
+    remainingBalancePYG: 1_400_000,
+    paidAmountPYG: 600_000,
+    totals: { dueNowPYG: 500_000 },
+    items: [{ saleMode: 'DELAYED' }],
+  }, { paymentState: 'DEPOSIT_SATISFIED', verifiedAmountPYG: 100_000, previousConfirmedPaidPYG: 500_000 });
+  assert.match(installment, /pago adicional de Gs\. 100\.000/i);
+  assertOneOrderAction(installment);
+
+  const full = render('PAYMENT_CONFIRMED', {
+    remainingBalancePYG: 0,
+    paidAmountPYG: 2_000_000,
+    totals: { dueNowPYG: 500_000 },
+    items: [{ saleMode: 'DELAYED' }],
+  }, { paymentState: 'FULLY_PAID', verifiedAmountPYG: 1_400_000, previousConfirmedPaidPYG: 600_000 });
+  assert.match(full, /último importe verificado fue Gs\. 1\.400\.000/i);
+  assertOneOrderAction(full, true);
+});
+
+test('payment notifications never include internal payment notes or adjustment details', () => {
+  const text = render('PAYMENT_CONFIRMED', {
+    remainingBalancePYG: 1_505_000,
+    paidAmountPYG: 495_000,
+    depositShortfallPYG: 5_000,
+    totals: { dueNowPYG: 500_000 },
+    items: [{ saleMode: 'DELAYED' }],
+    paymentNotes: [{ text: 'INTERNAL-SECRET-ARRANGEMENT' }],
+    paymentAdjustments: [{ internalNote: 'INTERNAL-SECRET-REFUND' }],
+  }, { paymentState: 'PARTIALLY_PAID', verifiedAmountPYG: 495_000, previousConfirmedPaidPYG: 0 });
+  assert.doesNotMatch(text, /INTERNAL-SECRET/);
 });
 
 test('scheduled and rescheduled pickup emails include date, time, map, and one private order action', () => {

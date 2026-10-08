@@ -13,6 +13,7 @@ const configuredSellerEmail = () => String(process.env.SELLER_NOTIFICATION_TO ||
 const localDateTime = value => new Intl.DateTimeFormat('es-PY', {
   timeZone: 'America/Asuncion', dateStyle: 'long', timeStyle: 'short',
 }).format(new Date(value));
+const money = value => `Gs. ${Number(value || 0).toLocaleString('es-PY')}`;
 
 function slotParts(key) {
   if (!key) return { date: '', time: '' };
@@ -57,12 +58,31 @@ export function customerNotification({ order, type, details = {}, privateOrderLi
     case 'FINAL_RECEIPT_UPLOADED':
       return { subject: `Comprobante del saldo recibido · ${id}`, text: completeCustomerMessage(order,
         `${hello}\n\nRecibimos el comprobante de tu pedido ${id}.\n\nEn breve verificaremos que la transferencia haya ingresado correctamente. La carga del comprobante no confirma el pago automáticamente.\n\nPodés seguir el estado de tu pedido desde este enlace:\n\n${privateOrderLink}`) };
-    case 'PAYMENT_CONFIRMED':
-      return Number(order.remainingBalancePYG) > 0
+    case 'PAYMENT_CONFIRMED': {
+      const amount = money(details.verifiedAmountPYG);
+      const paid = money(order.paidAmountPYG);
+      const remaining = money(order.remainingBalancePYG);
+      const delayed = order.items?.some(item => item.saleMode === 'DELAYED');
+      const financialState = details.paymentState || order.paymentState ||
+        (Number(order.remainingBalancePYG) === 0 ? 'FULLY_PAID'
+          : Number(order.depositShortfallPYG || 0) > 0 ? 'PARTIALLY_PAID' : 'DEPOSIT_SATISFIED');
+      if (financialState === 'FULLY_PAID') {
+        return { subject: `Pago total confirmado · ${id}`, text: completeCustomerMessage(order,
+          `${hello}\n\nConfirmamos el pago total de tu pedido ${id}. El último importe verificado fue ${amount}.\n\nPagado confirmado: ${paid}\nSaldo pendiente: ${remaining}\n\nYa podés elegir el horario de retiro desde este enlace:\n\n${pickupSchedulerLink}`) };
+      }
+      if (financialState === 'PARTIALLY_PAID') {
+        return { subject: `${delayed ? 'Pago parcial de seña' : 'Pago parcial'} confirmado · ${id}`,
+          text: completeCustomerMessage(order,
+            `${hello}\n\nConfirmamos un pago parcial de ${amount} para tu pedido ${id}.\n\nPagado confirmado: ${paid}\nSaldo pendiente: ${remaining}\n\nPodés seguir el estado de tu pedido desde este enlace:\n\n${privateOrderLink}`) };
+      }
+      const depositJustSatisfied = Number(details.previousConfirmedPaidPYG || 0) <
+        Number(order.totals?.dueNowPYG || 0);
+      return depositJustSatisfied
         ? { subject: `Seña confirmada · ${id}`, text: completeCustomerMessage(order,
-          `${hello}\n\nConfirmamos la seña de tu pedido ${id}.\n\nEl saldo se paga del 1 al 8 de diciembre de 2026. Podés seguir el estado de tu pedido desde este enlace:\n\n${privateOrderLink}`) }
-        : { subject: `Pago confirmado · ${id}`, text: completeCustomerMessage(order,
-          `${hello}\n\nConfirmamos el pago total de tu pedido ${id}.\n\nYa podés elegir el horario de retiro desde este enlace:\n\n${pickupSchedulerLink}`) };
+          `${hello}\n\nConfirmamos un pago de ${amount}. La seña de tu pedido ${id} está completa.\n\nPagado confirmado: ${paid}\nSaldo pendiente: ${remaining}\n\nPodés realizar pagos adicionales antes de la fecha final. Podés seguir el estado desde este enlace:\n\n${privateOrderLink}`) }
+        : { subject: `Pago adicional confirmado · ${id}`, text: completeCustomerMessage(order,
+          `${hello}\n\nConfirmamos un pago adicional de ${amount} para tu pedido ${id}.\n\nPagado confirmado: ${paid}\nSaldo pendiente: ${remaining}\n\nPodés seguir el estado de tu pedido desde este enlace:\n\n${privateOrderLink}`) };
+    }
     case 'PICKUP_SCHEDULED':
     case 'PICKUP_CHANGED': {
       if (!details.slot) return { subject: `Retiro cancelado · ${id}`, text: completeCustomerMessage(order,

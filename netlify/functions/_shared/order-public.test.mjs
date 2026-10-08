@@ -49,6 +49,17 @@ test('public order projection excludes reconciliation notes and internal metadat
           uploadedAt: 1,
         },
       },
+      {
+        id: 'pending-payment',
+        type: 'FINAL',
+        amountPYG: null,
+        verificationStatus: 'PENDING',
+        receipt: {
+          storageKey: 'secret/pending-key',
+          fileName: 'pending.pdf',
+          contentType: 'application/pdf',
+        },
+      },
     ],
     paymentNotes: [
       {
@@ -90,7 +101,11 @@ test('public order projection excludes reconciliation notes and internal metadat
   assert.equal(projected.adjustedOrderTotalPYG, 220_000);
   assert.equal(projected.netReceivedPYG, 35_000);
   assert.equal(projected.remainingBalancePYG, 185_000);
-  assert.deepEqual(projected.payments.map(payment => payment.id), ['legacy-initial']);
+  assert.deepEqual(projected.payments, [{
+    id: 'legacy-initial',
+    amountPYG: 65_000,
+    confirmedAt: 2,
+  }]);
   assert.equal(serialized.includes('Internal reconciliation note'), false);
   assert.equal(serialized.includes('Internal duplicate-payment note'), false);
   assert.equal(serialized.includes('Private post-sale adjustment note'), false);
@@ -100,6 +115,7 @@ test('public order projection excludes reconciliation notes and internal metadat
   assert.equal(serialized.includes('LEGACY_RECONCILED'), false);
   assert.equal(serialized.includes('DUPLICATE_LEGACY_PAYMENT'), false);
   assert.equal(serialized.includes('voided-payment'), false);
+  assert.equal(serialized.includes('pending-payment'), false);
   assert.equal(serialized.includes('voidedAt'), false);
   assert.equal(serialized.includes('voidNoteId'), false);
   assert.equal(serialized.includes('legacyAssumedAmountPYG'), false);

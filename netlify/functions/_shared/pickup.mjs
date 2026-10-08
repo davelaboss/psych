@@ -1,5 +1,6 @@
 import { database, inventoryTransaction } from './inventory-database.mjs';
 import { PICKUP_RULES } from './commerce.mjs';
+import { withPaymentState } from './order-payments.mjs';
 import { queueOrderNotifications } from './seller-notifications.mjs';
 
 const conflict = message => Object.assign(new Error(message), { status: 409 });
@@ -12,9 +13,11 @@ const dateAt = value => new Date(`${value}T12:00:00Z`);
 const addDay = value => new Date(dateAt(value).getTime() + 86400000).toISOString().slice(0, 10);
 
 export function pickupEligible(order) {
-  if (!order || order.status === 'CANCELLED' || Number(order.remainingBalancePYG) !== 0) return false;
-  const delayed = order.items?.some(item => item.saleMode === 'DELAYED');
-  return delayed ? order.status === 'PAID_IN_FULL' : order.status === 'PAYMENT_CONFIRMED';
+  const current = withPaymentState(order);
+  if (!current || current.status === 'CANCELLED' || current.paymentState !== 'FULLY_PAID' ||
+      Number(current.remainingBalancePYG) !== 0) return false;
+  const delayed = current.items?.some(item => item.saleMode === 'DELAYED');
+  return delayed ? current.status === 'PAID_IN_FULL' : current.status === 'PAYMENT_CONFIRMED';
 }
 
 export function pickupSlotKeys(order, today = todayLocal()) {

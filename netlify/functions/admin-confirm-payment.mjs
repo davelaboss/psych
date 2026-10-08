@@ -31,8 +31,8 @@ export default async function handler(request) {
         body?.orderId || ''
       ).trim();
 
-    const paymentId = String(body?.paymentId || '').trim() || undefined;
-    const paymentType = String(body?.paymentType || '').trim().toUpperCase() || undefined;
+    const paymentId = String(body?.paymentId || '').trim();
+    const paymentType = String(body?.paymentType || '').trim().toUpperCase();
 
     const order =
       await getOrder(orderId);
@@ -66,7 +66,14 @@ export default async function handler(request) {
       );
     }
 
-    const committed = await confirmOrderPayment(orderId, paymentId, paymentType);
+    const committed = await confirmOrderPayment(orderId, {
+      paymentId,
+      paymentType,
+      verifiedAmountPYG: body?.verifiedAmountPYG,
+      approvePartialPayment: body?.approvePartialPayment === true,
+      acknowledgeOverpayment: body?.acknowledgeOverpayment === true,
+      internalNote: String(body?.internalNote || ''),
+    });
 
     if (!committed) {
       return jsonResponse(

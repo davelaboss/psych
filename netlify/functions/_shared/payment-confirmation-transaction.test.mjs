@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 const inventory = await readFile(new URL('./inventory-database.mjs', import.meta.url), 'utf8');
 const endpoint = await readFile(new URL('../admin-payment-note.mjs', import.meta.url), 'utf8');
+const confirmationEndpoint = await readFile(new URL('../admin-confirm-payment.mjs', import.meta.url), 'utf8');
 const pickup = await readFile(new URL('./pickup.mjs', import.meta.url), 'utf8');
 const admin = await readFile(new URL('../../../js/admin.js', import.meta.url), 'utf8');
 const checkout = await readFile(new URL('../../../js/checkout.js', import.meta.url), 'utf8');
@@ -157,19 +158,63 @@ test('customer shows the six-line adjusted financial summary without internal fi
     'Saldo pendiente',
   ]) assert.match(checkout, new RegExp(label.replace('/', '\\/')));
   assert.match(checkout, /refundedAmount > 0/);
+  assert.match(checkout, /Pagos adicionales/);
+  assert.match(checkout, /Podés realizar un pago adicional de hasta/);
+  assert.match(checkout, /formatPaymentDate\(payment\.confirmedAt\)/);
   assert.doesNotMatch(checkout, /paymentAdjustments|internalNote|POST_SALE_PRICE_ADJUSTMENT|createdBy/);
 });
 
-test('existing production payment confirmation behavior remains present', () => {
+test('routine confirmation locks before calculation and writes one atomic snapshot', () => {
   const confirmation = functionSource(inventory,
-    'export async function confirmOrderPayment', 'export async function reconcileOrderLegacyPayment');
-  assert.match(confirmation, /const amount = type === 'DEPOSIT'/);
+    'export async function confirmOrderPayment', 'async function reconcileLockedOrderLegacyPayment');
+  assert.match(confirmation, /return inventoryTransaction\(async client =>/);
+  assert.ok(confirmation.indexOf('await orderLock(client, orderId)') <
+    confirmation.indexOf('applyPaymentConfirmation(current'));
+  assert.ok(confirmation.indexOf('applyPaymentConfirmation(current') <
+    confirmation.indexOf('UPDATE checkout_attempts SET committed_at=COALESCE'));
+  assert.equal((confirmation.match(/UPDATE checkout_attempts/g) || []).length, 1);
+  assert.match(confirmation, /projection_version=projection_version\+1/);
+  assert.match(confirmation, /const timestamp = await now\(client\)/);
+  assert.match(confirmation, /confirmationRequiresInventoryCommit\(row\.committed_at, result\)/);
   assert.match(confirmation, /committed_quantity=committed_quantity\+\$2/);
-  assert.match(confirmation, /key: `payment:\$\{existing\.id\}`/);
+  assert.equal((confirmation.match(/committed_quantity=committed_quantity\+\$2/g) || []).length, 1);
+  assert.match(confirmation, /key: `payment:\$\{confirmation\.paymentId\}`/);
   assert.match(confirmation, /type: 'PAYMENT_CONFIRMED'/);
+  assert.ok(confirmation.indexOf('if (result.idempotent) return result.order') <
+    confirmation.indexOf('confirmationRequiresInventoryCommit(row.committed_at, result)'));
+  assert.ok(confirmation.indexOf('UPDATE checkout_attempts SET committed_at=COALESCE') <
+    confirmation.indexOf('queueOrderNotifications(client'));
+  assert.doesNotMatch(confirmation, /const amount = type === 'DEPOSIT'/);
+  assert.doesNotMatch(confirmation, /findIndex\(payment => payment\.verificationStatus === 'PENDING'\)/);
 });
 
-test('existing production pickup eligibility remains unchanged', () => {
-  assert.match(pickup, /Number\(order\.remainingBalancePYG\) !== 0/);
-  assert.match(pickup, /delayed \? order\.status === 'PAID_IN_FULL' : order\.status === 'PAYMENT_CONFIRMED'/);
+test('confirmation endpoint forwards exact amount and explicit approvals', () => {
+  assert.match(confirmationEndpoint, /paymentId,/);
+  assert.match(confirmationEndpoint, /paymentType,/);
+  assert.match(confirmationEndpoint, /verifiedAmountPYG: body\?\.verifiedAmountPYG/);
+  assert.match(confirmationEndpoint, /approvePartialPayment: body\?\.approvePartialPayment === true/);
+  assert.match(confirmationEndpoint, /acknowledgeOverpayment: body\?\.acknowledgeOverpayment === true/);
+  assert.match(confirmationEndpoint, /internalNote: String\(body\?\.internalNote \|\| ''\)/);
+});
+
+test('admin requires actual amount and preserves current-main payment controls', () => {
+  assert.match(admin, /Confirmar importe realmente recibido/);
+  assert.match(admin, /name="verifiedAmountPYG"/);
+  assert.match(admin, /name="approvePartialPayment"/);
+  assert.match(admin, /name="acknowledgeOverpayment"/);
+  assert.match(admin, /relatedPrivateNotes/);
+  assert.match(admin, /Nota interna \(\$\{adminEscape\(note\.kind\)\}\)/);
+  assert.match(admin, /SOBREPAGO/);
+  assert.match(admin, /CONFIRMACIÓN BLOQUEADA/);
+  assert.match(admin, /RECONCILE_LEGACY_PAYMENT/);
+  assert.match(admin, /VOID_LEGACY_DUPLICATE_PAYMENT/);
+  assert.match(admin, /RECORD_POST_SALE_PRICE_ADJUSTMENT/);
+  assert.doesNotMatch(admin, /action: 'ADD_NOTE'/);
+});
+
+test('pickup eligibility re-derives current balance and retains status requirements', () => {
+  assert.match(pickup, /const current = withPaymentState\(order\)/);
+  assert.match(pickup, /current\.paymentState !== 'FULLY_PAID'/);
+  assert.match(pickup, /Number\(current\.remainingBalancePYG\) !== 0/);
+  assert.match(pickup, /delayed \? current\.status === 'PAID_IN_FULL' : current\.status === 'PAYMENT_CONFIRMED'/);
 });

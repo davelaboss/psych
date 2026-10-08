@@ -4820,6 +4820,14 @@ function renderAdminOrderDetail(
   const netReceived = Number(order.netReceivedPYG ?? paidAmount);
   const remainingBalance = Number(order.remainingBalancePYG ?? order.totals?.totalPYG ?? 0);
   const dueNow = Number(order.totals?.dueNowPYG ?? order.totals?.totalPYG ?? 0);
+  const depositShortfall = Number(order.depositShortfallPYG ??
+    Math.max(0, Math.min(adjustedOrderTotal, dueNow) - Math.max(0, netReceived)));
+  const expectedNow = Number(order.expectedNowPYG ?? remainingBalance);
+  const overpayment = Number(order.overpaymentPYG ?? Math.max(0, netReceived - adjustedOrderTotal));
+  const paymentState = String(order.paymentState || 'UNPAID');
+  const hasLegacyAssumedPayments = Boolean(order.hasLegacyAssumedPayments ?? payments.some(payment =>
+    payment.verificationStatus === 'CONFIRMED' && payment.voidedAt == null &&
+    (!payment.amountSource || payment.amountSource === 'LEGACY_ASSUMED')));
   const safeRefundableAmount = Math.max(0, Math.min(adjustedOrderTotal, netReceived));
   const canRecordAdjustment = order.status !== 'CANCELLED' && safeRefundableAmount > 0;
   const buyerGroup = ADMIN_STATE.buyerGroups.find(
@@ -4857,6 +4865,8 @@ function renderAdminOrderDetail(
       note.id === payment.voidNoteId &&
       note.kind === 'LEGACY_PAYMENT_VOID' &&
       note.relatedPaymentId === payment.id);
+    const relatedPrivateNotes = paymentNotes.filter(note =>
+      note.relatedPaymentId === payment.id && note.kind !== 'LEGACY_PAYMENT_VOID');
 
     return `
       <article class="admin-payment-entry">
@@ -4870,7 +4880,10 @@ function renderAdminOrderDetail(
           ? `<strong role="status">ANULADO — pago histórico duplicado</strong>
              <span>Anulado el ${adminEscape(adminOrderDeadline(payment.voidedAt))}</span>`
           : `<span>${payment.verificationStatus === 'CONFIRMED' ? 'Pago verificado' : 'Pendiente de verificación'}</span>`}
+        ${payment.confirmedAt ? `<span>Confirmado: ${adminEscape(new Date(Number(payment.confirmedAt)).toLocaleString('es-PY'))}</span>` : ''}
         ${voidNote ? `<p><strong>Nota interna de auditoría:</strong> ${adminEscape(voidNote.text)}</p>` : ''}
+        ${relatedPrivateNotes.map(note =>
+          `<p><strong>Nota interna (${adminEscape(note.kind)}):</strong> ${adminEscape(note.text)}</p>`).join('')}
         ${legacyAssumed ? '<strong role="alert">Importe histórico asumido: requiere reconciliación antes de otro pago.</strong>' : ''}
         ${payment.receipt?.uploadedBy === 'ADMIN' ? '<span>Comprobante cargado por el vendedor</span>' : ''}
         ${payment.receipt ? `<button class="secondary-action" type="button" data-view-receipt="${adminEscape(payment.id)}">Ver comprobante</button>` : ''}
@@ -5032,6 +5045,10 @@ function renderAdminOrderDetail(
               <dd>${adminMoney(netReceived)}</dd>
             </div>
 
+            <div><dt>ESPERADO AHORA</dt><dd>${adminMoney(expectedNow)}</dd></div>
+            <div><dt>FALTANTE DE SEÑA</dt><dd>${adminMoney(depositShortfall)}</dd></div>
+            <div><dt>ESTADO FINANCIERO</dt><dd>${adminPaymentState(paymentState)}</dd></div>
+
             <div>
               <dt>SALDO PENDIENTE</dt>
 
@@ -5041,6 +5058,7 @@ function renderAdminOrderDetail(
                 )}
               </dd>
             </div>
+            ${overpayment > 0 ? `<div><dt>SOBREPAGO</dt><dd><strong>${adminMoney(overpayment)}</strong></dd></div>` : ''}
           </dl>
         </div>
       </div>
@@ -5123,16 +5141,40 @@ function renderAdminOrderDetail(
             ` : ''
         }
 
-        ${
-          pendingPayment
-            ? paidAmount > 0
-              ? `<button class="primary-action" type="button" data-confirm-payment="FINAL" data-payment-id="${adminEscape(pendingPayment.id)}">Confirmar pago del saldo</button>`
-              : Number(order.totals?.futureBalancePYG || 0) > 0
-                ? `<button class="primary-action" type="button" data-confirm-payment="DEPOSIT" data-payment-id="${adminEscape(pendingPayment.id)}">Confirmar como seña</button>
-                   <button class="secondary-action" type="button" data-confirm-payment="FULL" data-payment-id="${adminEscape(pendingPayment.id)}">Confirmar como pago total</button>`
-                : `<button class="primary-action" type="button" data-confirm-payment="FULL" data-payment-id="${adminEscape(pendingPayment.id)}">Confirmar como pago total</button>`
-            : ''
-        }
+        ${pendingPayment && hasLegacyAssumedPayments ? `
+          <div class="admin-expired-reservation" role="alert">
+            <strong>CONFIRMACIÓN BLOQUEADA</strong>
+            <span>Reconciliá primero todos los pagos históricos asumidos.</span>
+          </div>
+        ` : ''}
+        ${pendingPayment && !hasLegacyAssumedPayments ? `
+          <form data-confirm-payment-form data-payment-id="${adminEscapeAttribute(pendingPayment.id)}">
+            <h3>Confirmar importe realmente recibido</h3>
+            <p>Total ajustado: <strong>${adminMoney(adjustedOrderTotal)}</strong> · Esperado ahora: <strong>${adminMoney(expectedNow)}</strong> · Pagado: <strong>${adminMoney(paidAmount)}</strong> · Saldo: <strong>${adminMoney(remainingBalance)}</strong></p>
+            <label><span>Clasificación</span>
+              <select name="paymentType" required>
+                ${paidAmount > 0
+                  ? '<option value="FINAL">Pago adicional / del saldo</option>'
+                  : Number(order.totals?.futureBalancePYG || 0) > 0
+                    ? '<option value="DEPOSIT">Seña</option><option value="FULL">Pago total</option>'
+                    : '<option value="FULL">Pago total</option>'}
+              </select>
+            </label>
+            <label><span>Importe real verificado en PYG</span>
+              <input name="verifiedAmountPYG" type="number" min="1" step="1" inputmode="numeric" required>
+            </label>
+            <div class="admin-payment-entry" data-payment-preview>
+              <strong>Ingresá el importe para ver el resultado.</strong>
+            </div>
+            <div data-partial-approval hidden>
+              <label><input name="approvePartialPayment" type="checkbox"> Aprobar pago parcial</label>
+              <label><span>Nota interna obligatoria de la excepción</span><textarea name="internalNote" maxlength="2000"></textarea></label>
+            </div>
+            <label data-overpayment-approval hidden><input name="acknowledgeOverpayment" type="checkbox"> Confirmo que verifiqué este sobrepago y deseo registrar el importe completo.</label>
+            <p class="form-error" data-confirm-payment-error hidden></p>
+            <button class="primary-action" type="submit">Confirmar pago verificado</button>
+          </form>
+        ` : ''}
 
         <a
           class="secondary-action"
@@ -5174,11 +5216,52 @@ function renderAdminOrderDetail(
   target.querySelector('[data-post-sale-adjustment]')?.addEventListener('submit', event =>
     recordAdminPostSaleAdjustment(event, order.id));
 
-  target.querySelectorAll('[data-confirm-payment]').forEach(button => {
-    button.addEventListener('click', () => confirmAdminPayment(
-      order.id, button.dataset.paymentId, button.dataset.confirmPayment
-    ));
-  });
+  const confirmationForm = target.querySelector('[data-confirm-payment-form]');
+  if (confirmationForm) {
+    const amountInput = confirmationForm.elements.verifiedAmountPYG;
+    const preview = confirmationForm.querySelector('[data-payment-preview]');
+    const partialApproval = confirmationForm.querySelector('[data-partial-approval]');
+    const overpaymentApproval = confirmationForm.querySelector('[data-overpayment-approval]');
+    const updatePreview = () => {
+      const amount = Number(amountInput.value);
+      if (!Number.isSafeInteger(amount) || amount <= 0) {
+        preview.innerHTML = '<strong>Ingresá un importe entero mayor que cero.</strong>';
+        partialApproval.hidden = true;
+        overpaymentApproval.hidden = true;
+        return;
+      }
+      const resultingPaid = paidAmount + amount;
+      const resultingNet = resultingPaid - refundedAmount;
+      const requiredDeposit = Math.min(adjustedOrderTotal, dueNow);
+      const resultingBalance = Math.max(0, adjustedOrderTotal - resultingNet);
+      const resultingShortfall = Math.max(0, requiredDeposit - Math.max(0, resultingNet));
+      const resultingOverpayment = Math.max(0, resultingNet - adjustedOrderTotal);
+      const resultingState = resultingBalance === 0
+        ? 'FULLY_PAID' : resultingShortfall > 0 ? 'PARTIALLY_PAID' : 'DEPOSIT_SATISFIED';
+      preview.innerHTML = `<strong>Resultado</strong><span>Pagado: ${adminMoney(resultingPaid)}</span><span>Neto retenido: ${adminMoney(resultingNet)}</span><span>Saldo: ${adminMoney(resultingBalance)}</span><span>Faltante de seña: ${adminMoney(resultingShortfall)}</span><span>Estado: ${adminPaymentState(resultingState)}</span>`;
+      partialApproval.hidden = resultingShortfall === 0;
+      overpaymentApproval.hidden = resultingOverpayment === 0;
+    };
+    amountInput.addEventListener('input', updatePreview);
+    confirmationForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const data = new FormData(confirmationForm);
+      const errorBox = confirmationForm.querySelector('[data-confirm-payment-error]');
+      errorBox.hidden = true;
+      try {
+        await confirmAdminPayment(order.id, confirmationForm.dataset.paymentId, {
+          paymentType: data.get('paymentType'),
+          verifiedAmountPYG: data.get('verifiedAmountPYG'),
+          approvePartialPayment: data.get('approvePartialPayment') === 'on',
+          acknowledgeOverpayment: data.get('acknowledgeOverpayment') === 'on',
+          internalNote: data.get('internalNote'),
+        });
+      } catch (error) {
+        errorBox.textContent = error instanceof Error ? error.message : 'No se pudo confirmar el pago.';
+        errorBox.hidden = false;
+      }
+    });
+  }
 
   target.querySelector('[data-admin-receipt-upload]')?.addEventListener('submit', async function (event) {
     event.preventDefault();
@@ -5319,7 +5402,7 @@ async function viewAdminReceipt(
 async function confirmAdminPayment(
   orderId,
   paymentId,
-  paymentType
+  confirmation
 ) {
   const confirmed =
     window.confirm(
@@ -5327,56 +5410,24 @@ async function confirmAdminPayment(
     );
 
   if (!confirmed) {
-    return;
+    return false;
   }
 
-  try {
-    await adminFetch(
-      '/api/admin/confirm-payment',
-      {
-        method:
-          'POST',
+  await adminFetch('/api/admin/confirm-payment', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ orderId, paymentId, ...confirmation }),
+  });
+  await refreshAdminPaymentOrder(orderId);
+  return true;
+}
 
-        headers: {
-          'content-type':
-            'application/json',
-        },
 
-        body:
-          JSON.stringify({
-            orderId,
-            paymentId,
-            paymentType,
-          }),
-      }
-    );
-
-    ADMIN_STATE.orders =
-      await fetchAdminOrders();
-
-    ADMIN_STATE.stats =
-      buildAdminStats(
-        ADMIN_STATE.orders,
-        ADMIN_STATE.inventory
-      );
-
-    renderOrdersTab();
-
-    setTimeout(
-      () => {
-        openAdminOrder(
-          orderId
-        );
-      },
-      30
-    );
-  } catch (error) {
-    alert(
-      error instanceof Error
-        ? error.message
-        : 'No se pudo confirmar el pago.'
-    );
-  }
+async function refreshAdminPaymentOrder(orderId) {
+  ADMIN_STATE.orders = await fetchAdminOrders();
+  ADMIN_STATE.stats = buildAdminStats(ADMIN_STATE.orders, ADMIN_STATE.inventory);
+  renderOrdersTab();
+  setTimeout(() => openAdminOrder(orderId), 30);
 }
 
 
@@ -6887,6 +6938,16 @@ function adminPaymentType(type) {
     FULL: 'Pago total',
     PENDING: 'Pendiente de clasificación',
   })[type] || type || '';
+}
+
+
+function adminPaymentState(state) {
+  return ({
+    UNPAID: 'Sin pago confirmado',
+    PARTIALLY_PAID: 'Pago parcial',
+    DEPOSIT_SATISFIED: 'Seña completa / saldo pendiente',
+    FULLY_PAID: 'Pago completo',
+  })[state] || state || '';
 }
 
 
