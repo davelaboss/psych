@@ -4690,6 +4690,8 @@ function renderAdminOrderDetail(
     const confirmedAmount = payment.verificationStatus === 'CONFIRMED'
       ? Number(payment.amountPYG ?? expectedAmount)
       : 0;
+    const legacyAssumed = payment.verificationStatus === 'CONFIRMED' &&
+      (!payment.amountSource || payment.amountSource === 'LEGACY_ASSUMED');
 
     return `
       <article class="admin-payment-entry">
@@ -4700,8 +4702,27 @@ function renderAdminOrderDetail(
         <span>Pagado confirmado del pedido: <strong>${adminMoney(paidAmount)}</strong></span>
         <span>Saldo pendiente del pedido: <strong>${adminMoney(remainingBalance)}</strong></span>
         <span>${payment.verificationStatus === 'CONFIRMED' ? 'Pago verificado' : 'Pendiente de verificación'}</span>
+        ${legacyAssumed ? '<strong role="alert">Importe histórico asumido: requiere reconciliación antes de otro pago.</strong>' : ''}
         ${payment.receipt?.uploadedBy === 'ADMIN' ? '<span>Comprobante cargado por el vendedor</span>' : ''}
         ${payment.receipt ? `<button class="secondary-action" type="button" data-view-receipt="${adminEscape(payment.id)}">Ver comprobante</button>` : ''}
+        ${legacyAssumed ? `
+          <form data-reconcile-payment data-payment-id="${adminEscapeAttribute(payment.id)}">
+            <label><span>Importe histórico establecido (PYG)</span>
+              <input name="reconciledAmountPYG" type="number" min="1" step="1" inputmode="numeric" value="${confirmedAmount}" required>
+            </label>
+            <label><span>Base de la reconciliación</span>
+              <select name="basis" required>
+                <option value="ACTUAL_VERIFIED">Monto comprobado en banco/comprobante</option>
+                <option value="SELLER_APPROVED_CREDIT">Crédito histórico aprobado por el vendedor</option>
+              </select>
+            </label>
+            <label><span>Nota interna obligatoria</span>
+              <textarea name="internalNote" maxlength="2000" required></textarea>
+            </label>
+            <p class="form-error" data-payment-reconciliation-error hidden></p>
+            <button class="secondary-action" type="submit">Reconciliar pago histórico</button>
+          </form>
+        ` : ''}
       </article>
     `;
   }).join('');
@@ -4909,6 +4930,10 @@ function renderAdminOrderDetail(
     button.addEventListener('click', () => viewAdminReceipt(order.id, button.dataset.viewReceipt));
   });
 
+  target.querySelectorAll('[data-reconcile-payment]').forEach(form => {
+    form.addEventListener('submit', event => reconcileAdminPayment(event, order.id, form.dataset.paymentId));
+  });
+
   target.querySelectorAll('[data-confirm-payment]').forEach(button => {
     button.addEventListener('click', () => confirmAdminPayment(
       order.id, button.dataset.paymentId, button.dataset.confirmPayment
@@ -5111,6 +5136,39 @@ async function confirmAdminPayment(
         ? error.message
         : 'No se pudo confirmar el pago.'
     );
+  }
+}
+
+
+async function reconcileAdminPayment(event, orderId, paymentId) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const errorBox = form.querySelector('[data-payment-reconciliation-error]');
+  const button = form.querySelector('button[type="submit"]');
+  errorBox.hidden = true;
+  button.disabled = true;
+  try {
+    await adminFetch('/api/admin/payment-note', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        orderId,
+        action: 'RECONCILE_LEGACY_PAYMENT',
+        paymentId,
+        reconciledAmountPYG: data.get('reconciledAmountPYG'),
+        basis: data.get('basis'),
+        internalNote: data.get('internalNote'),
+      }),
+    });
+    ADMIN_STATE.orders = await fetchAdminOrders();
+    ADMIN_STATE.stats = buildAdminStats(ADMIN_STATE.orders, ADMIN_STATE.inventory);
+    renderOrdersTab();
+    setTimeout(() => openAdminOrder(orderId), 30);
+  } catch (error) {
+    button.disabled = false;
+    errorBox.textContent = error instanceof Error ? error.message : 'No se pudo reconciliar el pago.';
+    errorBox.hidden = false;
   }
 }
 
