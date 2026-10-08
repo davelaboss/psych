@@ -2,6 +2,7 @@ import { getDatabase } from '@netlify/database';
 import { createHash } from 'node:crypto';
 import {
   reconcileLegacyPayment as reconcileLegacyPaymentState,
+  voidLegacyDuplicatePayment as voidLegacyDuplicatePaymentState,
   withPaymentState,
 } from './order-payments.mjs';
 import { queueOrderNotifications } from './seller-notifications.mjs';
@@ -440,6 +441,20 @@ export async function reconcileOrderLegacyPayment(orderId, reconciliation) {
     const timestamp = await now(client);
     const snapshot = reconcileLegacyPaymentState(locked.row.order_snapshot,
       { ...reconciliation, timestamp });
+    await client.query(`UPDATE checkout_attempts SET order_snapshot=$2,
+      projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1`,
+    [orderId, JSON.stringify(snapshot)]);
+    return snapshot;
+  });
+}
+
+export async function voidOrderLegacyDuplicatePayment(orderId, voiding) {
+  return inventoryTransaction(async client => {
+    const locked = await orderLock(client, orderId);
+    if (!locked) return false;
+    const timestamp = await now(client);
+    const snapshot = voidLegacyDuplicatePaymentState(locked.row.order_snapshot,
+      { ...voiding, timestamp });
     await client.query(`UPDATE checkout_attempts SET order_snapshot=$2,
       projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1`,
     [orderId, JSON.stringify(snapshot)]);
