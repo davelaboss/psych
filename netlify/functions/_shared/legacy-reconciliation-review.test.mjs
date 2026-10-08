@@ -203,3 +203,19 @@ test('admin review UI requires one explicit confirmation and has no bulk control
   assert.match(admin, /data-legacy-review-receipt/);
   assert.doesNotMatch(admin, /Confirmar (?:todo|todos|todas)/i);
 });
+
+test('admin review cards use a dedicated vertical responsive layout and explanatory counts', () => {
+  assert.match(admin, /<article class="legacy-review-card" data-legacy-review-card>/);
+  assert.doesNotMatch(admin, /<article class="admin-order-row-v2" data-legacy-review-card>/);
+  assert.match(admin, /class="legacy-review-identity"/);
+  assert.match(admin, /class="legacy-review-details"/);
+  assert.match(admin, /class="legacy-review-note"/);
+  assert.match(admin, /class="legacy-review-actions"/);
+  assert.match(admin, /\.legacy-review-card\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
+  assert.match(admin, /\.legacy-review-order-id,[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
+  assert.match(admin, /\.legacy-review-actions\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;/s);
+  assert.match(admin, /@media \(max-width: 860px\)[\s\S]*?\.legacy-review-actions\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*1fr;/);
+  assert.match(admin, /approvedCount = Number\(data\.approvedCount \|\| 0\)/);
+  assert.match(admin, /reconciledCount = Math\.max\(approvedCount - remaining, 0\)/);
+  assert.match(admin, /pendiente.*aprobado.*ya reconciliado/s);
+});
