@@ -68,6 +68,14 @@ test('public order projection excludes reconciliation notes and internal metadat
         createdBy: 'ADMIN',
       },
     ],
+    paymentAdjustments: [{
+      id: 'adjustment-secret-id',
+      kind: 'POST_SALE_PRICE_ADJUSTMENT',
+      amountPYG: 30_000,
+      createdAt: 4,
+      createdBy: 'ADMIN',
+      internalNote: 'Private post-sale adjustment note',
+    }],
     internalAudit: 'secret audit value',
     pickup: null,
   };
@@ -75,11 +83,20 @@ test('public order projection excludes reconciliation notes and internal metadat
   const projected = publicOrder(order);
   const serialized = JSON.stringify(projected);
   assert.equal('paymentNotes' in projected, false);
+  assert.equal('paymentAdjustments' in projected, false);
+  assert.equal(projected.grossOrderTotalPYG, 250_000);
   assert.equal(projected.paidAmountPYG, 65_000);
+  assert.equal(projected.refundedAmountPYG, 30_000);
+  assert.equal(projected.adjustedOrderTotalPYG, 220_000);
+  assert.equal(projected.netReceivedPYG, 35_000);
   assert.equal(projected.remainingBalancePYG, 185_000);
   assert.deepEqual(projected.payments.map(payment => payment.id), ['legacy-initial']);
   assert.equal(serialized.includes('Internal reconciliation note'), false);
   assert.equal(serialized.includes('Internal duplicate-payment note'), false);
+  assert.equal(serialized.includes('Private post-sale adjustment note'), false);
+  assert.equal(serialized.includes('adjustment-secret-id'), false);
+  assert.equal(serialized.includes('POST_SALE_PRICE_ADJUSTMENT'), false);
+  assert.equal(serialized.includes('createdBy'), false);
   assert.equal(serialized.includes('LEGACY_RECONCILED'), false);
   assert.equal(serialized.includes('DUPLICATE_LEGACY_PAYMENT'), false);
   assert.equal(serialized.includes('voided-payment'), false);

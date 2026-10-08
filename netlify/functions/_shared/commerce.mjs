@@ -626,7 +626,11 @@ export function publicOrder(order) {
     items: order.items,
 
     totals: order.totals,
+    grossOrderTotalPYG: order.grossOrderTotalPYG,
     paidAmountPYG: order.paidAmountPYG,
+    refundedAmountPYG: order.refundedAmountPYG,
+    adjustedOrderTotalPYG: order.adjustedOrderTotalPYG,
+    netReceivedPYG: order.netReceivedPYG,
     remainingBalancePYG: order.remainingBalancePYG,
     payments: publicPayments(order),
 

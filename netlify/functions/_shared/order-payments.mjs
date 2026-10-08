@@ -18,6 +18,7 @@ const LEGACY_HISTORICAL_SOURCES = new Set([
   'LEGACY_RECONCILED',
   'LEGACY_OPENING_CREDIT',
 ]);
+const POST_SALE_PRICE_ADJUSTMENT = 'POST_SALE_PRICE_ADJUSTMENT';
 
 function paymentError(message, status = 400) {
   return Object.assign(new Error(message), { status });
@@ -41,6 +42,17 @@ export function parseVerifiedAmountPYG(value) {
   return amount;
 }
 
+export function parsePaymentAdjustmentAmountPYG(value) {
+  if (value === '' || value == null) throw paymentError('Ingresá el importe del ajuste.');
+  if (typeof value === 'string' && !/^\d+$/.test(value.trim())) {
+    throw paymentError('El importe del ajuste debe ser un número entero de guaraníes.');
+  }
+  const amount = Number(value);
+  if (!Number.isSafeInteger(amount)) throw paymentError('El importe del ajuste debe ser un entero seguro.');
+  if (amount <= 0) throw paymentError('El importe del ajuste debe ser mayor que cero.');
+  return amount;
+}
+
 export function paymentAmountSource(payment) {
   if (payment?.verificationStatus !== 'CONFIRMED') return null;
   return payment.amountSource || 'LEGACY_ASSUMED';
@@ -56,6 +68,23 @@ function paymentCountsAsConfirmed(payment) {
 
 function paymentIsHistorical(payment) {
   return LEGACY_HISTORICAL_SOURCES.has(paymentAmountSource(payment));
+}
+
+function orderPaymentAdjustments(order) {
+  return Array.isArray(order?.paymentAdjustments)
+    ? order.paymentAdjustments.map(adjustment => ({ ...adjustment }))
+    : [];
+}
+
+function adjustmentCountsAsRefund(adjustment) {
+  return adjustment?.kind === POST_SALE_PRICE_ADJUSTMENT &&
+    Number.isSafeInteger(Number(adjustment.amountPYG)) && Number(adjustment.amountPYG) > 0;
+}
+
+function requireRefundCoverage(order) {
+  if (order.paidAmountPYG < order.refundedAmountPYG) {
+    throw paymentError('El cambio dejaría los reembolsos por encima de los pagos confirmados.', 409);
+  }
 }
 
 export function orderPayments(order) {
@@ -84,14 +113,24 @@ export function orderPayments(order) {
 export function withPaymentState(order) {
   if (!order) return order;
   const payments = orderPayments(order);
+  const paymentAdjustments = orderPaymentAdjustments(order);
   const paidAmountPYG = payments.reduce((sum, payment) => paymentCountsAsConfirmed(payment)
     ? sum + Number(payment.amountPYG || 0) : sum, 0);
-  const total = Number(order.totals?.totalPYG || 0);
+  const grossOrderTotalPYG = Number(order.totals?.totalPYG || 0);
+  const refundedAmountPYG = paymentAdjustments.reduce((sum, adjustment) =>
+    adjustmentCountsAsRefund(adjustment) ? sum + Number(adjustment.amountPYG) : sum, 0);
+  const adjustedOrderTotalPYG = Math.max(0, grossOrderTotalPYG - refundedAmountPYG);
+  const netReceivedPYG = paidAmountPYG - refundedAmountPYG;
   return {
     ...order,
     payments,
+    paymentAdjustments,
+    grossOrderTotalPYG,
     paidAmountPYG,
-    remainingBalancePYG: Math.max(0, total - paidAmountPYG),
+    refundedAmountPYG,
+    adjustedOrderTotalPYG,
+    netReceivedPYG,
+    remainingBalancePYG: Math.max(0, adjustedOrderTotalPYG - netReceivedPYG),
   };
 }
 
@@ -144,6 +183,7 @@ export function reconcileLegacyPayment(order, {
       }
     : payment);
   let next = withPaymentState({ ...current, payments });
+  requireRefundCoverage(next);
   next = {
     ...next,
     status: adjustedOperationalStatus(current, next.remainingBalancePYG),
@@ -198,6 +238,7 @@ export function voidLegacyDuplicatePayment(order, {
       }
     : payment);
   let next = withPaymentState({ ...current, payments });
+  requireRefundCoverage(next);
   next = {
     ...next,
     status: adjustedOperationalStatus(current, next.remainingBalancePYG),
@@ -212,6 +253,46 @@ export function voidLegacyDuplicatePayment(order, {
     updatedAt: Number(timestamp),
   };
   return withPaymentState(next);
+}
+
+export function recordPostSalePriceAdjustment(order, {
+  kind,
+  amountPYG,
+  internalNote,
+  timestamp = Date.now(),
+  adjustmentId = crypto.randomUUID(),
+}) {
+  const current = withPaymentState(order);
+  if (String(kind || '').trim() !== POST_SALE_PRICE_ADJUSTMENT) {
+    throw paymentError('El tipo de ajuste posterior a la venta no es válido.');
+  }
+  const amount = parsePaymentAdjustmentAmountPYG(amountPYG);
+  const note = normalizedNote(internalNote);
+  if (current.status === 'CANCELLED') {
+    throw paymentError('No se puede registrar un ajuste en un pedido cancelado.', 409);
+  }
+  if (!current.payments.some(payment => paymentCountsAsConfirmed(payment) &&
+      Number.isSafeInteger(Number(payment.amountPYG)) && Number(payment.amountPYG) > 0)) {
+    throw paymentError('El pedido no tiene un pago confirmado para reembolsar.', 409);
+  }
+  const safeRefundableAmountPYG = Math.max(0,
+    Math.min(current.adjustedOrderTotalPYG, current.netReceivedPYG));
+  if (amount > safeRefundableAmountPYG) {
+    throw paymentError('El ajuste supera el importe que se puede reembolsar.', 409);
+  }
+
+  return withPaymentState({
+    ...current,
+    paymentAdjustments: [...current.paymentAdjustments, {
+      id: adjustmentId,
+      kind: POST_SALE_PRICE_ADJUSTMENT,
+      amountPYG: amount,
+      createdAt: Number(timestamp),
+      createdBy: 'ADMIN',
+      internalNote: note,
+    }],
+    updatedAt: Number(timestamp),
+  });
 }
 
 export function publicPayments(order) {
