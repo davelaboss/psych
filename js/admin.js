@@ -4662,12 +4662,19 @@ function renderAdminOrderDetail(
 
   const payments = order.payments || [];
   const paymentNotes = order.paymentNotes || [];
+  const paymentAdjustments = order.paymentAdjustments || [];
   const nonVoidedConfirmedPayments = payments.filter(payment =>
     payment.verificationStatus === 'CONFIRMED' && payment.voidedAt == null);
   const pendingPayment = payments.find(payment => payment.verificationStatus === 'PENDING');
+  const grossOrderTotal = Number(order.grossOrderTotalPYG ?? order.totals?.totalPYG ?? 0);
   const paidAmount = Number(order.paidAmountPYG || 0);
+  const refundedAmount = Number(order.refundedAmountPYG || 0);
+  const adjustedOrderTotal = Number(order.adjustedOrderTotalPYG ?? grossOrderTotal);
+  const netReceived = Number(order.netReceivedPYG ?? paidAmount);
   const remainingBalance = Number(order.remainingBalancePYG ?? order.totals?.totalPYG ?? 0);
   const dueNow = Number(order.totals?.dueNowPYG ?? order.totals?.totalPYG ?? 0);
+  const safeRefundableAmount = Math.max(0, Math.min(adjustedOrderTotal, netReceived));
+  const canRecordAdjustment = order.status !== 'CANCELLED' && safeRefundableAmount > 0;
   const buyerGroup = ADMIN_STATE.buyerGroups.find(
     (group) => group.orders.some((candidate) => candidate.id === order.id)
   );
@@ -4753,6 +4760,15 @@ function renderAdminOrderDetail(
     `;
   }).join('');
 
+  const adjustmentHistory = paymentAdjustments.map(adjustment => `
+    <article class="admin-payment-entry">
+      <strong>Ajuste de precio posterior a la venta</strong>
+      <span>Importe reembolsado: <strong>${adminMoney(adjustment.amountPYG)}</strong></span>
+      <span>Registrado: ${adminEscape(adminOrderDeadline(adjustment.createdAt))}</span>
+      <p><strong>Nota interna de auditoría:</strong> ${adminEscape(adjustment.internalNote)}</p>
+    </article>
+  `).join('');
+
   target.innerHTML = `
     <section class="admin-order-detail-v2">
       <span class="section-kicker">
@@ -4825,12 +4841,11 @@ function renderAdminOrderDetail(
         <div>
           <dl class="admin-summary-list">
             <div>
-              <dt>TOTAL DEL PEDIDO</dt>
+              <dt>TOTAL ORIGINAL</dt>
 
               <dd>
                 ${adminMoney(
-                  order.totals
-                    ?.totalPYG
+                  grossOrderTotal
                 )}
               </dd>
             </div>
@@ -4853,6 +4868,21 @@ function renderAdminOrderDetail(
                   paidAmount
                 )}
               </dd>
+            </div>
+
+            <div>
+              <dt>REEMBOLSADO / AJUSTADO</dt>
+              <dd>${adminMoney(refundedAmount)}</dd>
+            </div>
+
+            <div>
+              <dt>TOTAL AJUSTADO</dt>
+              <dd>${adminMoney(adjustedOrderTotal)}</dd>
+            </div>
+
+            <div>
+              <dt>NETO RETENIDO</dt>
+              <dd>${adminMoney(netReceived)}</dd>
             </div>
 
             <div>
@@ -4899,6 +4929,31 @@ function renderAdminOrderDetail(
           </div>
         ` : ''}
         ${paymentHistory ? `<section class="admin-payment-history"><h3>Historial de pagos</h3>${paymentHistory}</section>` : ''}
+        ${adjustmentHistory || canRecordAdjustment ? `
+          <section class="admin-payment-history">
+            <h3>Ajustes / reembolsos</h3>
+            ${adjustmentHistory || '<p>Todavía no hay ajustes registrados.</p>'}
+            ${canRecordAdjustment ? `
+              <form data-post-sale-adjustment>
+                <label><span>Importe del reembolso / ajuste (PYG)</span>
+                  <input name="amountPYG" type="number" min="1" max="${adminEscapeAttribute(safeRefundableAmount)}"
+                    step="1" inputmode="numeric" required>
+                </label>
+                <label><span>Tipo</span>
+                  <select name="kind" required>
+                    <option value="POST_SALE_PRICE_ADJUSTMENT">Ajuste de precio posterior a la venta</option>
+                  </select>
+                </label>
+                <label><span>Nota interna obligatoria</span>
+                  <textarea name="internalNote" maxlength="2000" required></textarea>
+                </label>
+                <small>Máximo reembolsable actualmente: ${adminMoney(safeRefundableAmount)}</small>
+                <p class="form-error" data-post-sale-adjustment-error hidden></p>
+                <button class="secondary-action" type="submit">Registrar reembolso / ajuste posterior a la venta</button>
+              </form>
+            ` : ''}
+          </section>
+        ` : ''}
         ${
           canUploadReceipt
               ? `
@@ -4968,6 +5023,9 @@ function renderAdminOrderDetail(
       Number(form.dataset.paymentAmount)
     ));
   });
+
+  target.querySelector('[data-post-sale-adjustment]')?.addEventListener('submit', event =>
+    recordAdminPostSaleAdjustment(event, order.id));
 
   target.querySelectorAll('[data-confirm-payment]').forEach(button => {
     button.addEventListener('click', () => confirmAdminPayment(
@@ -5239,6 +5297,46 @@ async function voidAdminLegacyDuplicatePayment(event, orderId, paymentId, paymen
   } catch (error) {
     button.disabled = false;
     errorBox.textContent = error instanceof Error ? error.message : 'No se pudo anular el pago histórico.';
+    errorBox.hidden = false;
+  }
+}
+
+
+async function recordAdminPostSaleAdjustment(event, orderId) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const amountPYG = Number(data.get('amountPYG'));
+  const errorBox = form.querySelector('[data-post-sale-adjustment-error]');
+  const button = form.querySelector('button[type="submit"]');
+  const confirmed = window.confirm(
+    `¿Registrar un reembolso / ajuste de ${adminMoney(amountPYG)} para el pedido ${orderId}? ` +
+    'El pago original permanecerá sin cambios.'
+  );
+  if (!confirmed) return;
+  errorBox.hidden = true;
+  button.disabled = true;
+  try {
+    await adminFetch('/api/admin/payment-note', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        orderId,
+        action: 'RECORD_POST_SALE_PRICE_ADJUSTMENT',
+        kind: data.get('kind'),
+        amountPYG: data.get('amountPYG'),
+        internalNote: data.get('internalNote'),
+      }),
+    });
+    ADMIN_STATE.orders = await fetchAdminOrders();
+    ADMIN_STATE.stats = buildAdminStats(ADMIN_STATE.orders, ADMIN_STATE.inventory);
+    renderOrdersTab();
+    setTimeout(() => openAdminOrder(orderId), 30);
+  } catch (error) {
+    button.disabled = false;
+    errorBox.textContent = error instanceof Error
+      ? error.message
+      : 'No se pudo registrar el reembolso / ajuste.';
     errorBox.hidden = false;
   }
 }

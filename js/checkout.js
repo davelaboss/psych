@@ -1005,46 +1005,7 @@ function displayOrder(
             PAGO
           </span>
 
-          <dl>
-            <div>
-              <dt>
-                Valor total
-              </dt>
-
-              <dd>
-                ${formatPYG(
-                  order.totals
-                    .totalPYG
-                )}
-              </dd>
-            </div>
-
-            <div
-              class="summary-due"
-            >
-              <dt>
-                Pagado
-              </dt>
-
-              <dd>
-                ${formatPYG(
-                  paidAmount
-                )}
-              </dd>
-            </div>
-
-            <div>
-              <dt>
-                Saldo pendiente
-              </dt>
-
-              <dd>
-                ${formatPYG(
-                  remainingBalance
-                )}
-              </dd>
-            </div>
-          </dl>
+          ${renderCustomerFinancialSummary(order)}
 
           ${
             awaitingInitialPayment || awaitingFinalPayment
@@ -1168,6 +1129,36 @@ async function setupPickupScheduler(order, access) {
 }
 
 
+function renderCustomerFinancialSummary(order) {
+  const grossOrderTotal = Number(order.grossOrderTotalPYG ?? order.totals?.totalPYG ?? 0);
+  const paidAmount = Number(order.paidAmountPYG || 0);
+  const refundedAmount = Number(order.refundedAmountPYG || 0);
+  const adjustedOrderTotal = Number(order.adjustedOrderTotalPYG ?? grossOrderTotal);
+  const remainingBalance = Number(order.remainingBalancePYG ?? grossOrderTotal);
+
+  if (refundedAmount > 0) {
+    return `
+      <dl>
+        <div><dt>Total original</dt><dd>${formatPYG(grossOrderTotal)}</dd></div>
+        <div><dt>Ajuste / reembolso</dt><dd>${formatPYG(refundedAmount)}</dd></div>
+        <div><dt>Total ajustado</dt><dd>${formatPYG(adjustedOrderTotal)}</dd></div>
+        <div class="summary-due"><dt>Pagado</dt><dd>${formatPYG(paidAmount)}</dd></div>
+        <div><dt>Reembolsado</dt><dd>${formatPYG(refundedAmount)}</dd></div>
+        <div><dt>Saldo pendiente</dt><dd>${formatPYG(remainingBalance)}</dd></div>
+      </dl>
+    `;
+  }
+
+  return `
+    <dl>
+      <div><dt>Valor total</dt><dd>${formatPYG(grossOrderTotal)}</dd></div>
+      <div class="summary-due"><dt>Pagado</dt><dd>${formatPYG(paidAmount)}</dd></div>
+      <div><dt>Saldo pendiente</dt><dd>${formatPYG(remainingBalance)}</dd></div>
+    </dl>
+  `;
+}
+
+
 function renderBankSection(
   order,
   access,
@@ -1193,13 +1184,7 @@ function renderBankSection(
     <div class="bank-details">
       <h3>${finalPayment ? 'Pago del saldo' : 'Datos para transferencia'}</h3>
 
-      ${finalPayment ? `
-        <dl>
-          <div><dt>Total del pedido</dt><dd>${formatPYG(order.totals.totalPYG)}</dd></div>
-          <div><dt>Pagado</dt><dd>${formatPYG(order.paidAmountPYG)}</dd></div>
-          <div><dt>Saldo pendiente</dt><dd>${formatPYG(order.remainingBalancePYG)}</dd></div>
-        </dl>
-      ` : ''}
+      ${finalPayment ? renderCustomerFinancialSummary(order) : ''}
 
       <dl>
         <div>

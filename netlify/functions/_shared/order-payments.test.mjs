@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  parsePaymentAdjustmentAmountPYG,
   parseVerifiedAmountPYG,
+  recordPostSalePriceAdjustment,
   reconcileLegacyPayment,
   voidLegacyDuplicatePayment,
   withPaymentState,
@@ -56,6 +58,17 @@ function voidDuplicate(source, overrides = {}) {
     internalNote: 'Comprobante duplicado de la transición histórica.',
     timestamp: TIMESTAMP,
     noteId: 'void-note-1',
+    ...overrides,
+  });
+}
+
+function adjust(source, overrides = {}) {
+  return recordPostSalePriceAdjustment(source, {
+    kind: 'POST_SALE_PRICE_ADJUSTMENT',
+    amountPYG: 30_000,
+    internalNote: 'Reembolso acordado por reclamo posterior a la venta.',
+    timestamp: TIMESTAMP,
+    adjustmentId: 'adjustment-1',
     ...overrides,
   });
 }
@@ -281,4 +294,141 @@ test('a voided legacy payment cannot later be reconciled', () => {
   assert.throws(() => reconcile(voided, {
     paymentId: 'legacy-duplicate',
   }), /ya fue anulado/i);
+});
+
+test('records the exact Esilda post-sale adjustment without changing the original payment', () => {
+  const originalPayment = payment({
+    id: 'esilda-payment',
+    type: 'FULL',
+    amountPYG: 60_000,
+    amountSource: 'LEGACY_RECONCILED',
+    receipt: {
+      storageKey: 'orders/VM-2026-E00AA2E0/receipt.pdf',
+      fileName: 'receipt.pdf',
+      contentType: 'application/pdf',
+    },
+    legacyAssumedAmountPYG: 60_000,
+    reconciledAt: TIMESTAMP - 500,
+    reconciledBy: 'ADMIN',
+  });
+  const pickup = { status: 'SCHEDULED', slotKey: '2026-12-09|08:00-12:00' };
+  const esilda = order({
+    id: 'VM-2026-E00AA2E0',
+    status: 'PICKUP_SCHEDULED',
+    totals: { totalPYG: 60_000, dueNowPYG: 60_000, futureBalancePYG: 0 },
+    items: [{ productId: '142', saleMode: 'IMMEDIATE' }],
+    payments: [originalPayment],
+    pickup,
+  });
+
+  const result = adjust(esilda);
+  assert.equal(result.totals.totalPYG, 60_000);
+  assert.equal(result.grossOrderTotalPYG, 60_000);
+  assert.equal(result.paidAmountPYG, 60_000);
+  assert.equal(result.refundedAmountPYG, 30_000);
+  assert.equal(result.adjustedOrderTotalPYG, 30_000);
+  assert.equal(result.netReceivedPYG, 30_000);
+  assert.equal(result.remainingBalancePYG, 0);
+  assert.equal(result.status, 'PICKUP_SCHEDULED');
+  assert.deepEqual(result.pickup, pickup);
+  assert.deepEqual(result.payments[0], originalPayment);
+  assert.deepEqual(result.paymentAdjustments, [{
+    id: 'adjustment-1',
+    kind: 'POST_SALE_PRICE_ADJUSTMENT',
+    amountPYG: 30_000,
+    createdAt: TIMESTAMP,
+    createdBy: 'ADMIN',
+    internalNote: 'Reembolso acordado por reclamo posterior a la venta.',
+  }]);
+});
+
+test('missing adjustments derive as an empty collection with zero refunds', () => {
+  const result = withPaymentState(order());
+  assert.deepEqual(result.paymentAdjustments, []);
+  assert.equal(result.refundedAmountPYG, 0);
+  assert.equal(result.adjustedOrderTotalPYG, 250_000);
+  assert.equal(result.netReceivedPYG, 62_500);
+});
+
+test('validates adjustment amount, exact kind, note, order state, and confirmed payment', () => {
+  const paid = order({
+    payments: [payment({ amountPYG: 250_000, amountSource: 'LEGACY_RECONCILED' })],
+  });
+  for (const value of ['', 0, -1, 1.5, '1.5', 'abc', Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => parsePaymentAdjustmentAmountPYG(value));
+    assert.throws(() => adjust(paid, { amountPYG: value }));
+  }
+  assert.equal(parsePaymentAdjustmentAmountPYG('30000'), 30_000);
+  assert.throws(() => adjust(paid, { kind: 'post_sale_price_adjustment' }), /tipo de ajuste/i);
+  assert.throws(() => adjust(paid, { internalNote: '  ' }), /nota interna/i);
+  assert.throws(() => adjust(paid, { internalNote: 'x'.repeat(2001) }), /2\.000 caracteres/i);
+  assert.throws(() => adjust({ ...paid, status: 'CANCELLED' }), /pedido cancelado/i);
+  assert.throws(() => adjust(order({
+    payments: [payment({ verificationStatus: 'PENDING', amountPYG: null })],
+  })), /no tiene un pago confirmado/i);
+  assert.throws(() => adjust(order({
+    payments: [payment({ amountPYG: 0 })],
+  })), /no tiene un pago confirmado/i);
+});
+
+test('enforces individual and cumulative safe refundable amounts', () => {
+  const source = order({
+    totals: { totalPYG: 60_000, dueNowPYG: 60_000, futureBalancePYG: 0 },
+    payments: [payment({ amountPYG: 60_000, amountSource: 'LEGACY_RECONCILED' })],
+  });
+  assert.throws(() => adjust(source, { amountPYG: 60_001 }), /supera el importe/i);
+
+  const first = adjust(source, { amountPYG: 20_000 });
+  assert.throws(() => adjust(first, {
+    amountPYG: 40_001,
+    adjustmentId: 'adjustment-2',
+  }), /supera el importe/i);
+  const second = adjust(first, { amountPYG: 10_000, adjustmentId: 'adjustment-2' });
+  assert.equal(second.refundedAmountPYG, 30_000);
+  assert.equal(second.adjustedOrderTotalPYG, 30_000);
+  assert.equal(second.netReceivedPYG, 30_000);
+  assert.equal(second.remainingBalancePYG, 0);
+
+  const underpaid = order({
+    totals: { totalPYG: 60_000, dueNowPYG: 30_000, futureBalancePYG: 30_000 },
+    payments: [payment({ amountPYG: 40_000, amountSource: 'LEGACY_RECONCILED' })],
+  });
+  assert.throws(() => adjust(underpaid, { amountPYG: 40_001 }), /supera el importe/i);
+});
+
+test('preserves operational status and pickup data for every eligible paid state', () => {
+  const pickup = { status: 'COMPLETED', slotKey: '2026-12-09|08:00-12:00' };
+  const payments = [payment({ amountPYG: 250_000, amountSource: 'LEGACY_RECONCILED' })];
+  for (const status of [
+    'PAYMENT_CONFIRMED',
+    'PAID_IN_FULL',
+    'READY_TO_SCHEDULE',
+    'PICKUP_SCHEDULED',
+    'PICKED_UP',
+  ]) {
+    const result = adjust(order({ status, payments, pickup }));
+    assert.equal(result.status, status);
+    assert.deepEqual(result.pickup, pickup);
+  }
+});
+
+test('reconciliation cannot reduce confirmed payments below recorded refunds', () => {
+  const refunded = adjust(order({
+    totals: { totalPYG: 60_000, dueNowPYG: 60_000, futureBalancePYG: 0 },
+    payments: [payment({ amountPYG: 60_000 })],
+  }));
+  assert.throws(() => reconcile(refunded, {
+    reconciledAmountPYG: 20_000,
+  }), /reembolsos por encima/i);
+});
+
+test('duplicate voiding cannot reduce confirmed payments below recorded refunds', () => {
+  const refunded = adjust(order({
+    totals: { totalPYG: 60_000, dueNowPYG: 60_000, futureBalancePYG: 0 },
+    payments: [
+      payment({ id: 'valid-payment', amountPYG: 40_000, amountSource: 'ADMIN_VERIFIED' }),
+      payment({ id: 'legacy-duplicate', amountPYG: 20_000 }),
+    ],
+  }), { amountPYG: 50_000 });
+  assert.throws(() => voidDuplicate(refunded), /reembolsos por encima/i);
 });

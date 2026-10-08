@@ -6,6 +6,7 @@ const inventory = await readFile(new URL('./inventory-database.mjs', import.meta
 const endpoint = await readFile(new URL('../admin-payment-note.mjs', import.meta.url), 'utf8');
 const pickup = await readFile(new URL('./pickup.mjs', import.meta.url), 'utf8');
 const admin = await readFile(new URL('../../../js/admin.js', import.meta.url), 'utf8');
+const checkout = await readFile(new URL('../../../js/checkout.js', import.meta.url), 'utf8');
 
 function functionSource(source, start, end) {
   return source.slice(source.indexOf(start), source.indexOf(end));
@@ -43,7 +44,7 @@ test('legacy reconciliation performs no inventory, reservation, pickup, or fulfi
 
 test('legacy duplicate void locks before calculation and writes one snapshot atomically', () => {
   const voiding = functionSource(inventory,
-    'export async function voidOrderLegacyDuplicatePayment', 'export async function commitInventoryHold');
+    'export async function voidOrderLegacyDuplicatePayment', 'export async function recordOrderPostSalePriceAdjustment');
   assert.match(voiding, /return inventoryTransaction\(async client =>/);
   assert.ok(voiding.indexOf('await orderLock(client, orderId)') <
     voiding.indexOf('voidLegacyDuplicatePaymentState(locked.row.order_snapshot'));
@@ -57,16 +58,40 @@ test('legacy duplicate void locks before calculation and writes one snapshot ato
 
 test('legacy duplicate void performs no unrelated mutation or notification', () => {
   const voiding = functionSource(inventory,
-    'export async function voidOrderLegacyDuplicatePayment', 'export async function commitInventoryHold');
+    'export async function voidOrderLegacyDuplicatePayment', 'export async function recordOrderPostSalePriceAdjustment');
   assert.doesNotMatch(voiding,
     /operational_inventory|inventory_reservations|pickup_|fulfillment_batch|queueOrderNotifications/i);
 });
 
-test('server endpoint exposes only the two approved historical payment actions', () => {
-  assert.match(endpoint, /'RECONCILE_LEGACY_PAYMENT', 'VOID_LEGACY_DUPLICATE_PAYMENT'/);
+test('post-sale adjustment locks before calculation and writes one snapshot atomically', () => {
+  const adjustment = functionSource(inventory,
+    'export async function recordOrderPostSalePriceAdjustment', 'export async function commitInventoryHold');
+  assert.match(adjustment, /return inventoryTransaction\(async client =>/);
+  assert.ok(adjustment.indexOf('await orderLock(client, orderId)') <
+    adjustment.indexOf('recordPostSalePriceAdjustmentState(locked.row.order_snapshot'));
+  assert.ok(adjustment.indexOf('recordPostSalePriceAdjustmentState(locked.row.order_snapshot') <
+    adjustment.indexOf('UPDATE checkout_attempts SET order_snapshot=$2'));
+  assert.match(adjustment, /const timestamp = await now\(client\)/);
+  assert.match(adjustment, /\{ \.\.\.adjustment, timestamp \}/);
+  assert.equal((adjustment.match(/UPDATE checkout_attempts/g) || []).length, 1);
+  assert.match(adjustment, /projection_version=projection_version\+1/);
+});
+
+test('post-sale adjustment performs no unrelated mutation or notification', () => {
+  const adjustment = functionSource(inventory,
+    'export async function recordOrderPostSalePriceAdjustment', 'export async function commitInventoryHold');
+  assert.doesNotMatch(adjustment,
+    /operational_inventory|inventory_reservations|pickup_|fulfillment_batch|receipt|queueOrderNotifications/i);
+});
+
+test('server endpoint exposes only the three approved payment actions', () => {
+  assert.match(endpoint, /'RECONCILE_LEGACY_PAYMENT'/);
+  assert.match(endpoint, /'VOID_LEGACY_DUPLICATE_PAYMENT'/);
+  assert.match(endpoint, /'RECORD_POST_SALE_PRICE_ADJUSTMENT'/);
   assert.doesNotMatch(endpoint, /ADD_NOTE/);
   assert.match(endpoint, /reconcileOrderLegacyPayment/);
   assert.match(endpoint, /voidOrderLegacyDuplicatePayment/);
+  assert.match(endpoint, /recordOrderPostSalePriceAdjustment/);
 });
 
 test('admin exposes the standalone legacy reconciliation form without generic notes', () => {
@@ -89,6 +114,33 @@ test('admin exposes explicit legacy duplicate voiding and keeps the audit entry 
   assert.match(admin, /nonVoidedConfirmedPayments\.length > 1/);
   assert.match(admin, /LEGACY_RECONCILED/);
   assert.match(admin, /LEGACY_OPENING_CREDIT/);
+});
+
+test('admin exposes post-sale adjustment totals, history, limits, and explicit confirmation', () => {
+  assert.match(admin, /Ajustes \/ reembolsos/);
+  assert.match(admin, /Registrar reembolso \/ ajuste posterior a la venta/);
+  assert.match(admin, /POST_SALE_PRICE_ADJUSTMENT/);
+  assert.match(admin, /REEMBOLSADO \/ AJUSTADO/);
+  assert.match(admin, /TOTAL AJUSTADO/);
+  assert.match(admin, /NETO RETENIDO/);
+  assert.match(admin, /safeRefundableAmount > 0/);
+  assert.match(admin, /order\.status !== 'CANCELLED'/);
+  assert.match(admin, /window\.confirm/);
+  assert.match(admin, /action: 'RECORD_POST_SALE_PRICE_ADJUSTMENT'/);
+  assert.match(admin, /Nota interna de auditoría/);
+});
+
+test('customer shows the six-line adjusted financial summary without internal fields', () => {
+  for (const label of [
+    'Total original',
+    'Ajuste / reembolso',
+    'Total ajustado',
+    'Pagado',
+    'Reembolsado',
+    'Saldo pendiente',
+  ]) assert.match(checkout, new RegExp(label.replace('/', '\\/')));
+  assert.match(checkout, /refundedAmount > 0/);
+  assert.doesNotMatch(checkout, /paymentAdjustments|internalNote|POST_SALE_PRICE_ADJUSTMENT|createdBy/);
 });
 
 test('existing production payment confirmation behavior remains present', () => {
