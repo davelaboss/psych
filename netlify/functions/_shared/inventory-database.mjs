@@ -6,6 +6,11 @@ import {
   voidLegacyDuplicatePayment as voidLegacyDuplicatePaymentState,
   withPaymentState,
 } from './order-payments.mjs';
+import {
+  legacyReviewContextEntries,
+  proposedLegacyReviewNote,
+  validateAllowlistedLegacyContext,
+} from './legacy-reconciliation-review.mjs';
 import { queueOrderNotifications } from './seller-notifications.mjs';
 
 const RESERVED = 'Este artículo está temporalmente reservado por otro comprador.';
@@ -435,17 +440,53 @@ export async function confirmOrderPayment(orderId, paymentId, requestedType) {
   });
 }
 
+async function reconcileLockedOrderLegacyPayment(client, orderId, orderSnapshot, reconciliation) {
+  const timestamp = await now(client);
+  const snapshot = reconcileLegacyPaymentState(orderSnapshot,
+    { ...reconciliation, timestamp });
+  await client.query(`UPDATE checkout_attempts SET order_snapshot=$2,
+    projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1`,
+  [orderId, JSON.stringify(snapshot)]);
+  return snapshot;
+}
+
 export async function reconcileOrderLegacyPayment(orderId, reconciliation) {
   return inventoryTransaction(async client => {
     const locked = await orderLock(client, orderId);
     if (!locked) return false;
-    const timestamp = await now(client);
-    const snapshot = reconcileLegacyPaymentState(locked.row.order_snapshot,
-      { ...reconciliation, timestamp });
-    await client.query(`UPDATE checkout_attempts SET order_snapshot=$2,
-      projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1`,
-    [orderId, JSON.stringify(snapshot)]);
-    return snapshot;
+    return reconcileLockedOrderLegacyPayment(
+      client,
+      orderId,
+      locked.row.order_snapshot,
+      reconciliation
+    );
+  });
+}
+
+export async function reconcileAllowlistedLegacyPayment(entry) {
+  return inventoryTransaction(async client => {
+    const contextEntries = legacyReviewContextEntries(entry);
+    const orderIds = [...new Set(contextEntries.map(candidate => candidate.orderId))].sort();
+    const lockedById = new Map();
+    for (const orderId of orderIds) {
+      lockedById.set(orderId, await orderLock(client, orderId));
+    }
+    const ordersById = new Map([...lockedById].map(([orderId, locked]) => [
+      orderId,
+      locked ? withPaymentState(locked.row.order_snapshot) : null,
+    ]));
+    validateAllowlistedLegacyContext(ordersById, entry);
+    return reconcileLockedOrderLegacyPayment(
+      client,
+      entry.orderId,
+      ordersById.get(entry.orderId),
+      {
+        paymentId: entry.paymentId,
+        reconciledAmountPYG: entry.amountPYG,
+        basis: 'ACTUAL_VERIFIED',
+        internalNote: proposedLegacyReviewNote(entry),
+      }
+    );
   });
 }
 

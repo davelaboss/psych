@@ -4233,6 +4233,9 @@ function printFulfillmentBatch(batchId) {
 }
 
 
+let ADMIN_LEGACY_REVIEW_SUCCESS = '';
+
+
 function renderOrdersTab() {
   const target =
     document.getElementById(
@@ -4384,6 +4387,11 @@ function renderOrdersTab() {
         </strong>
       </div>
 
+      <section class="admin-content-v2" id="admin-legacy-reconciliation-review">
+        <h3>Reconciliación histórica revisada</h3>
+        <p>Cargando pagos aprobados…</p>
+      </section>
+
       <div class="admin-order-tools-v2">
         <label class="admin-search-v2">
           <span>Buscar pedido o cliente</span>
@@ -4431,6 +4439,7 @@ function renderOrdersTab() {
     </section>
   `;
 
+  loadLegacyReconciliationReviewQueue();
   loadUpcomingPickups();
 
   target
@@ -4478,6 +4487,134 @@ function renderOrdersTab() {
       ADMIN_STATE.orderSearch = '';
       renderOrdersTab();
     });
+}
+
+
+function renderLegacyReviewGroup(title, entries) {
+  if (!entries.length) return '';
+  return `
+    <section class="admin-order-list-v2">
+      <h4>${adminEscape(title)}</h4>
+      ${entries.map(entry => `
+        <article class="admin-order-row-v2" data-legacy-review-card>
+          <div>
+            <strong>${adminEscape(entry.orderId)}</strong>
+            <span>${adminEscape(entry.customer)}</span>
+            <small>Pago: ${adminEscape(entry.paymentId)}</small>
+          </div>
+          <div>
+            <span>Importe: <strong>${adminMoney(entry.amountPYG)}</strong></span>
+            <span>Origen actual: <strong>${adminEscape(entry.currentSource)}</strong></span>
+            <span>Base propuesta: <strong>${adminEscape(entry.basis)}</strong></span>
+            <span>${adminEscape(entry.evidenceLabel)}</span>
+          </div>
+          <p><strong>Nota interna propuesta:</strong> ${adminEscape(entry.proposedNote)}</p>
+          <div>
+            ${entry.receiptAvailable ? `
+              <button class="secondary-action" type="button"
+                data-legacy-review-receipt
+                data-order-id="${adminEscapeAttribute(entry.orderId)}"
+                data-payment-id="${adminEscapeAttribute(entry.paymentId)}">
+                Ver comprobante / evidencia
+              </button>
+            ` : ''}
+            ${entry.state === 'READY' ? `
+              <button class="primary-action" type="button"
+                data-confirm-legacy-review
+                data-order-id="${adminEscapeAttribute(entry.orderId)}"
+                data-payment-id="${adminEscapeAttribute(entry.paymentId)}"
+                data-customer="${adminEscapeAttribute(entry.customer)}"
+                data-amount="${adminEscapeAttribute(entry.amountPYG)}">
+                Confirmar reconciliación
+              </button>
+            ` : `<strong role="alert">${adminEscape(entry.stateMessage)}</strong>`}
+          </div>
+          <p class="form-error" data-legacy-review-error role="alert" hidden></p>
+        </article>
+      `).join('')}
+    </section>
+  `;
+}
+
+
+async function loadLegacyReconciliationReviewQueue() {
+  const target = document.getElementById('admin-legacy-reconciliation-review');
+  if (!target) return;
+  try {
+    const data = await adminFetch('/api/admin/legacy-reconciliation-review');
+    const priority = data.queue.filter(entry => entry.section === 'PRIORITY');
+    const ordinary = data.queue.filter(entry => entry.section === 'ORDINARY');
+    const special = data.queue.filter(entry => entry.section === 'SPECIAL');
+    target.innerHTML = `
+      <div class="admin-section-heading-v2">
+        <div>
+          <span class="section-kicker">LIMPIEZA TEMPORAL</span>
+          <h3>Reconciliación histórica revisada</h3>
+          <p>Cada pago requiere confirmación individual. No se infieren importes.</p>
+        </div>
+        <strong>${Number(data.remaining || 0)} pendiente${Number(data.remaining || 0) === 1 ? '' : 's'}</strong>
+      </div>
+      ${ADMIN_LEGACY_REVIEW_SUCCESS
+        ? `<p role="status"><strong>${adminEscape(ADMIN_LEGACY_REVIEW_SUCCESS)}</strong></p>`
+        : ''}
+      ${data.queue.length
+        ? `${renderLegacyReviewGroup('Prioridad: señas con saldo pendiente', priority)}
+           ${renderLegacyReviewGroup('Pagos ordinarios con comprobante revisado', ordinary)}
+           ${renderLegacyReviewGroup('Casos especiales confirmados', special)}`
+        : '<p><strong>Todos los pagos aprobados fueron reconciliados.</strong></p>'}
+    `;
+
+    target.querySelectorAll('[data-legacy-review-receipt]').forEach(button => {
+      button.addEventListener('click', () => viewAdminReceipt(
+        button.dataset.orderId,
+        button.dataset.paymentId
+      ));
+    });
+
+    target.querySelectorAll('[data-confirm-legacy-review]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const orderId = button.dataset.orderId;
+        const paymentId = button.dataset.paymentId;
+        const customer = button.dataset.customer;
+        const amountPYG = Number(button.dataset.amount);
+        const confirmed = window.confirm(
+          `¿Confirmar la reconciliación de ${customer}, pedido ${orderId}, por ${adminMoney(amountPYG)}?`
+        );
+        if (!confirmed) return;
+        const card = button.closest('[data-legacy-review-card]');
+        const errorBox = card?.querySelector('[data-legacy-review-error]');
+        if (errorBox) errorBox.hidden = true;
+        button.disabled = true;
+        try {
+          await adminFetch('/api/admin/legacy-reconciliation-review', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ orderId, paymentId, ownerConfirmed: true }),
+          });
+          ADMIN_LEGACY_REVIEW_SUCCESS =
+            `${customer} · ${orderId} · ${adminMoney(amountPYG)} reconciliado correctamente.`;
+          ADMIN_STATE.orders = await fetchAdminOrders();
+          ADMIN_STATE.stats = buildAdminStats(ADMIN_STATE.orders, ADMIN_STATE.inventory);
+          renderOrdersTab();
+        } catch (error) {
+          button.disabled = false;
+          if (errorBox) {
+            errorBox.textContent = error instanceof Error
+              ? error.message
+              : 'No se pudo reconciliar este pago.';
+            errorBox.hidden = false;
+          }
+        }
+      });
+    });
+  } catch (error) {
+    target.innerHTML = `
+      <h3>Reconciliación histórica revisada</h3>
+      <p class="form-error" role="alert">${adminEscape(
+        error instanceof Error ? error.message : 'No se pudo cargar la revisión.'
+      )}</p>
+    `;
+  }
 }
 
 
