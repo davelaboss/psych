@@ -13,33 +13,50 @@ function functionSource(source, start, end) {
 }
 
 test('legacy reconciliation locks before calculation and writes one snapshot atomically', () => {
+  const writer = functionSource(inventory,
+    'async function reconcileLockedOrderLegacyPayment', 'export async function reconcileOrderLegacyPayment');
   const reconciliation = functionSource(inventory,
-    'export async function reconcileOrderLegacyPayment', 'export async function voidOrderLegacyDuplicatePayment');
+    'export async function reconcileOrderLegacyPayment', 'export async function reconcileAllowlistedLegacyPayment');
   assert.match(reconciliation, /return inventoryTransaction\(async client =>/);
   assert.match(inventory, /SELECT \* FROM checkout_attempts WHERE order_id=\$1 FOR UPDATE/);
   assert.ok(reconciliation.indexOf('await orderLock(client, orderId)') <
-    reconciliation.indexOf('reconcileLegacyPaymentState(locked.row.order_snapshot'));
-  assert.ok(reconciliation.indexOf('reconcileLegacyPaymentState(locked.row.order_snapshot') <
-    reconciliation.indexOf('UPDATE checkout_attempts SET order_snapshot=$2'));
-  assert.equal((reconciliation.match(/UPDATE checkout_attempts/g) || []).length, 1);
-  assert.match(reconciliation, /projection_version=projection_version\+1/);
+    reconciliation.indexOf('reconcileLockedOrderLegacyPayment'));
+  assert.ok(writer.indexOf('reconcileLegacyPaymentState(orderSnapshot') <
+    writer.indexOf('UPDATE checkout_attempts SET order_snapshot=$2'));
+  assert.equal((writer.match(/UPDATE checkout_attempts/g) || []).length, 1);
+  assert.match(writer, /projection_version=projection_version\+1/);
 });
 
 test('validation failure happens before the snapshot write and triggers transaction rollback', () => {
   const transaction = functionSource(inventory,
     'export async function inventoryTransaction', 'async function sessionLock');
-  const reconciliation = functionSource(inventory,
-    'export async function reconcileOrderLegacyPayment', 'export async function voidOrderLegacyDuplicatePayment');
-  assert.ok(reconciliation.indexOf('reconcileLegacyPaymentState(locked.row.order_snapshot') <
-    reconciliation.indexOf('UPDATE checkout_attempts SET order_snapshot=$2'));
+  const writer = functionSource(inventory,
+    'async function reconcileLockedOrderLegacyPayment', 'export async function reconcileOrderLegacyPayment');
+  assert.ok(writer.indexOf('reconcileLegacyPaymentState(orderSnapshot') <
+    writer.indexOf('UPDATE checkout_attempts SET order_snapshot=$2'));
   assert.match(transaction, /await client\.query\('ROLLBACK'\)/);
 });
 
 test('legacy reconciliation performs no inventory, reservation, pickup, or fulfillment mutation', () => {
   const reconciliation = functionSource(inventory,
-    'export async function reconcileOrderLegacyPayment', 'export async function voidOrderLegacyDuplicatePayment');
+    'export async function reconcileOrderLegacyPayment', 'export async function reconcileAllowlistedLegacyPayment');
   assert.doesNotMatch(reconciliation,
     /UPDATE operational_inventory|UPDATE inventory_reservations|INSERT INTO pickup_|UPDATE pickup_|fulfillment_batch/i);
+});
+
+test('allowlisted reconciliation validates locked context and reuses the single snapshot writer', () => {
+  const reconciliation = functionSource(inventory,
+    'export async function reconcileAllowlistedLegacyPayment', 'export async function voidOrderLegacyDuplicatePayment');
+  assert.match(reconciliation, /return inventoryTransaction\(async client =>/);
+  assert.ok(reconciliation.indexOf('await orderLock(client, orderId)') <
+    reconciliation.indexOf('validateAllowlistedLegacyContext(ordersById, entry)'));
+  assert.ok(reconciliation.indexOf('validateAllowlistedLegacyContext(ordersById, entry)') <
+    reconciliation.indexOf('reconcileLockedOrderLegacyPayment'));
+  assert.match(reconciliation, /reconciledAmountPYG: entry\.amountPYG/);
+  assert.match(reconciliation, /basis: 'ACTUAL_VERIFIED'/);
+  assert.match(reconciliation, /proposedLegacyReviewNote\(entry\)/);
+  assert.doesNotMatch(reconciliation,
+    /UPDATE operational_inventory|UPDATE inventory_reservations|pickup_|fulfillment_batch|queueOrderNotifications/i);
 });
 
 test('legacy duplicate void locks before calculation and writes one snapshot atomically', () => {

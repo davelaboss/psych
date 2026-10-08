@@ -3,6 +3,7 @@
 /api/admin/receipt             /.netlify/functions/admin-receipt            200
 /api/admin/confirm-payment     /.netlify/functions/admin-confirm-payment    200
 /api/admin/payment-note       /.netlify/functions/admin-payment-note       200
+/api/admin/legacy-reconciliation-review /.netlify/functions/admin-legacy-reconciliation-review 200
 /api/admin/cancel-order        /.netlify/functions/admin-cancel-order       200
 /api/admin/upload-receipt      /.netlify/functions/admin-upload-receipt     200
 /api/admin/buyer-groups        /.netlify/functions/admin-buyer-groups       200
