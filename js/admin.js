@@ -4661,6 +4661,9 @@ function renderAdminOrderDetail(
       .join('');
 
   const payments = order.payments || [];
+  const paymentNotes = order.paymentNotes || [];
+  const nonVoidedConfirmedPayments = payments.filter(payment =>
+    payment.verificationStatus === 'CONFIRMED' && payment.voidedAt == null);
   const pendingPayment = payments.find(payment => payment.verificationStatus === 'PENDING');
   const paidAmount = Number(order.paidAmountPYG || 0);
   const remainingBalance = Number(order.remainingBalancePYG ?? order.totals?.totalPYG ?? 0);
@@ -4690,18 +4693,30 @@ function renderAdminOrderDetail(
     const confirmedAmount = payment.verificationStatus === 'CONFIRMED'
       ? Number(payment.amountPYG ?? expectedAmount)
       : 0;
-    const legacyAssumed = payment.verificationStatus === 'CONFIRMED' &&
-      (!payment.amountSource || payment.amountSource === 'LEGACY_ASSUMED');
+    const voided = payment.voidedAt != null;
+    const amountSource = payment.amountSource || 'LEGACY_ASSUMED';
+    const historicalPayment = payment.verificationStatus === 'CONFIRMED' &&
+      ['LEGACY_ASSUMED', 'LEGACY_RECONCILED', 'LEGACY_OPENING_CREDIT'].includes(amountSource);
+    const legacyAssumed = historicalPayment && !voided && amountSource === 'LEGACY_ASSUMED';
+    const voidEligible = historicalPayment && !voided && nonVoidedConfirmedPayments.length > 1;
+    const voidNote = paymentNotes.find(note =>
+      note.id === payment.voidNoteId &&
+      note.kind === 'LEGACY_PAYMENT_VOID' &&
+      note.relatedPaymentId === payment.id);
 
     return `
       <article class="admin-payment-entry">
         <strong>Comprobante ${index + 1}</strong>
         <span>Tipo: <strong>${adminPaymentType(payment.type)}</strong></span>
         <span>A pagar con este comprobante: <strong>${adminMoney(expectedAmount)}</strong></span>
-        <span>Confirmado con este comprobante: <strong>${adminMoney(confirmedAmount)}</strong></span>
+        <span>${voided ? 'Importe original conservado' : 'Confirmado con este comprobante'}: <strong>${adminMoney(confirmedAmount)}</strong></span>
         <span>Pagado confirmado del pedido: <strong>${adminMoney(paidAmount)}</strong></span>
         <span>Saldo pendiente del pedido: <strong>${adminMoney(remainingBalance)}</strong></span>
-        <span>${payment.verificationStatus === 'CONFIRMED' ? 'Pago verificado' : 'Pendiente de verificación'}</span>
+        ${voided
+          ? `<strong role="status">ANULADO — pago histórico duplicado</strong>
+             <span>Anulado el ${adminEscape(adminOrderDeadline(payment.voidedAt))}</span>`
+          : `<span>${payment.verificationStatus === 'CONFIRMED' ? 'Pago verificado' : 'Pendiente de verificación'}</span>`}
+        ${voidNote ? `<p><strong>Nota interna de auditoría:</strong> ${adminEscape(voidNote.text)}</p>` : ''}
         ${legacyAssumed ? '<strong role="alert">Importe histórico asumido: requiere reconciliación antes de otro pago.</strong>' : ''}
         ${payment.receipt?.uploadedBy === 'ADMIN' ? '<span>Comprobante cargado por el vendedor</span>' : ''}
         ${payment.receipt ? `<button class="secondary-action" type="button" data-view-receipt="${adminEscape(payment.id)}">Ver comprobante</button>` : ''}
@@ -4721,6 +4736,17 @@ function renderAdminOrderDetail(
             </label>
             <p class="form-error" data-payment-reconciliation-error hidden></p>
             <button class="secondary-action" type="submit">Reconciliar pago histórico</button>
+          </form>
+        ` : ''}
+        ${voidEligible ? `
+          <form data-void-legacy-payment
+            data-payment-id="${adminEscapeAttribute(payment.id)}"
+            data-payment-amount="${adminEscapeAttribute(confirmedAmount)}">
+            <label><span>Nota interna obligatoria para la anulación</span>
+              <textarea name="internalNote" maxlength="2000" required></textarea>
+            </label>
+            <p class="form-error" data-payment-void-error hidden></p>
+            <button class="secondary-action" type="submit">Anular pago histórico duplicado</button>
           </form>
         ` : ''}
       </article>
@@ -4932,6 +4958,15 @@ function renderAdminOrderDetail(
 
   target.querySelectorAll('[data-reconcile-payment]').forEach(form => {
     form.addEventListener('submit', event => reconcileAdminPayment(event, order.id, form.dataset.paymentId));
+  });
+
+  target.querySelectorAll('[data-void-legacy-payment]').forEach(form => {
+    form.addEventListener('submit', event => voidAdminLegacyDuplicatePayment(
+      event,
+      order.id,
+      form.dataset.paymentId,
+      Number(form.dataset.paymentAmount)
+    ));
   });
 
   target.querySelectorAll('[data-confirm-payment]').forEach(button => {
@@ -5168,6 +5203,42 @@ async function reconcileAdminPayment(event, orderId, paymentId) {
   } catch (error) {
     button.disabled = false;
     errorBox.textContent = error instanceof Error ? error.message : 'No se pudo reconciliar el pago.';
+    errorBox.hidden = false;
+  }
+}
+
+
+async function voidAdminLegacyDuplicatePayment(event, orderId, paymentId, paymentAmountPYG) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const errorBox = form.querySelector('[data-payment-void-error]');
+  const button = form.querySelector('button[type="submit"]');
+  const confirmed = window.confirm(
+    `¿Anular como duplicado el pago ${paymentId} por ${adminMoney(paymentAmountPYG)}? ` +
+    'El registro y su comprobante se conservarán, pero dejará de contar como pagado.'
+  );
+  if (!confirmed) return;
+  errorBox.hidden = true;
+  button.disabled = true;
+  try {
+    await adminFetch('/api/admin/payment-note', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        orderId,
+        action: 'VOID_LEGACY_DUPLICATE_PAYMENT',
+        paymentId,
+        internalNote: data.get('internalNote'),
+      }),
+    });
+    ADMIN_STATE.orders = await fetchAdminOrders();
+    ADMIN_STATE.stats = buildAdminStats(ADMIN_STATE.orders, ADMIN_STATE.inventory);
+    renderOrdersTab();
+    setTimeout(() => openAdminOrder(orderId), 30);
+  } catch (error) {
+    button.disabled = false;
+    errorBox.textContent = error instanceof Error ? error.message : 'No se pudo anular el pago histórico.';
     errorBox.hidden = false;
   }
 }
