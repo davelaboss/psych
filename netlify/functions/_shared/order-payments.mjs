@@ -9,6 +9,8 @@ const CONFIRMED_STATUSES = new Set([
 
 const COMPLETED_STATUSES = new Set(['PICKED_UP', 'CANCELLED']);
 const PAID_OPERATIONAL_STATUSES = new Set(['READY_TO_SCHEDULE', 'PICKUP_SCHEDULED']);
+const DELAYED_FINAL_PAYMENT_START = Date.parse('2026-12-01T00:00:00-03:00');
+const PAYMENT_TYPES = new Set(['DEPOSIT', 'FULL', 'FINAL']);
 const LEGACY_RECONCILIATION_SOURCES = new Map([
   ['ACTUAL_VERIFIED', 'LEGACY_RECONCILED'],
   ['SELLER_APPROVED_CREDIT', 'LEGACY_OPENING_CREDIT'],
@@ -29,6 +31,11 @@ function normalizedNote(text) {
   if (!note) throw paymentError('La nota interna es obligatoria.');
   if (note.length > 2000) throw paymentError('La nota interna no puede superar 2.000 caracteres.');
   return note;
+}
+
+function pyg(value) {
+  const amount = Number(value);
+  return Number.isSafeInteger(amount) && amount >= 0 ? amount : 0;
 }
 
 export function parseVerifiedAmountPYG(value) {
@@ -110,27 +117,62 @@ export function orderPayments(order) {
   }];
 }
 
-export function withPaymentState(order) {
+export function withPaymentState(order, now = Date.now()) {
   if (!order) return order;
   const payments = orderPayments(order);
   const paymentAdjustments = orderPaymentAdjustments(order);
-  const paidAmountPYG = payments.reduce((sum, payment) => paymentCountsAsConfirmed(payment)
-    ? sum + Number(payment.amountPYG || 0) : sum, 0);
-  const grossOrderTotalPYG = Number(order.totals?.totalPYG || 0);
-  const refundedAmountPYG = paymentAdjustments.reduce((sum, adjustment) =>
-    adjustmentCountsAsRefund(adjustment) ? sum + Number(adjustment.amountPYG) : sum, 0);
+  const paidAmountPYG = payments.reduce((sum, payment) => {
+    if (!paymentCountsAsConfirmed(payment)) return sum;
+    const next = sum + pyg(payment.amountPYG);
+    if (!Number.isSafeInteger(next)) throw paymentError('El total confirmado excede el límite seguro.', 409);
+    return next;
+  }, 0);
+  const grossOrderTotalPYG = pyg(order.totals?.totalPYG);
+  const refundedAmountPYG = paymentAdjustments.reduce((sum, adjustment) => {
+    if (!adjustmentCountsAsRefund(adjustment)) return sum;
+    const next = sum + Number(adjustment.amountPYG);
+    if (!Number.isSafeInteger(next)) throw paymentError('El total reembolsado excede el límite seguro.', 409);
+    return next;
+  }, 0);
   const adjustedOrderTotalPYG = Math.max(0, grossOrderTotalPYG - refundedAmountPYG);
   const netReceivedPYG = paidAmountPYG - refundedAmountPYG;
+  const remainingBalancePYG = Math.max(0, adjustedOrderTotalPYG - netReceivedPYG);
+  const requiredDepositPYG = Math.min(adjustedOrderTotalPYG, pyg(order.totals?.dueNowPYG));
+  const depositShortfallPYG = Math.max(0, requiredDepositPYG - Math.max(0, netReceivedPYG));
+  const delayed = Boolean(order.items?.some(item => item.saleMode === 'DELAYED'));
+  const expectedNowPYG = delayed && Number(now) < DELAYED_FINAL_PAYMENT_START
+    ? depositShortfallPYG : remainingBalancePYG;
+  const overpaymentPYG = Math.max(0, netReceivedPYG - adjustedOrderTotalPYG);
+  let paymentState = 'UNPAID';
+  if (remainingBalancePYG === 0 && (adjustedOrderTotalPYG > 0 || paidAmountPYG > 0)) {
+    paymentState = 'FULLY_PAID';
+  } else if (netReceivedPYG > 0 && depositShortfallPYG > 0) {
+    paymentState = 'PARTIALLY_PAID';
+  } else if (requiredDepositPYG < adjustedOrderTotalPYG && depositShortfallPYG === 0 && remainingBalancePYG > 0) {
+    paymentState = 'DEPOSIT_SATISFIED';
+  } else if (netReceivedPYG > 0) {
+    paymentState = 'PARTIALLY_PAID';
+  }
+  const legacyAssumedPaymentIds = payments
+    .filter(payment => paymentCountsAsConfirmed(payment) && paymentAmountSource(payment) === 'LEGACY_ASSUMED')
+    .map(payment => payment.id);
   return {
     ...order,
     payments,
     paymentAdjustments,
     grossOrderTotalPYG,
+    confirmedPaidPYG: paidAmountPYG,
     paidAmountPYG,
     refundedAmountPYG,
     adjustedOrderTotalPYG,
     netReceivedPYG,
-    remainingBalancePYG: Math.max(0, adjustedOrderTotalPYG - netReceivedPYG),
+    remainingBalancePYG,
+    depositShortfallPYG,
+    expectedNowPYG,
+    overpaymentPYG,
+    paymentState,
+    legacyAssumedPaymentIds,
+    hasLegacyAssumedPayments: legacyAssumedPaymentIds.length > 0,
   };
 }
 
@@ -140,6 +182,107 @@ function adjustedOperationalStatus(order, remainingBalancePYG) {
   if (PAID_OPERATIONAL_STATUSES.has(order.status)) return order.status;
   return order.items?.some(item => item.saleMode === 'DELAYED')
     ? 'PAID_IN_FULL' : 'PAYMENT_CONFIRMED';
+}
+
+export function confirmationRequiresInventoryCommit(committedAt, confirmationResult) {
+  return !committedAt && !confirmationResult?.idempotent;
+}
+
+export function applyPaymentConfirmation(order, {
+  paymentId,
+  paymentType,
+  verifiedAmountPYG,
+  approvePartialPayment = false,
+  acknowledgeOverpayment = false,
+  internalNote = '',
+  timestamp = Date.now(),
+  noteId,
+}) {
+  const current = withPaymentState(order, timestamp);
+  const id = String(paymentId || '').trim();
+  if (!id) throw paymentError('Falta el identificador exacto del pago.');
+  const type = String(paymentType || '').trim().toUpperCase();
+  if (!PAYMENT_TYPES.has(type)) throw paymentError('Tipo de pago inválido.');
+  const amount = parseVerifiedAmountPYG(verifiedAmountPYG);
+  const index = current.payments.findIndex(payment => payment.id === id);
+  if (index < 0) throw paymentError('No encontramos el pago indicado.', 409);
+  const existing = current.payments[index];
+  if (existing.verificationStatus === 'CONFIRMED') {
+    if (paymentIsVoided(existing) || paymentAmountSource(existing) !== 'ADMIN_VERIFIED' ||
+        existing.verifiedBy !== 'ADMIN') {
+      throw paymentError('Este pago confirmado no pertenece al flujo rutinario verificado.', 409);
+    }
+    if (existing.type !== type) throw paymentError('Este pago ya fue confirmado con otra clasificación.', 409);
+    if (pyg(existing.amountPYG) !== amount) throw paymentError('Este pago ya fue confirmado con otro importe.', 409);
+    return { order: current, idempotent: true, previousConfirmedPaidPYG: current.paidAmountPYG };
+  }
+  if (existing.verificationStatus !== 'PENDING') {
+    throw paymentError('El pago indicado no está pendiente.', 409);
+  }
+  if (current.hasLegacyAssumedPayments) {
+    throw paymentError('Reconciliá los pagos históricos antes de confirmar un nuevo importe.', 409);
+  }
+
+  const resultingPaidPYG = current.paidAmountPYG + amount;
+  if (!Number.isSafeInteger(resultingPaidPYG)) {
+    throw paymentError('El total confirmado excede el límite seguro.', 409);
+  }
+  const resultingNetReceivedPYG = resultingPaidPYG - current.refundedAmountPYG;
+  const requiredDepositPYG = Math.min(current.adjustedOrderTotalPYG, pyg(current.totals?.dueNowPYG));
+  const resultingDepositShortfallPYG = Math.max(0,
+    requiredDepositPYG - Math.max(0, resultingNetReceivedPYG));
+  const shortfall = resultingDepositShortfallPYG > 0;
+  const overpayment = resultingNetReceivedPYG > current.adjustedOrderTotalPYG;
+  if (shortfall && !approvePartialPayment) {
+    throw paymentError('La seña o el importe requerido queda incompleto. Debés aprobar expresamente el pago parcial.', 409);
+  }
+  if (shortfall) normalizedNote(internalNote);
+  if (overpayment && !acknowledgeOverpayment) {
+    throw paymentError('El importe supera el saldo pendiente. Confirmá expresamente el sobrepago.', 409);
+  }
+  const exceptionNoteId = shortfall ? (noteId || crypto.randomUUID()) : null;
+
+  const payments = current.payments.map((payment, paymentIndex) => paymentIndex === index
+    ? {
+        ...payment,
+        type,
+        amountPYG: amount,
+        amountSource: 'ADMIN_VERIFIED',
+        verifiedBy: 'ADMIN',
+        verificationStatus: 'CONFIRMED',
+        confirmedAt: Number(timestamp),
+        ...(shortfall ? { partialPaymentApproved: true, exceptionNoteId } : {}),
+        ...(overpayment ? { overpaymentAcknowledged: true } : {}),
+      }
+    : payment);
+  let next = withPaymentState({ ...current, payments }, timestamp);
+  requireRefundCoverage(next);
+  next = {
+    ...next,
+    status: adjustedOperationalStatus(current, next.remainingBalancePYG),
+    initialPaymentConfirmedAt: current.initialPaymentConfirmedAt || Number(timestamp),
+    ...(next.remainingBalancePYG === 0 && current.remainingBalancePYG > 0 && current.paidAmountPYG > 0
+      ? { finalPaymentConfirmedAt: Number(timestamp) } : {}),
+    updatedAt: Number(timestamp),
+  };
+  if (shortfall) {
+    next = {
+      ...next,
+      paymentNotes: [...(next.paymentNotes || []), {
+        id: exceptionNoteId,
+        kind: 'EXCEPTION',
+        text: normalizedNote(internalNote),
+        relatedPaymentId: id,
+        createdAt: Number(timestamp),
+        createdBy: 'ADMIN',
+      }],
+    };
+  }
+  return {
+    order: withPaymentState(next, timestamp),
+    idempotent: false,
+    previousConfirmedPaidPYG: current.paidAmountPYG,
+  };
 }
 
 export function reconcileLegacyPayment(order, {
@@ -296,18 +439,9 @@ export function recordPostSalePriceAdjustment(order, {
 }
 
 export function publicPayments(order) {
-  return orderPayments(order).filter(payment => !paymentIsVoided(payment)).map(payment => ({
+  return orderPayments(order).filter(payment => paymentCountsAsConfirmed(payment)).map(payment => ({
     id: payment.id,
-    type: payment.type,
-    amountPYG: payment.amountPYG,
-    submittedAt: payment.submittedAt,
-    paymentMethod: payment.paymentMethod,
-    verificationStatus: payment.verificationStatus,
+    amountPYG: pyg(payment.amountPYG),
     confirmedAt: payment.confirmedAt || null,
-    receipt: payment.receipt ? {
-      fileName: payment.receipt.fileName,
-      contentType: payment.receipt.contentType,
-      uploadedAt: payment.receipt.uploadedAt,
-    } : null,
   }));
 }

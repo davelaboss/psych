@@ -818,14 +818,34 @@ function displayOrder(
     return;
   }
 
-  const status =
-    orderStatusLabel(
-      order.status
-    );
-
   const payments = order.payments || [];
   const paidAmount = Number(order.paidAmountPYG || 0);
   const remainingBalance = Number(order.remainingBalancePYG ?? order.totals.totalPYG);
+  const grossOrderTotal = Number(order.grossOrderTotalPYG ?? order.totals.totalPYG ?? 0);
+  const refundedAmount = Number(order.refundedAmountPYG || 0);
+  const adjustedOrderTotal = Number(order.adjustedOrderTotalPYG ?? grossOrderTotal);
+  const netReceived = Number(order.netReceivedPYG ?? paidAmount);
+  const dueNow = Number(order.totals.dueNowPYG || 0);
+  const delayedOrder = order.items.some(item => item.saleMode === 'DELAYED');
+  const requiredDeposit = Math.min(adjustedOrderTotal, dueNow);
+  const depositShortfall = Math.max(0, requiredDeposit - Math.max(0, netReceived));
+  const expectedNow = delayedOrder && Date.now() < Date.parse('2026-12-01T00:00:00-03:00')
+    ? depositShortfall : remainingBalance;
+  const overpayment = Math.max(0, netReceived - adjustedOrderTotal);
+  const paymentState = remainingBalance === 0 && (adjustedOrderTotal > 0 || paidAmount > 0)
+    ? 'FULLY_PAID'
+    : netReceived > 0 && depositShortfall > 0
+      ? 'PARTIALLY_PAID'
+      : requiredDeposit < adjustedOrderTotal && depositShortfall === 0 && remainingBalance > 0
+        ? 'DEPOSIT_SATISFIED'
+        : netReceived > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+  const status = ['READY_TO_SCHEDULE', 'PICKUP_SCHEDULED', 'PICKED_UP'].includes(order.status)
+    ? orderStatusLabel(order.status)
+    : ({
+        PARTIALLY_PAID: 'Pago parcial confirmado',
+        DEPOSIT_SATISFIED: 'Seña confirmada',
+        FULLY_PAID: 'Pago completo',
+      })[paymentState] || orderStatusLabel(order.status);
 
   const items =
     order.items
@@ -929,11 +949,10 @@ function displayOrder(
     return;
   }
 
-  const paymentHistory = payments.map((payment, index) => `
+  const paymentHistory = payments.map(payment => `
     <article class="payment-history-entry">
-      <strong>Comprobante ${index + 1} · ${paymentTypeLabel(payment.type)}</strong>
-      <span>${payment.amountPYG == null ? 'Pendiente de verificación' : formatPYG(payment.amountPYG)}</span>
-      <span>${payment.verificationStatus === 'CONFIRMED' ? 'Confirmado' : 'Pendiente de verificación'}</span>
+      <strong>${escapeHtml(formatPaymentDate(payment.confirmedAt))}</strong>
+      <span>${formatPYG(payment.amountPYG)}</span>
     </article>
   `).join('');
 
@@ -1134,7 +1153,22 @@ function renderCustomerFinancialSummary(order) {
   const paidAmount = Number(order.paidAmountPYG || 0);
   const refundedAmount = Number(order.refundedAmountPYG || 0);
   const adjustedOrderTotal = Number(order.adjustedOrderTotalPYG ?? grossOrderTotal);
+  const netReceived = Number(order.netReceivedPYG ?? paidAmount);
   const remainingBalance = Number(order.remainingBalancePYG ?? grossOrderTotal);
+  const dueNow = Number(order.totals?.dueNowPYG || 0);
+  const delayedOrder = order.items?.some(item => item.saleMode === 'DELAYED');
+  const depositShortfall = Math.max(0,
+    Math.min(adjustedOrderTotal, dueNow) - Math.max(0, netReceived));
+  const expectedNow = delayedOrder && Date.now() < Date.parse('2026-12-01T00:00:00-03:00')
+    ? depositShortfall : remainingBalance;
+  const overpayment = Math.max(0, netReceived - adjustedOrderTotal);
+  const installmentRows = delayedOrder ? `
+    <div><dt>Seña requerida</dt><dd>${formatPYG(Math.min(adjustedOrderTotal, dueNow))}</dd></div>
+    <div><dt>Faltante de seña</dt><dd>${formatPYG(depositShortfall)}</dd></div>
+    <div><dt>Importe esperado ahora</dt><dd>${formatPYG(expectedNow)}</dd></div>
+  ` : '';
+  const overpaymentRow = overpayment > 0
+    ? `<div><dt>Saldo a favor</dt><dd>${formatPYG(overpayment)}</dd></div>` : '';
 
   if (refundedAmount > 0) {
     return `
@@ -1145,6 +1179,8 @@ function renderCustomerFinancialSummary(order) {
         <div class="summary-due"><dt>Pagado</dt><dd>${formatPYG(paidAmount)}</dd></div>
         <div><dt>Reembolsado</dt><dd>${formatPYG(refundedAmount)}</dd></div>
         <div><dt>Saldo pendiente</dt><dd>${formatPYG(remainingBalance)}</dd></div>
+        ${installmentRows}
+        ${overpaymentRow}
       </dl>
     `;
   }
@@ -1154,6 +1190,8 @@ function renderCustomerFinancialSummary(order) {
       <div><dt>Valor total</dt><dd>${formatPYG(grossOrderTotal)}</dd></div>
       <div class="summary-due"><dt>Pagado</dt><dd>${formatPYG(paidAmount)}</dd></div>
       <div><dt>Saldo pendiente</dt><dd>${formatPYG(remainingBalance)}</dd></div>
+      ${installmentRows}
+      ${overpaymentRow}
     </dl>
   `;
 }
@@ -1182,7 +1220,7 @@ function renderBankSection(
 
   return `
     <div class="bank-details">
-      <h3>${finalPayment ? 'Pago del saldo' : 'Datos para transferencia'}</h3>
+      <h3>${finalPayment ? 'Pagos adicionales' : 'Datos para transferencia'}</h3>
 
       ${finalPayment ? renderCustomerFinancialSummary(order) : ''}
 
@@ -1253,9 +1291,9 @@ function renderBankSection(
       </div>
 
       ${finalPayment
-        ? `<p>Transferí el saldo pendiente de <strong>${formatPYG(order.remainingBalancePYG)}</strong>.</p>`
+        ? `<p>Podés realizar un pago adicional de hasta <strong>${formatPYG(order.remainingBalancePYG)}</strong>. Cada importe se descuenta del saldo cuando el vendedor lo verifica.</p>`
         : Number(order.totals.futureBalancePYG || 0) > 0
-          ? `<p>Podés transferir la seña de <strong>${formatPYG(order.totals.dueNowPYG)}</strong> o el pago total de <strong>${formatPYG(order.totals.totalPYG)}</strong>. El vendedor registrará el importe verificado.</p>`
+          ? `<p>Podés transferir la seña de <strong>${formatPYG(order.totals.dueNowPYG)}</strong>, un importe mayor, o el pago total de <strong>${formatPYG(order.totals.totalPYG)}</strong>. El vendedor registrará el importe real verificado.</p>`
           : `<p>Transferí exactamente <strong>${formatPYG(order.totals.totalPYG)}</strong>.</p>`
       }
 
@@ -1264,7 +1302,7 @@ function renderBankSection(
         class="receipt-upload-highlight"
         aria-labelledby="receipt-upload-heading"
       >
-        <h3 id="receipt-upload-heading">${finalPayment ? 'Después de transferir el saldo, subí tu comprobante aquí' : 'Después de transferir, subí tu comprobante aquí'}</h3>
+        <h3 id="receipt-upload-heading">${finalPayment ? 'Después de transferir este pago, subí tu comprobante aquí' : 'Después de transferir, subí tu comprobante aquí'}</h3>
         <p>Necesitamos que cargues el comprobante en esta página para poder verificar tu pago. No lo envíes solamente por WhatsApp.</p>
         <label>
           <span>
@@ -1473,6 +1511,16 @@ function formatOrderDeadline(value) {
   return new Date(Number(value)).toLocaleString('es-PY', {
     dateStyle: 'medium',
     timeStyle: 'short',
+  });
+}
+
+
+function formatPaymentDate(value) {
+  if (!value) return 'Fecha no disponible';
+  return new Date(Number(value)).toLocaleDateString('es-PY', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
   });
 }
 
