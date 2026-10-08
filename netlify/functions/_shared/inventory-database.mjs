@@ -1,6 +1,9 @@
 import { getDatabase } from '@netlify/database';
 import { createHash } from 'node:crypto';
-import { withPaymentState } from './order-payments.mjs';
+import {
+  reconcileLegacyPayment as reconcileLegacyPaymentState,
+  withPaymentState,
+} from './order-payments.mjs';
 import { queueOrderNotifications } from './seller-notifications.mjs';
 
 const RESERVED = 'Este artículo está temporalmente reservado por otro comprador.';
@@ -429,6 +432,21 @@ export async function confirmOrderPayment(orderId, paymentId, requestedType) {
     return snapshot;
   });
 }
+
+export async function reconcileOrderLegacyPayment(orderId, reconciliation) {
+  return inventoryTransaction(async client => {
+    const locked = await orderLock(client, orderId);
+    if (!locked) return false;
+    const timestamp = await now(client);
+    const snapshot = reconcileLegacyPaymentState(locked.row.order_snapshot,
+      { ...reconciliation, timestamp });
+    await client.query(`UPDATE checkout_attempts SET order_snapshot=$2,
+      projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1`,
+    [orderId, JSON.stringify(snapshot)]);
+    return snapshot;
+  });
+}
+
 export async function commitInventoryHold(orderId) {
   return Boolean(await confirmOrderPayment(orderId));
 }
