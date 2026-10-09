@@ -198,7 +198,7 @@ export const SALE_READINESS_SUPPLEMENTAL_ITEMS: Volume2BatchItem[] = [
     ],
     asking: 90000,
     description: 'Bolso rodante.',
-    publicKnownDefects: 'Desgaste por uso normal. Mancha y malla interior floja.',
+    publicKnownDefects: 'Mancha y malla interior floja y rota en algunas partes.',
     measurements: '48 cm de ancho × 30 cm de profundidad. Altura: 43 cm hasta la parte superior del bolso; 51 cm hasta la parte superior del asa cerrada; 95 cm con el asa totalmente extendida.',
   }),
 ];
