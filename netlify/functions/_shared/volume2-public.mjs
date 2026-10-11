@@ -11,6 +11,10 @@ import {
 } from '../../../source/lib/volume3-batch.mjs';
 
 import {
+  VOLUME4_ITEMS,
+} from '../../../source/lib/volume4-batch.mjs';
+
+import {
   VOLUME2_IMAGE_MAP,
 } from '../../../source/lib/volume2-image-map.mjs';
 
@@ -323,6 +327,7 @@ export function catalogBatchProducts() {
     ...VOLUME2_BATCH_ITEMS,
     ...SALE_READINESS_SUPPLEMENTAL_ITEMS,
     ...VOLUME3_ITEMS,
+    ...VOLUME4_ITEMS,
   ]
     .map(publicProduct)
     .filter(
