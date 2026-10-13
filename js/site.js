@@ -298,7 +298,7 @@ function publicKnownDefectText(value) {
 }
 
 
-function buildProductDiscovery(catalogProducts, currentProduct, recommendationLimit = 4) {
+function buildProductDiscovery(catalogProducts, currentProduct, recommendationLimit = 12) {
   const currentId = String(currentProduct?.id || '');
   const currentSlug = String(currentProduct?.slug || '');
   const currentItemNumber = Number(currentProduct?.itemNumber);
@@ -413,6 +413,97 @@ function renderRelatedProductCard(product) {
 }
 
 
+function setupRelatedProductsCarousel() {
+  const track = document.querySelector('.related-products-track');
+  const previous = document.querySelector('[data-related-previous]');
+  const next = document.querySelector('[data-related-next]');
+
+  if (!track || !previous || !next) return;
+
+  const cards = [...track.querySelectorAll('.related-product-card')];
+  let currentIndex = 0;
+  let lastTrackWidth = track.clientWidth;
+  let scrollFrame = null;
+  let resizeFrame = null;
+
+  function nearestCardIndex() {
+    const trackLeft = track.getBoundingClientRect().left;
+    let nearestIndex = 0;
+    let nearestDistance = Infinity;
+
+    cards.forEach((card, index) => {
+      const distance = Math.abs(card.getBoundingClientRect().left - trackLeft);
+      if (distance >= nearestDistance) return;
+      nearestDistance = distance;
+      nearestIndex = index;
+    });
+
+    return nearestIndex;
+  }
+
+  function syncControls(updateCurrentIndex = true) {
+    if (updateCurrentIndex && cards.length) currentIndex = nearestCardIndex();
+    const maxScroll = Math.max(0, track.scrollWidth - track.clientWidth);
+    previous.disabled = track.scrollLeft <= 2;
+    next.disabled = track.scrollLeft >= maxScroll - 2;
+  }
+
+  function alignCurrentCard() {
+    const card = cards[currentIndex];
+    if (!card) return;
+
+    const trackLeft = track.getBoundingClientRect().left;
+    const cardLeft = card.getBoundingClientRect().left;
+    lastTrackWidth = track.clientWidth;
+    track.scrollTo({
+      left: track.scrollLeft + cardLeft - trackLeft,
+      behavior: 'auto',
+    });
+    syncControls(false);
+  }
+
+  function scheduleResizeAlignment() {
+    if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+    resizeFrame = window.requestAnimationFrame(() => {
+      resizeFrame = null;
+      alignCurrentCard();
+    });
+  }
+
+  function move(direction) {
+    const pageWidth = Math.max(1, track.clientWidth);
+    track.scrollBy({
+      left: direction * pageWidth,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
+  }
+
+  previous.addEventListener('click', () => move(-1));
+  next.addEventListener('click', () => move(1));
+  track.addEventListener('scroll', () => {
+    if (scrollFrame !== null) window.cancelAnimationFrame(scrollFrame);
+    scrollFrame = window.requestAnimationFrame(() => {
+      scrollFrame = null;
+      if (Math.abs(track.clientWidth - lastTrackWidth) > 1) {
+        scheduleResizeAlignment();
+        return;
+      }
+      syncControls();
+    });
+  }, { passive: true });
+
+  if (window.__relatedProductsResizeHandler) {
+    window.removeEventListener('resize', window.__relatedProductsResizeHandler);
+  }
+  window.__relatedProductsResizeHandler = scheduleResizeAlignment;
+  window.addEventListener('resize', window.__relatedProductsResizeHandler);
+
+  previous.hidden = cards.length <= 4;
+  next.hidden = cards.length <= 4;
+  syncControls();
+}
+
+
 function shouldSuppressProductArrowNavigation(event, root = document) {
   if (
     event.defaultPrevented ||
@@ -499,14 +590,21 @@ function renderProductDetail(product) {
     ? window.__catalogProducts
     : [];
   const discovery = buildProductDiscovery(discoveryCatalog, product);
-  const sequenceNavigation = discoveryCatalog.length && (discovery.previous || discovery.next)
-    ? `
-      <nav class="product-sequence-navigation" aria-label="Navegar entre productos disponibles">
+  const sequenceNavigation = `
+    <nav
+      class="product-sequence-navigation${discoveryCatalog.length ? '' : ' is-pending'}"
+      aria-label="Navegar entre productos disponibles"
+      ${discoveryCatalog.length ? '' : 'aria-hidden="true"'}
+    >
+      <div class="product-sequence-slot previous">
         ${renderProductSequenceLink(discovery.previous, 'previous')}
+      </div>
+      <div class="product-sequence-slot next">
         ${renderProductSequenceLink(discovery.next, 'next')}
-      </nav>
-    `
-    : '';
+      </div>
+    </nav>
+    <div class="product-sequence-divider" aria-hidden="true"></div>
+  `;
   const relatedProducts = discoveryCatalog.length
     ? discovery.recommendations
     : [];
@@ -898,12 +996,19 @@ function renderProductDetail(product) {
           ? `
             <section class="related-products" aria-labelledby="related-products-heading">
               <div class="related-products-heading">
-                <span class="section-kicker">SEGUÍ EXPLORANDO</span>
-                <h2 id="related-products-heading">También te puede interesar</h2>
+                <div>
+                  <span class="section-kicker">SEGUÍ EXPLORANDO</span>
+                  <h2 id="related-products-heading">También te puede interesar</h2>
+                </div>
+                <div class="related-products-controls" aria-label="Navegar recomendaciones">
+                  <button type="button" data-related-previous aria-label="Recomendaciones anteriores">←</button>
+                  <button type="button" data-related-next aria-label="Más recomendaciones">→</button>
+                </div>
               </div>
               <div class="related-products-track">
                 ${relatedProducts.map(renderRelatedProductCard).join('')}
               </div>
+              <a class="related-products-more" href="/#articulos">Ver más productos →</a>
             </section>
           `
           : ''
@@ -918,6 +1023,7 @@ function renderProductDetail(product) {
   document.documentElement.classList.remove('product-route-pending');
   setupProductCartButton(product);
   setupProductDiscoveryKeyboard(discoveryCatalog.length ? discovery : null);
+  setupRelatedProductsCarousel();
 }
 
 

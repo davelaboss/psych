@@ -105,8 +105,19 @@ test('recommendations are deterministic, unique, and never contain the current p
 
 test('sold current product receives only available recommendations', () => {
   const result = buildProductDiscovery(catalog, catalog[1]);
-  assert.deepEqual(ids(result.recommendations), [4, 8, 1, 7]);
+  assert.deepEqual(ids(result.recommendations), [4, 8, 1, 7, 9]);
   assert.ok(result.recommendations.every(candidate => candidate.status === 'AVAILABLE'));
+});
+
+test('recommendations default to at most twelve eligible products', () => {
+  const expandedCatalog = Array.from({ length: 18 }, (_, index) => product(index + 1, {
+    category: index % 3 === 0 ? 'Cocina' : 'Hogar',
+  }));
+  const result = buildProductDiscovery(expandedCatalog, expandedCatalog[4]);
+  assert.equal(result.recommendations.length, 12);
+  assert.equal(new Set(result.recommendations.map(candidate => candidate.id)).size, 12);
+  assert.ok(result.recommendations.every(candidate => candidate.status === 'AVAILABLE'));
+  assert.ok(result.recommendations.every(candidate => candidate.id !== expandedCatalog[4].id));
 });
 
 test('hidden statuses cannot appear as neighbors or recommendations', () => {
@@ -241,14 +252,38 @@ test('related card is one detail link containing only image, item, title, and pr
 });
 
 test('responsive styles provide four desktop cards and a narrow scroll-snap row without page overflow', () => {
-  assert.match(styles, /grid-template-columns:\s*repeat\(4,/);
+  assert.match(styles, /grid-auto-columns:\s*calc\(\(100% - 45px\) \/ 4\)/);
   assert.match(styles, /@media \(max-width: 900px\)/);
   assert.match(styles, /grid-auto-flow:\s*column/);
-  assert.match(styles, /grid-auto-columns:\s*minmax\(250px, 82vw\)/);
+  assert.match(styles, /grid-auto-columns:\s*82vw/);
   assert.match(styles, /overflow-x:\s*auto/);
   assert.match(styles, /scroll-snap-type:\s*x mandatory/);
-  assert.match(styles, /\.product-sequence-navigation\s*>\s*\.product-sequence-link\s*\{[^}]*display:\s*flex/s);
+  assert.match(styles, /\.product-sequence-navigation\s+\.product-sequence-link\s*\{[^}]*display:\s*flex/s);
   assert.doesNotMatch(styles, /width:\s*100vw/);
+});
+
+test('first render reserves the final two-slot navigation geometry and divider', () => {
+  assert.match(source, /product-sequence-navigation\$\{discoveryCatalog\.length \? '' : ' is-pending'\}/);
+  assert.match(source, /product-sequence-slot previous/);
+  assert.match(source, /product-sequence-slot next/);
+  assert.match(source, /product-sequence-divider/);
+  assert.match(styles, /\.product-sequence-navigation\s*\{[^}]*height:\s*94px/s);
+  assert.match(styles, /\.product-sequence-slot\s*\{[^}]*height:\s*72px/s);
+});
+
+test('related carousel has accessible paging controls and a catalog escape hatch', () => {
+  assert.match(source, /data-related-previous aria-label="Recomendaciones anteriores"/);
+  assert.match(source, /data-related-next aria-label="Más recomendaciones"/);
+  assert.match(source, /track\.scrollBy\(\{/);
+  assert.match(source, /left:\s*direction \* pageWidth/);
+  assert.match(source, /previous\.disabled = track\.scrollLeft <= 2/);
+  assert.match(source, /next\.disabled = track\.scrollLeft >= maxScroll - 2/);
+  assert.match(source, /currentIndex = nearestCardIndex\(\)/);
+  assert.match(source, /track\.scrollLeft \+ cardLeft - trackLeft/);
+  assert.match(source, /removeEventListener\('resize', window\.__relatedProductsResizeHandler\)/);
+  assert.match(source, /Ver más productos →/);
+  assert.match(source, /href="\/#articulos"/);
+  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*?\.related-products-controls\s*\{[^}]*display:\s*none/s);
 });
 
 test('detail discovery waits for and consumes the authoritative catalog state', () => {
