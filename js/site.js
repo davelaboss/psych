@@ -298,6 +298,190 @@ function publicKnownDefectText(value) {
 }
 
 
+function buildProductDiscovery(catalogProducts, currentProduct, recommendationLimit = 4) {
+  const currentId = String(currentProduct?.id || '');
+  const currentSlug = String(currentProduct?.slug || '');
+  const currentItemNumber = Number(currentProduct?.itemNumber);
+  const currentCategory = String(currentProduct?.category || '').trim().toLocaleLowerCase('es');
+  const limit = Math.max(0, Number(recommendationLimit) || 0);
+
+  const publicProducts = (Array.isArray(catalogProducts) ? catalogProducts : [])
+    .filter((product) => {
+      const status = String(product?.status || '').trim().toUpperCase();
+      return product?.slug &&
+        Number.isFinite(Number(product.itemNumber)) &&
+        !['UNLISTED', 'NEEDS_REVIEW'].includes(status);
+    })
+    .sort((a, b) =>
+      Number(a.itemNumber) - Number(b.itemNumber) ||
+      String(a.id || a.slug).localeCompare(String(b.id || b.slug))
+    );
+
+  const isCurrent = (product) =>
+    (currentId && String(product.id || '') === currentId) ||
+    (currentSlug && String(product.slug || '') === currentSlug);
+
+  const available = publicProducts.filter(
+    (product) => String(product.status || '').trim().toUpperCase() === 'AVAILABLE' && !isCurrent(product)
+  );
+
+  const previous = Number.isFinite(currentItemNumber)
+    ? available.filter((product) => Number(product.itemNumber) < currentItemNumber).at(-1) || null
+    : null;
+  const next = Number.isFinite(currentItemNumber)
+    ? available.find((product) => Number(product.itemNumber) > currentItemNumber) || null
+    : null;
+
+  const rotateAfterCurrent = (products) => {
+    if (!Number.isFinite(currentItemNumber)) return products.slice();
+    return [
+      ...products.filter((product) => Number(product.itemNumber) > currentItemNumber),
+      ...products.filter((product) => Number(product.itemNumber) <= currentItemNumber),
+    ];
+  };
+
+  const sameCategory = available.filter(
+    (product) => String(product.category || '').trim().toLocaleLowerCase('es') === currentCategory
+  );
+  const otherCategories = available.filter(
+    (product) => String(product.category || '').trim().toLocaleLowerCase('es') !== currentCategory
+  );
+  const seen = new Set();
+  const recommendations = [];
+
+  for (const product of [
+    ...rotateAfterCurrent(sameCategory),
+    ...rotateAfterCurrent(otherCategories),
+  ]) {
+    const key = String(product.id || product.slug);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    recommendations.push(product);
+    if (recommendations.length >= limit) break;
+  }
+
+  return {
+    previous,
+    next,
+    recommendations,
+  };
+}
+
+
+function renderProductSequenceLink(product, direction) {
+  if (!product) return '';
+  const isPrevious = direction === 'previous';
+  const label = isPrevious ? 'Anterior' : 'Siguiente';
+  const arrowLabel = isPrevious ? '← Anterior' : 'Siguiente →';
+  const itemLabel = `Item ${String(product.itemNumber).padStart(3, '0')}`;
+
+  return `
+    <a
+      class="product-sequence-link ${direction}"
+      href="/producto/${encodeURIComponent(product.slug)}"
+      aria-label="${escapeHtml(`${label}: ${itemLabel}, ${product.title}`)}"
+    >
+      <strong>${arrowLabel}</strong>
+      <span>${itemLabel} · <b>${escapeHtml(product.title)}</b></span>
+    </a>
+  `;
+}
+
+
+function renderRelatedProductCard(product) {
+  const image = Array.isArray(product.images) ? product.images.find(Boolean) : '';
+  const itemLabel = `Item ${String(product.itemNumber).padStart(3, '0')}`;
+
+  return `
+    <a
+      class="related-product-card"
+      href="/producto/${encodeURIComponent(product.slug)}"
+      aria-label="Ver ${itemLabel}: ${escapeHtml(product.title)}"
+    >
+      <span class="related-product-image">
+        ${
+          image
+            ? `<img src="/${stripLeadingSlash(image)}" alt="${escapeHtml(product.title)}" loading="lazy">`
+            : ''
+        }
+      </span>
+      <span class="related-product-item">${itemLabel}</span>
+      <h3>${escapeHtml(product.title)}</h3>
+      <strong class="related-product-price">${formatPYG(product.askingPricePYG)}</strong>
+    </a>
+  `;
+}
+
+
+function shouldSuppressProductArrowNavigation(event, root = document) {
+  if (
+    event.defaultPrevented ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  ) {
+    return true;
+  }
+
+  if (root?.querySelector?.('.catalog-lightbox, .image-lightbox, [role="dialog"][aria-modal="true"]')) {
+    return true;
+  }
+
+  const target = event.target;
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+
+  return Boolean(target.closest?.([
+    'input',
+    'textarea',
+    'select',
+    'button',
+    'a[href]',
+    '[contenteditable]:not([contenteditable="false"])',
+    '[role="button"]',
+    '[role="link"]',
+    '[role="slider"]',
+    '[role="spinbutton"]',
+    '[role="combobox"]',
+    '[role="listbox"]',
+    '[role="menu"]',
+    '[role="tab"]',
+    '[data-photo-index]',
+    '.product-gallery',
+    '.product-photo-teaser',
+    '[data-arrow-key-scope]',
+  ].join(',')));
+}
+
+
+function setupProductDiscoveryKeyboard(discovery) {
+  if (window.__productDiscoveryKeydownHandler) {
+    document.removeEventListener('keydown', window.__productDiscoveryKeydownHandler);
+  }
+
+  const previousHref = discovery?.previous
+    ? `/producto/${encodeURIComponent(discovery.previous.slug)}`
+    : '';
+  const nextHref = discovery?.next
+    ? `/producto/${encodeURIComponent(discovery.next.slug)}`
+    : '';
+
+  window.__productDiscoveryKeydownHandler = function (event) {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    if (shouldSuppressProductArrowNavigation(event)) return;
+
+    const destination = event.key === 'ArrowLeft' ? previousHref : nextHref;
+    if (!destination) return;
+
+    event.preventDefault();
+    window.location.assign(destination);
+  };
+
+  document.addEventListener('keydown', window.__productDiscoveryKeydownHandler);
+}
+
+
 function renderProductDetail(product) {
   const main = document.querySelector('main');
 
@@ -311,6 +495,21 @@ function renderProductDetail(product) {
   const price = formatPYG(product.askingPricePYG);
   const dueNow = dueNowForProduct(product);
   const balance = product.askingPricePYG - dueNow;
+  const discoveryCatalog = Array.isArray(window.__catalogProducts)
+    ? window.__catalogProducts
+    : [];
+  const discovery = buildProductDiscovery(discoveryCatalog, product);
+  const sequenceNavigation = discoveryCatalog.length && (discovery.previous || discovery.next)
+    ? `
+      <nav class="product-sequence-navigation" aria-label="Navegar entre productos disponibles">
+        ${renderProductSequenceLink(discovery.previous, 'previous')}
+        ${renderProductSequenceLink(discovery.next, 'next')}
+      </nav>
+    `
+    : '';
+  const relatedProducts = discoveryCatalog.length
+    ? discovery.recommendations
+    : [];
 
   const statusText =
     product.status === 'SOLD' || product.status === 'PICKED_UP'
@@ -401,6 +600,8 @@ function renderProductDetail(product) {
       <span>/</span>
       <span>${escapeHtml(product.title)}</span>
     </nav>
+
+    ${sequenceNavigation}
 
     <section class="product-page">
       <aside class="mobile-product-policy" aria-label="Aviso importante sobre la venta">
@@ -692,6 +893,22 @@ function renderProductDetail(product) {
         </p>
       </div>
 
+      ${
+        relatedProducts.length
+          ? `
+            <section class="related-products" aria-labelledby="related-products-heading">
+              <div class="related-products-heading">
+                <span class="section-kicker">SEGUÍ EXPLORANDO</span>
+                <h2 id="related-products-heading">También te puede interesar</h2>
+              </div>
+              <div class="related-products-track">
+                ${relatedProducts.map(renderRelatedProductCard).join('')}
+              </div>
+            </section>
+          `
+          : ''
+      }
+
       <a class="product-back-link" href="/#articulos">
         ← Volver al catálogo
       </a>
@@ -700,6 +917,7 @@ function renderProductDetail(product) {
 
   document.documentElement.classList.remove('product-route-pending');
   setupProductCartButton(product);
+  setupProductDiscoveryKeyboard(discoveryCatalog.length ? discovery : null);
 }
 
 
