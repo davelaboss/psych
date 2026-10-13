@@ -35,6 +35,15 @@
 .product-card .card-actions{margin-top:0;padding-top:14px}
 .product-card .card-actions button{display:flex;align-items:center;justify-content:center;text-align:center;padding:0 12px}
 .product-card .card-availability{flex:none;align-content:flex-start}
+.product-card{position:relative;cursor:pointer;transition:border-color .18s ease,box-shadow .18s ease}
+.product-card:hover,.product-card:focus-within{border-color:var(--forest)!important;box-shadow:0 10px 24px rgba(35,51,44,.13)!important}
+.product-card .product-photo{cursor:pointer}
+.product-card .image-enlarge-hint{display:none!important}
+.product-card-link{position:absolute;inset:0;z-index:1;border-radius:inherit;cursor:pointer}
+.product-card-link:focus-visible{outline:3px solid var(--clay);outline-offset:-4px}
+.product-card .card-actions{position:relative;z-index:2}
+.product-card .card-actions button{position:relative;z-index:2}
+.product-card .card-detail-link{color:var(--forest);font-size:14px!important;font-weight:400;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 
 .cart-lease-countdown{margin:12px 0;padding:11px 13px;border-radius:7px;background:#263d32;color:#fff;font-size:12px;font-weight:700}.cart-lease-countdown strong{float:right;font-variant-numeric:tabular-nums;font-size:16px}
 

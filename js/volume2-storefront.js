@@ -262,18 +262,14 @@
       return;
     }
 
-    const photoButton = event.target.closest('[data-photo-action]');
-    if (photoButton) {
-      event.preventDefault();
-      event.stopPropagation();
-      createLightbox(product.images || [], 0, {
-        detailUrl: `/producto/${encodeURIComponent(product.slug)}`,
-        opener: photoButton,
-      });
+    const cardLink = event.target.closest('[data-product-card-link]');
+    if (cardLink) {
+      sessionStorage.setItem('mudanza-catalog-scroll', String(window.scrollY));
       return;
     }
 
     event.preventDefault();
+    sessionStorage.setItem('mudanza-catalog-scroll', String(window.scrollY));
     window.location.assign(`/producto/${encodeURIComponent(product.slug)}`);
   }
 
@@ -499,6 +495,7 @@
     const article = document.createElement('article');
     article.className = `product-card${product.status !== 'AVAILABLE' ? ' is-sold' : ''}`;
     article.dataset.productId = product.id;
+    const detailUrl = `/producto/${encodeURIComponent(product.slug)}`;
 
     const delayed = product.saleMode === 'DELAYED';
     const available = product.status === 'AVAILABLE';
@@ -506,17 +503,17 @@
     const multiple = Number(product.quantityTotal || 1) > 1;
 
     article.innerHTML = `
-      <button class="product-photo" type="button" data-photo-action aria-label="Ver fotos de ${escapeAttr(product.title)}">
-        ${image ? `<img src="${escapeAttr(withLeadingSlash(image))}" alt="${escapeAttr(product.title)}" loading="lazy">` : ''}
+      <a class="product-card-link" href="${detailUrl}" data-product-card-link aria-label="Ver detalles de ${escapeAttr(product.title)}"></a>
+      <div class="product-photo" aria-hidden="true">
+        ${image ? `<img src="${escapeAttr(withLeadingSlash(image))}" alt="" loading="lazy">` : ''}
         ${!available ? '<span class="sold-ribbon">VENDIDO</span>' : ''}
-        <span class="image-enlarge-hint">Ver foto(s)</span>
-      </button>
+      </div>
       <div class="product-copy">
         <span class="item-number">Item ${String(product.itemNumber).padStart(3, '0')}</span>
-        <a href="/producto/${escapeAttr(product.slug)}"><h3>${escapeHtml(product.title)}</h3></a>
+        <h3>${escapeHtml(product.title)}</h3>
         <strong class="price">${formatMoney(product.askingPricePYG)}${multiple ? ' por unidad' : ''}</strong>
         <div class="card-detail-row">
-          <a href="/producto/${escapeAttr(product.slug)}">Ver detalle</a>
+          <span class="card-detail-link">Ver detalle</span>
           <span class="card-category">${escapeHtml(product.category || '')}</span>
         </div>
         <div class="card-actions">
@@ -1337,11 +1334,13 @@
       .search-panel .catalog-search-label>span{transform:none;font-family:inherit}
       .search-panel .catalog-search-label input{display:block;box-sizing:border-box;min-width:0;width:100%;height:48px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:inherit;outline:none}
       .catalog-results-unified{margin:8px 0 14px;color:var(--forest);font-size:13px;font-weight:800}
-      .product-card,.product-card:hover,.product-card:focus-within{transform:none!important;box-shadow:none!important;background:#fff!important;border-color:#e7e1d5!important}
+      .product-card{position:relative;cursor:pointer;transform:none!important;background:#fff!important;transition:border-color .18s ease,box-shadow .18s ease}
+      .product-card:hover,.product-card:focus-within{transform:none!important;box-shadow:0 10px 24px rgba(35,51,44,.13)!important;background:#fff!important;border-color:var(--forest)!important}
       .product-card img,.product-card:hover img,.product-photo:hover img{transform:none!important;transition:none!important}
-      .product-card{cursor:pointer}
-      .card-actions button{cursor:pointer!important}
-      .image-enlarge-hint{cursor:zoom-in!important}
+      .product-card-link{position:absolute;inset:0;z-index:1;border-radius:inherit;cursor:pointer}
+      .product-card-link:focus-visible{outline:3px solid var(--clay);outline-offset:-4px}
+      .product-card .card-actions{position:relative;z-index:2}
+      .card-actions button{position:relative;z-index:2;cursor:pointer!important}
       .reset-filters,.reset-filters:hover,.reset-filters:focus,.reset-filters:active{color:var(--forest)!important;background:transparent!important;border-color:var(--line)!important;box-shadow:none!important}
       [data-delayed-shelf] .shelf-heading{display:flex!important;align-items:flex-end!important;justify-content:space-between!important;gap:24px!important;flex-wrap:wrap!important}
       .delayed-shelf-meta{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap}

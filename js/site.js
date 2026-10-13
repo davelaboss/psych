@@ -1108,6 +1108,47 @@ function setupCartPageEvents(hasUnavailable) {
 }
 
 
+function enhanceCatalogCardNavigation(card, productLink, product) {
+  const href = productLink.getAttribute('href') || '';
+
+  card.dataset.productId = product.id;
+
+  const photoButton = card.querySelector('button.product-photo');
+  if (photoButton) {
+    const photoSurface = document.createElement('div');
+    photoSurface.className = photoButton.className;
+    photoSurface.setAttribute('aria-hidden', 'true');
+    while (photoButton.firstChild) {
+      photoSurface.appendChild(photoButton.firstChild);
+    }
+    photoButton.replaceWith(photoSurface);
+  }
+
+  card.querySelectorAll('.image-enlarge-hint').forEach((hint) => hint.remove());
+
+  card.querySelectorAll('a[href^="/producto/"]').forEach((link) => {
+    const replacement = document.createElement('span');
+    if (link.closest('.card-detail-row')) {
+      replacement.className = 'card-detail-link';
+    }
+    while (link.firstChild) {
+      replacement.appendChild(link.firstChild);
+    }
+    link.replaceWith(replacement);
+  });
+
+  const cardLink = document.createElement('a');
+  cardLink.className = 'product-card-link';
+  cardLink.href = href;
+  cardLink.dataset.productCardLink = '';
+  cardLink.setAttribute('aria-label', `Ver detalles de ${product.title}`);
+  cardLink.addEventListener('click', function () {
+    sessionStorage.setItem('mudanza-catalog-scroll', String(window.scrollY));
+  });
+  card.insertBefore(cardLink, card.firstChild);
+}
+
+
 function setupCatalogCartButtons() {
   const cards = document.querySelectorAll('.product-card');
 
@@ -1132,6 +1173,8 @@ function setupCatalogCartButtons() {
     if (!product) {
       return;
     }
+
+    enhanceCatalogCardNavigation(card, productLink, product);
 
     if (product.status !== 'AVAILABLE') {
       actionButton.disabled = true;
