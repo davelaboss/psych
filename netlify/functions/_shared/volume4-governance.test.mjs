@@ -9,6 +9,27 @@ import { catalogBatchProducts } from './volume2-public.mjs';
 const volume4PublicProducts = () => catalogBatchProducts()
   .filter(product => product.itemNumber >= 327);
 const retiredIds = [342, 420, 437, 442, 444, 469, 507, 509];
+const bundleSellableUnits = new Map([
+  [354, { price: 6_000, pieceCopy: /Dos separadores/ }],
+  [377, { price: 50_000, pieceCopy: /Dos fundas/ }],
+  [485, { price: 25_000, pieceCopy: /Dos platos/ }],
+  [486, { price: 80_000, pieceCopy: /cinco platos/ }],
+  [487, { price: 12_000, pieceCopy: /seis cuchillos/ }],
+  [488, { price: 8_000, pieceCopy: /cuatro cucharas/ }],
+  [489, { price: 8_000, pieceCopy: /cuatro tenedores/ }],
+  [492, { price: 35_000, pieceCopy: /Dos bols/ }],
+  [495, { price: 78_000, pieceCopy: /tres platos Corelle medianos y tres platos Corelle pequeños/ }],
+]);
+const separateSellableUnits = new Map([
+  [336, 3],
+  [355, 2],
+  [362, 2],
+  [381, 2],
+  [385, 2],
+  [400, 2],
+  [466, 3],
+  [508, 2],
+]);
 
 test('Volume 4 preserves approved measurements and functionality in catalog projection', () => {
   assert.equal(VOLUME4_ITEMS.length, 175);
@@ -57,6 +78,57 @@ test('Volume 4 publication requires complete owner approval and preserves the ap
     assert.equal(product.saleMode, edit.pickupMode);
     assert.deepEqual(product.includedAccessories, edit.includedAccessories);
   }
+});
+
+test('Volume 4 quantity counts sellable units rather than physical pieces inside bundles', () => {
+  const sourceByItem = new Map(VOLUME4_ITEMS.map(product => [product.itemNumber, product]));
+  const publicByItem = new Map(volume4PublicProducts().map(product => [product.itemNumber, product]));
+
+  assert.deepEqual(
+    VOLUME4_ITEMS.filter(product => product.quantityTotal > 1)
+      .map(product => [product.itemNumber, product.quantityTotal]),
+    [...separateSellableUnits]
+  );
+
+  for (const [itemNumber, expected] of bundleSellableUnits) {
+    const source = sourceByItem.get(itemNumber);
+    const product = publicByItem.get(itemNumber);
+    assert.equal(source.quantityTotal, 1, `Item ${itemNumber} is one sellable bundle`);
+    assert.match(source.description, expected.pieceCopy, `Item ${itemNumber} retains its internal piece count`);
+    assert.equal(product.quantityTotal, 1);
+    assert.equal(product.quantityRemaining, 1);
+    assert.equal(product.askingPricePYG, expected.price, `Item ${itemNumber} price covers the entire bundle`);
+    assert.equal(product.quantityTotal > 1 ? ' por unidad' : '', '');
+    assert.equal(product.quantityTotal > 1 ? product.quantityRemaining : 1, 1, `Item ${itemNumber} cart max is one`);
+  }
+
+  for (const [itemNumber, quantity] of separateSellableUnits) {
+    const source = sourceByItem.get(itemNumber);
+    const product = publicByItem.get(itemNumber);
+    assert.equal(source.quantityTotal, quantity, `Item ${itemNumber} retains separate sellable inventory`);
+    assert.equal(product.quantityTotal, quantity);
+    assert.equal(product.quantityRemaining, quantity);
+    assert.match(`${source.title} ${source.description}`, /por unidad/i);
+    assert.equal(product.quantityTotal > 1 ? ' por unidad' : '', ' por unidad');
+    assert.equal(product.quantityTotal > 1 ? product.quantityRemaining : 1, quantity);
+  }
+});
+
+test('storefront quantity labels and selectors remain driven by sellable quantity', async () => {
+  const [staticStorefront, refreshedStorefront, productCard, cartPage] = await Promise.all([
+    readFile(new URL('../../../js/site.js', import.meta.url), 'utf8'),
+    readFile(new URL('../../../js/volume2-storefront.js', import.meta.url), 'utf8'),
+    readFile(new URL('../../../source/components/product-card.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../../../source/components/cart-page.tsx', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(staticStorefront, /product\.quantityTotal > 1 \? ' por unidad' : ''/);
+  assert.match(staticStorefront, /product\.quantityTotal > 1 && !unavailable/);
+  assert.match(refreshedStorefront, /const multiple = Number\(product\.quantityTotal \|\| 1\) > 1/);
+  assert.match(refreshedStorefront, /\$\{multiple \? ' por unidad' : ''\}/);
+  assert.match(productCard, /\(product\.quantityTotal \?\? 1\) > 1 \? ' por unidad' : ''/);
+  assert.match(cartPage, /\(product\.quantityTotal \?\? 1\) > 1 \? <label>Cantidad/);
+  assert.match(cartPage, /length: Math\.max\(0, product\.quantityRemaining \?\? 0\)/);
 });
 
 test('Volume 4 publishes 174 available products and Item 423 atomically as sold', async () => {
