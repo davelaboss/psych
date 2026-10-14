@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const source = readFileSync('js/site.js', 'utf8');
+const unifiedController = readFileSync('js/volume2-storefront.js', 'utf8');
 const styles = readFileSync('css/product-detail-discovery.css', 'utf8');
 
 function extractFunction(name, nextName) {
@@ -262,13 +263,19 @@ test('responsive styles provide four desktop cards and a narrow scroll-snap row 
   assert.doesNotMatch(styles, /width:\s*100vw/);
 });
 
-test('first render reserves the final two-slot navigation geometry and divider', () => {
+test('first render reserves the final two-slot navigation geometry without clipping text', () => {
   assert.match(source, /product-sequence-navigation\$\{discoveryCatalog\.length \? '' : ' is-pending'\}/);
   assert.match(source, /product-sequence-slot previous/);
   assert.match(source, /product-sequence-slot next/);
   assert.match(source, /product-sequence-divider/);
-  assert.match(styles, /\.product-sequence-navigation\s*\{[^}]*height:\s*94px/s);
-  assert.match(styles, /\.product-sequence-slot\s*\{[^}]*height:\s*72px/s);
+  assert.match(styles, /\.product-sequence-navigation\s*\{[^}]*min-height:\s*94px/s);
+  assert.match(styles, /\.product-sequence-slot\s*\{[^}]*min-height:\s*72px/s);
+  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*?\.product-sequence-navigation\s*\{[^}]*min-height:\s*98px/s);
+  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*?\.product-sequence-slot\s*\{[^}]*min-height:\s*78px/s);
+  assert.match(styles, /\.product-sequence-link > strong\s*\{[^}]*line-height:\s*1\.3/s);
+  assert.match(styles, /\.product-sequence-link > span\s*\{[^}]*line-height:\s*1\.4/s);
+  assert.doesNotMatch(styles, /\.product-sequence-navigation\s*\{[^}]*\n\s*height:\s*(?:94|98)px/s);
+  assert.doesNotMatch(styles, /\.product-sequence-slot\s*\{[^}]*\n\s*height:\s*(?:72|78)px/s);
 });
 
 test('related carousel has accessible paging controls and a catalog escape hatch', () => {
@@ -290,4 +297,28 @@ test('detail discovery waits for and consumes the authoritative catalog state', 
   assert.match(source, /Array\.isArray\(window\.__catalogProducts\)/);
   assert.match(source, /discoveryCatalog\.length/);
   assert.match(source, /setupProductDiscoveryKeyboard\(discoveryCatalog\.length \? discovery : null\)/);
+});
+
+test('an embedded product miss stays pending for authoritative route resolution', () => {
+  const bootSource = extractFunction('bootStaticStorefront', 'getEmbeddedProductBySlug');
+  const missStart = bootSource.indexOf('if (!product)');
+  const missEnd = bootSource.indexOf('renderProductDetail(product)', missStart);
+  const embeddedMiss = bootSource.slice(missStart, missEnd);
+
+  assert.notEqual(missStart, -1, 'embedded miss handling should exist');
+  assert.notEqual(missEnd, -1, 'embedded miss handling should precede static rendering');
+  assert.match(embeddedMiss, /return;/);
+  assert.doesNotMatch(embeddedMiss, /classList\.remove\(['"]product-route-pending['"]\)/);
+  assert.doesNotMatch(embeddedMiss, /No se encontró el producto|console\.error/);
+
+  assert.match(unifiedController, /const catalog = await fetchCatalog\(requestedSlug\)/);
+  assert.match(unifiedController, /state\.products\.find\(\(item\) => item\.slug === requestedSlug\)/);
+  assert.match(unifiedController, /else \{\s*renderUnavailableProductView\(\);\s*\}/);
+
+  const unavailableStart = unifiedController.indexOf('function renderUnavailableProductView');
+  const unavailableEnd = unifiedController.indexOf('function dedupe', unavailableStart);
+  const unavailableView = unifiedController.slice(unavailableStart, unavailableEnd);
+  assert.notEqual(unavailableStart, -1, 'unavailable view should exist');
+  assert.notEqual(unavailableEnd, -1, 'unavailable view should be bounded');
+  assert.match(unavailableView, /classList\.remove\(['"]product-route-pending['"]\)/);
 });
