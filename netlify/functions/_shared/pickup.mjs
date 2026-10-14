@@ -1,6 +1,6 @@
 import { database, inventoryTransaction } from './inventory-database.mjs';
 import { PICKUP_RULES } from './commerce.mjs';
-import { withPaymentState } from './order-payments.mjs';
+import { deriveOrderFulfillmentParts, orderFulfillmentPart } from './order-fulfillments.mjs';
 import { queueOrderNotifications } from './seller-notifications.mjs';
 
 const conflict = message => Object.assign(new Error(message), { status: 409 });
@@ -12,19 +12,31 @@ const timeLocal = () => new Intl.DateTimeFormat('en-GB', { timeZone: PICKUP_RULE
 const dateAt = value => new Date(`${value}T12:00:00Z`);
 const addDay = value => new Date(dateAt(value).getTime() + 86400000).toISOString().slice(0, 10);
 
-export function pickupEligible(order) {
-  const current = withPaymentState(order);
-  if (!current || current.status === 'CANCELLED' || current.paymentState !== 'FULLY_PAID' ||
-      Number(current.remainingBalancePYG) !== 0) return false;
-  const delayed = current.items?.some(item => item.saleMode === 'DELAYED');
-  return delayed ? current.status === 'PAID_IN_FULL' : current.status === 'PAYMENT_CONFIRMED';
+const appointmentJson = row => row ? {
+  timingKey: row.timing_key,
+  slotKey: row.slot_key,
+  status: row.status,
+  revision: row.revision,
+  updatedAt: new Date(row.updated_at).getTime(),
+} : null;
+
+export function pickupEligible(order, timingKey) {
+  const part = timingKey
+    ? orderFulfillmentPart(order, timingKey)
+    : deriveOrderFulfillmentParts(order)[0];
+  return Boolean(part?.eligible);
 }
 
-export function pickupSlotKeys(order, today = todayLocal()) {
-  if (!pickupEligible(order)) return [];
-  const delayed = order.items.some(item => item.saleMode === 'DELAYED');
-  const start = delayed ? PICKUP_RULES.delayedPickup.startDate : windows.startDate;
-  const end = delayed ? PICKUP_RULES.delayedPickup.endDate : windows.endDate;
+export function pickupSlotKeys(order, timingKey, today = todayLocal()) {
+  const part = orderFulfillmentPart(order, timingKey);
+  if (!part?.eligible) return [];
+  const delayed = timingKey !== 'IMMEDIATE';
+  const start = delayed
+    ? part.pickupWindow?.startDate || PICKUP_RULES.delayedPickup.startDate
+    : windows.startDate;
+  const end = delayed
+    ? part.pickupWindow?.endDate || PICKUP_RULES.delayedPickup.endDate
+    : windows.endDate;
   const result = [];
   const currentTime = timeLocal();
   for (let day = start; day <= end; day = addDay(day)) {
@@ -39,8 +51,8 @@ export function pickupSlotKeys(order, today = todayLocal()) {
   return result;
 }
 
-export async function pickupAvailability(order, appointment = null) {
-  const keys = pickupSlotKeys(order);
+export async function pickupAvailability(order, timingKey, appointment = null) {
+  const keys = pickupSlotKeys(order, timingKey);
   if (!keys.length) return [];
   const { rows } = await database().pool.query(`SELECT slot_key, count(*)::int AS occupied
     FROM pickup_appointments WHERE status='SCHEDULED' AND slot_key=ANY($1::text[]) GROUP BY slot_key`, [keys]);
@@ -49,24 +61,51 @@ export async function pickupAvailability(order, appointment = null) {
     selected: appointment?.status === 'SCHEDULED' && appointment.slotKey === key }));
 }
 
-export async function getPickupAppointment(orderId) {
-  const row = (await database().pool.query('SELECT * FROM pickup_appointments WHERE order_id=$1', [orderId])).rows[0];
-  return row ? { slotKey: row.slot_key, status: row.status, revision: row.revision,
-    updatedAt: new Date(row.updated_at).getTime() } : null;
+export async function getPickupAppointments(orderId) {
+  const rows = (await database().pool.query(`SELECT * FROM pickup_appointments
+    WHERE order_id=$1 ORDER BY timing_key`, [orderId])).rows;
+  return rows.map(appointmentJson);
 }
 
-export async function changePickup({ orderId, slotKey, actor }) {
+export async function pickupFulfillments(order) {
+  const appointments = new Map((await getPickupAppointments(order.id))
+    .map(appointment => [appointment.timingKey, appointment]));
+  return Promise.all(deriveOrderFulfillmentParts(order).map(async part => {
+    const appointment = appointments.get(part.timingKey) || null;
+    return {
+      ...part,
+      appointment,
+      slots: await pickupAvailability(order, part.timingKey, appointment),
+    };
+  }));
+}
+
+export async function changePickup({ orderId, timingKey, slotKey, actor }, dependencies = {}) {
   if (!['ADMIN', 'CUSTOMER'].includes(actor)) throw conflict('Acceso no autorizado.');
-  return inventoryTransaction(async client => {
+  const normalizedTimingKey = String(timingKey || '').trim();
+  if (!normalizedTimingKey) throw Object.assign(new Error('Falta el tipo de retiro.'), { status: 400 });
+  const runTransaction = dependencies.transaction || inventoryTransaction;
+  const queueNotifications = dependencies.queueNotifications || queueOrderNotifications;
+  const allowedSlotKeys = dependencies.slotKeys || pickupSlotKeys;
+  return runTransaction(async client => {
     const orderRow = (await client.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
     if (!orderRow) throw Object.assign(new Error('Pedido no encontrado.'), { status: 404 });
     const order = orderRow.order_snapshot;
-    if (!pickupEligible(order)) throw conflict('El retiro requiere el pago total confirmado por el vendedor.');
-    const existing = (await client.query('SELECT * FROM pickup_appointments WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
+    const part = orderFulfillmentPart(order, normalizedTimingKey);
+    if (!part) throw Object.assign(new Error('El tipo de retiro no pertenece a este pedido.'), { status: 404 });
+    const existing = (await client.query(`SELECT * FROM pickup_appointments
+      WHERE order_id=$1 AND timing_key=$2 FOR UPDATE`, [orderId, normalizedTimingKey])).rows[0];
     const oldKey = existing?.status === 'SCHEDULED' ? existing.slot_key : null;
-    if (slotKey === oldKey) return { slotKey: oldKey, status: 'SCHEDULED', revision: existing.revision };
-    if (slotKey != null && !pickupSlotKeys(order).includes(slotKey)) throw conflict('El horario de retiro no está disponible para este pedido.');
-    if (slotKey == null && !oldKey) return existing ? { slotKey: null, status: 'CANCELLED', revision: existing.revision } : null;
+    if (slotKey === oldKey) return appointmentJson(existing);
+    if (slotKey != null && !part.eligible) {
+      throw conflict(normalizedTimingKey === 'IMMEDIATE'
+        ? 'El retiro inmediato requiere que se complete el importe exigible ahora.'
+        : 'El retiro posterior requiere el pago total confirmado por el vendedor.');
+    }
+    if (slotKey != null && !allowedSlotKeys(order, normalizedTimingKey).includes(slotKey)) {
+      throw conflict('El horario de retiro no está disponible para esta parte del pedido.');
+    }
+    if (slotKey == null && !oldKey) return existing ? appointmentJson(existing) : null;
     if (slotKey) {
       await client.query('INSERT INTO pickup_windows(slot_key) VALUES($1) ON CONFLICT DO NOTHING', [slotKey]);
       await client.query('SELECT slot_key FROM pickup_windows WHERE slot_key=$1 FOR UPDATE', [slotKey]);
@@ -74,26 +113,31 @@ export async function changePickup({ orderId, slotKey, actor }) {
         WHERE slot_key=$1 AND status='SCHEDULED'`, [slotKey])).rows[0].count);
       if (occupied >= PICKUP_RULES.defaultCapacityPerWindow) throw conflict('Este horario ya está completo. Elegí otro.');
     }
-    const row = (await client.query(`INSERT INTO pickup_appointments(order_id,slot_key,status,changed_by)
-      VALUES($1,$2,$3,$4) ON CONFLICT(order_id) DO UPDATE SET slot_key=EXCLUDED.slot_key,
+    const row = (await client.query(`INSERT INTO pickup_appointments(order_id,timing_key,slot_key,status,changed_by)
+      VALUES($1,$2,$3,$4,$5) ON CONFLICT(order_id,timing_key) DO UPDATE SET slot_key=EXCLUDED.slot_key,
       status=EXCLUDED.status,changed_by=EXCLUDED.changed_by,revision=pickup_appointments.revision+1,
-      updated_at=clock_timestamp() RETURNING *`, [orderId, slotKey, slotKey ? 'SCHEDULED' : 'CANCELLED', actor])).rows[0];
-    await queueOrderNotifications(client, {
-      key: `pickup:${orderId}:${row.revision}`, order,
+      updated_at=clock_timestamp() RETURNING *`, [orderId, normalizedTimingKey, slotKey,
+      slotKey ? 'SCHEDULED' : 'CANCELLED', actor])).rows[0];
+    await queueNotifications(client, {
+      key: `pickup:${orderId}:${normalizedTimingKey}:${row.revision}`, order,
       type: oldKey ? 'PICKUP_CHANGED' : 'PICKUP_SCHEDULED',
-      details: { oldSlot: oldKey, slot: slotKey, actor },
+      details: { oldSlot: oldKey, slot: slotKey, actor,
+        timingKey: normalizedTimingKey, timingLabel: part.timingLabel },
     });
-    return { slotKey: row.slot_key, status: row.status, revision: row.revision,
-      updatedAt: new Date(row.updated_at).getTime() };
+    return appointmentJson(row);
   });
 }
 
 export async function listUpcomingPickups() {
-  const { rows } = await database().pool.query(`SELECT a.slot_key, a.order_id, c.order_snapshot
+  const { rows } = await database().pool.query(`SELECT a.slot_key, a.order_id, a.timing_key, c.order_snapshot
     FROM pickup_appointments a JOIN checkout_attempts c ON c.order_id=a.order_id
     WHERE a.status='SCHEDULED' AND split_part(a.slot_key,'|',1) >= $1
-    ORDER BY a.slot_key, a.order_id`, [todayLocal()]);
-  return rows.map(row => ({ slotKey: row.slot_key, orderId: row.order_id,
-    buyer: row.order_snapshot.buyer?.name || '',
-    itemNumbers: row.order_snapshot.items?.map(item => item.itemNumber) || [] }));
+    ORDER BY a.slot_key, a.order_id, a.timing_key`, [todayLocal()]);
+  return rows.map(row => {
+    const part = orderFulfillmentPart(row.order_snapshot, row.timing_key);
+    return { slotKey: row.slot_key, orderId: row.order_id, timingKey: row.timing_key,
+      timingLabel: part?.timingLabel || row.timing_key,
+      buyer: row.order_snapshot.buyer?.name || '',
+      itemNumbers: part?.items.map(item => item.itemNumber) || [] };
+  });
 }

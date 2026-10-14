@@ -6,6 +6,7 @@ const inventory = await readFile(new URL('./inventory-database.mjs', import.meta
 const endpoint = await readFile(new URL('../admin-payment-note.mjs', import.meta.url), 'utf8');
 const confirmationEndpoint = await readFile(new URL('../admin-confirm-payment.mjs', import.meta.url), 'utf8');
 const pickup = await readFile(new URL('./pickup.mjs', import.meta.url), 'utf8');
+const fulfillments = await readFile(new URL('./order-fulfillments.mjs', import.meta.url), 'utf8');
 const admin = await readFile(new URL('../../../js/admin.js', import.meta.url), 'utf8');
 const checkout = await readFile(new URL('../../../js/checkout.js', import.meta.url), 'utf8');
 
@@ -135,7 +136,7 @@ test('admin exposes explicit legacy duplicate voiding and keeps the audit entry 
 });
 
 test('admin exposes post-sale adjustment totals, history, limits, and explicit confirmation', () => {
-  assert.match(admin, /Ajustes \/ reembolsos/);
+  assert.match(admin, /Ajustes y reembolsos/);
   assert.match(admin, /Registrar reembolso \/ ajuste posterior a la venta/);
   assert.match(admin, /POST_SALE_PRICE_ADJUSTMENT/);
   assert.match(admin, /REEMBOLSADO \/ AJUSTADO/);
@@ -212,9 +213,10 @@ test('admin requires actual amount and preserves current-main payment controls',
   assert.doesNotMatch(admin, /action: 'ADD_NOTE'/);
 });
 
-test('pickup eligibility re-derives current balance and retains status requirements', () => {
-  assert.match(pickup, /const current = withPaymentState\(order\)/);
-  assert.match(pickup, /current\.paymentState !== 'FULLY_PAID'/);
-  assert.match(pickup, /Number\(current\.remainingBalancePYG\) !== 0/);
-  assert.match(pickup, /delayed \? current\.status === 'PAID_IN_FULL' : current\.status === 'PAYMENT_CONFIRMED'/);
+test('pickup eligibility uses shared payment truth and timing-specific status requirements', () => {
+  assert.match(fulfillments, /const current = withPaymentState\(order\)/);
+  assert.match(fulfillments, /current\.depositShortfallPYG === 0/);
+  assert.match(fulfillments, /current\.paymentState === 'FULLY_PAID'/);
+  assert.match(fulfillments, /current\.remainingBalancePYG === 0/);
+  assert.match(pickup, /orderFulfillmentPart\(order, timingKey\)/);
 });

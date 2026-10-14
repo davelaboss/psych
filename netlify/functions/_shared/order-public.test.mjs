@@ -101,6 +101,9 @@ test('public order projection excludes reconciliation notes and internal metadat
   assert.equal(projected.adjustedOrderTotalPYG, 220_000);
   assert.equal(projected.netReceivedPYG, 35_000);
   assert.equal(projected.remainingBalancePYG, 185_000);
+  assert.equal(projected.fulfillments.length, 1);
+  assert.equal(projected.fulfillments[0].timingKey, 'DELAYED:UNSET:UNSET');
+  assert.equal(projected.fulfillments[0].eligible, false);
   assert.deepEqual(projected.payments, [{
     id: 'legacy-initial',
     amountPYG: 65_000,

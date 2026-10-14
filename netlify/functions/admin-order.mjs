@@ -3,6 +3,7 @@ import {
   getOrder,
   jsonResponse,
 } from './_shared/commerce.mjs';
+import { deriveOrderFulfillmentParts } from './_shared/order-fulfillments.mjs';
 
 
 export default async function handler(request) {
@@ -47,6 +48,7 @@ export default async function handler(request) {
 
   const safeOrder = {
     ...order,
+    fulfillments: deriveOrderFulfillmentParts(order),
   };
 
   delete safeOrder.accessTokenHash;
