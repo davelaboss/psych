@@ -17,6 +17,7 @@ CREATE TABLE sale_analytics_events (
     'direct'
   )),
   category text,
+  search_term text,
   filter_context jsonb NOT NULL DEFAULT '{}'::jsonb,
   result_position integer CHECK (result_position IS NULL OR result_position > 0),
   result_count integer CHECK (result_count IS NULL OR result_count >= 0),

@@ -60,12 +60,15 @@ function claimRequest(analytics = {}) {
 
 test('analytics migration is forward-only and creates the compact indexed schema', async () => {
   const sql = await readFile(new URL('../../database/migrations/20261014_sale_pulse_analytics.sql', import.meta.url), 'utf8');
+  const privacySql = await readFile(new URL('../../database/migrations/20261014_sale_pulse_privacy.sql', import.meta.url), 'utf8');
   assert.match(sql, /CREATE TABLE sale_analytics_events/);
   assert.match(sql, /anonymous_session_hash text/);
   assert.match(sql, /filter_context jsonb/);
   assert.match(sql, /sale_analytics_type_occurred_at/);
   assert.match(sql, /sale_analytics_product_occurred_at/);
   assert.doesNotMatch(sql, /ALTER TABLE (?:operational_inventory|checkout_attempts)/);
+  assert.match(privacySql, /ALTER TABLE sale_analytics_events\s+DROP COLUMN search_term/);
+  assert.doesNotMatch(privacySql, /DROP TABLE|DROP COLUMN (?!search_term)/);
 });
 
 test('event validation accepts the six defined types only for trusted paths', () => {
