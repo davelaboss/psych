@@ -22,6 +22,9 @@ const ADMIN_STATE = {
   marketingLoadedKey: '',
   marketingLoadingKey: '',
   marketingError: '',
+  salePulse: null,
+  salePulseLoading: false,
+  salePulseError: '',
 };
 
 window.addEventListener('load', function () {
@@ -269,6 +272,12 @@ async function fetchLegacyInventory() {
 }
 
 
+async function fetchSalePulse() {
+  const data = await adminFetch('/api/admin/sale-pulse');
+  return data.salePulse || null;
+}
+
+
 async function loadAdminDashboard() {
   const main =
     document.querySelector('main');
@@ -291,12 +300,19 @@ async function loadAdminDashboard() {
       inventoryData,
       buyerGroups,
       fulfillmentBatches,
+      salePulseResult,
     ] =
       await Promise.all([
         fetchAdminOrders(),
         fetchLegacyInventory(),
         fetchBuyerGroups(),
         fetchFulfillmentBatches(),
+        fetchSalePulse()
+          .then((value) => ({ value, error: '' }))
+          .catch((error) => ({
+            value: null,
+            error: error instanceof Error ? error.message : 'No se pudo cargar Sale Pulse.',
+          })),
       ]);
 
     ADMIN_STATE.orders =
@@ -319,6 +335,9 @@ async function loadAdminDashboard() {
         ADMIN_STATE.orders,
         ADMIN_STATE.inventory
       );
+
+    ADMIN_STATE.salePulse = salePulseResult.value;
+    ADMIN_STATE.salePulseError = salePulseResult.error;
 
     renderAdminShell();
   } catch (error) {
@@ -473,6 +492,7 @@ function buildAdminStats(
 function renderAdminShell() {
   injectAdminStyles();
   injectMarketingStyles();
+  injectSalePulseStyles();
 
   const main =
     document.querySelector('main');
@@ -1188,8 +1208,30 @@ function renderOverviewTab() {
           </button>
         </section>
       </div>
+
+      ${renderSalePulsePanel()}
     </section>
   `;
+
+  target
+    .querySelector('[data-refresh-sale-pulse]')
+    ?.addEventListener('click', refreshSalePulse);
+
+  target
+    .querySelector('[data-copy-sale-pulse]')
+    ?.addEventListener('click', async (event) => {
+      const brief = ADMIN_STATE.salePulse?.marketingBrief || '';
+      if (!brief) return;
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await navigator.clipboard.writeText(brief);
+        button.textContent = 'INFORME COPIADO';
+      } catch {
+        button.textContent = 'NO SE PUDO COPIAR';
+        button.disabled = false;
+      }
+    });
 
   target
     .querySelector(
@@ -1233,6 +1275,146 @@ function renderOverviewTab() {
         );
       }
     );
+}
+
+
+async function refreshSalePulse() {
+  if (ADMIN_STATE.salePulseLoading) return;
+  ADMIN_STATE.salePulseLoading = true;
+  ADMIN_STATE.salePulseError = '';
+  renderOverviewTab();
+  try {
+    ADMIN_STATE.salePulse = await fetchSalePulse();
+  } catch (error) {
+    ADMIN_STATE.salePulseError = error instanceof Error ? error.message : 'No se pudo actualizar Sale Pulse.';
+  } finally {
+    ADMIN_STATE.salePulseLoading = false;
+    renderOverviewTab();
+  }
+}
+
+
+function salePulseDate(value) {
+  if (!value) return 'Aún sin eventos';
+  return new Intl.DateTimeFormat('es-PY', {
+    timeZone: 'America/Asuncion',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+
+function salePulseSignalList(items, emptyText) {
+  if (!Array.isArray(items) || !items.length) {
+    return `<p class="sale-pulse-empty">${adminEscape(emptyText)}</p>`;
+  }
+  return `<ol class="sale-pulse-list">${items.map((item) => `
+    <li>
+      <span>Item ${adminEscape(String(item.itemNumber || '').padStart(3, '0'))}</span>
+      <strong>${adminEscape(item.title)}</strong>
+      <small>${Number(item.views || 0)} vistas · ${Number(item.cartAdds || 0)} agregados</small>
+    </li>`).join('')}</ol>`;
+}
+
+
+function salePulseMetric(label, value) {
+  return `<div><dt>${adminEscape(label)}</dt><dd>${Number(value || 0)}</dd></div>`;
+}
+
+
+function renderSalePulsePanel() {
+  const pulse = ADMIN_STATE.salePulse;
+  if (!pulse) {
+    return `
+      <section class="admin-panel-card sale-pulse-panel">
+        <div class="sale-pulse-heading">
+          <div><span class="section-kicker">PULSO DE VENTA</span><h2>Sale Pulse</h2></div>
+          <button class="secondary-action" type="button" data-refresh-sale-pulse ${ADMIN_STATE.salePulseLoading ? 'disabled' : ''}>
+            ${ADMIN_STATE.salePulseLoading ? 'Actualizando…' : 'Reintentar'}
+          </button>
+        </div>
+        <p class="form-error">${adminEscape(ADMIN_STATE.salePulseError || 'Aún no hay datos disponibles.')}</p>
+      </section>`;
+  }
+
+  const source = (key) => pulse.sources?.[key] || {};
+  return `
+    <section class="admin-panel-card sale-pulse-panel">
+      <div class="sale-pulse-heading">
+        <div>
+          <span class="section-kicker">PULSO DE VENTA</span>
+          <h2>¿Qué necesita la venta hoy?</h2>
+          <p>Actualizado: <strong>${adminEscape(salePulseDate(pulse.tracking?.generatedAt))}</strong></p>
+          <p>Datos de navegación disponibles desde ${adminEscape(salePulseDate(pulse.tracking?.startedAt))}.</p>
+        </div>
+        <button class="secondary-action" type="button" data-refresh-sale-pulse ${ADMIN_STATE.salePulseLoading ? 'disabled' : ''}>
+          ${ADMIN_STATE.salePulseLoading ? 'Actualizando…' : 'Actualizar'}
+        </button>
+      </div>
+
+      ${pulse.tracking?.lowInterestGuard ? `<p class="sale-pulse-guard">${adminEscape(pulse.tracking.lowInterestGuard)}</p>` : ''}
+      ${ADMIN_STATE.salePulseError ? `<p class="form-error">${adminEscape(ADMIN_STATE.salePulseError)}</p>` : ''}
+
+      <div class="sale-pulse-windows">
+        <section>
+          <h3>Últimas 24 horas</h3>
+          <dl>
+            ${salePulseMetric('Visitantes aproximados', pulse.last24Hours?.visitors)}
+            ${salePulseMetric('Visitas al catálogo', pulse.last24Hours?.catalogVisits)}
+            ${salePulseMetric('Vistas de productos', pulse.last24Hours?.productViews)}
+            ${salePulseMetric('Productos distintos vistos', pulse.last24Hours?.distinctProductsViewed)}
+            ${salePulseMetric('Agregados al carrito', pulse.last24Hours?.addToCart)}
+            ${salePulseMetric('Pedidos confirmados', pulse.last24Hours?.confirmedOrders)}
+            ${salePulseMetric('Artículos vendidos', pulse.last24Hours?.unitsSold)}
+          </dl>
+        </section>
+        <section>
+          <h3>Últimos 7 días</h3>
+          <dl>
+            ${salePulseMetric('Visitantes aproximados', pulse.last7Days?.visitors)}
+            ${salePulseMetric('Visitas al catálogo', pulse.last7Days?.catalogVisits)}
+            ${salePulseMetric('Vistas de productos', pulse.last7Days?.productViews)}
+            ${salePulseMetric('Productos distintos vistos', pulse.last7Days?.distinctProductsViewed)}
+            ${salePulseMetric('Agregados al carrito', pulse.last7Days?.addToCart)}
+            ${salePulseMetric('Pedidos confirmados', pulse.last7Days?.confirmedOrders)}
+            ${salePulseMetric('Artículos vendidos', pulse.last7Days?.unitsSold)}
+          </dl>
+        </section>
+        <section>
+          <h3>Operación</h3>
+          <dl>
+            ${salePulseMetric('Productos disponibles', pulse.inventory?.availableProducts)}
+            ${salePulseMetric('Unidades disponibles', pulse.inventory?.availableUnits)}
+            ${salePulseMetric('Pagos pendientes', pulse.operations?.paymentsRequiringAttention)}
+            ${salePulseMetric('Retiros sin horario', pulse.operations?.eligiblePickupsUnscheduled)}
+            ${salePulseMetric('Retiros programados', pulse.operations?.scheduledPickupsPending)}
+          </dl>
+        </section>
+      </div>
+
+      <section class="sale-pulse-sources">
+        <h3>Origen de tráfico · 7 días</h3>
+        <div>
+          <span><strong>Story</strong>${Number(source('story').visitors || 0)} visitantes · ${Number(source('story').visits || 0)} visitas · ${Number(source('story').views || 0)} vistas</span>
+          <span><strong>Grupo Compras/Ventas</strong>${Number(source('jw-group').visitors || 0)} visitantes · ${Number(source('jw-group').visits || 0)} visitas · ${Number(source('jw-group').views || 0)} vistas</span>
+          <span><strong>Directo</strong>${Number(source('direct').visitors || 0)} visitantes · ${Number(source('direct').visits || 0)} visitas · ${Number(source('direct').views || 0)} vistas</span>
+        </div>
+      </section>
+
+      <div class="sale-pulse-signals">
+        <section><h3>Hot unsold</h3>${salePulseSignalList(pulse.productSignals?.hotUnSold, 'Sin señal suficiente todavía.')}</section>
+        <section><h3>Poca o nula visibilidad</h3>${salePulseSignalList(
+          pulse.productSignals?.lowNoInterest,
+          pulse.tracking?.lowInterestGuard || 'Sin productos en esta clasificación.'
+        )}</section>
+        <section><h3>Items que requieren atención</h3>${salePulseSignalList(pulse.productSignals?.attention, 'Sin señales de atención todavía.')}</section>
+      </div>
+
+      <div class="sale-pulse-copy">
+        <p>${adminEscape(pulse.tracking?.historyWarning || '')}</p>
+        <button class="primary-action" type="button" data-copy-sale-pulse>COPIAR INFORME PARA MARKETING</button>
+      </div>
+    </section>`;
 }
 
 
@@ -7194,6 +7376,46 @@ function injectMarketingStyles() {
       .marketing-photo-grid { grid-template-columns: 1fr; }
       .marketing-preview-heading, .marketing-section-title, .marketing-actions { align-items: stretch; flex-direction: column; }
       .marketing-actions button { width: 100%; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+
+function injectSalePulseStyles() {
+  if (document.getElementById('sale-pulse-admin-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'sale-pulse-admin-styles';
+  style.textContent = `
+    .sale-pulse-panel { margin-top: 24px; display: grid; gap: 22px; }
+    .sale-pulse-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+    .sale-pulse-heading h2 { margin: 4px 0 8px; }
+    .sale-pulse-heading p { margin: 4px 0; color: #655f56; }
+    .sale-pulse-guard { margin: 0; padding: 12px 14px; border-left: 4px solid #b57b17; background: #fff5dc; color: #66480e; }
+    .sale-pulse-windows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .sale-pulse-windows > section, .sale-pulse-signals > section, .sale-pulse-sources { padding: 18px; border: 1px solid #ded8cd; border-radius: 14px; background: #faf8f4; }
+    .sale-pulse-windows h3, .sale-pulse-signals h3, .sale-pulse-sources h3 { margin: 0 0 12px; }
+    .sale-pulse-windows dl { margin: 0; display: grid; gap: 8px; }
+    .sale-pulse-windows dl div { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 7px; border-bottom: 1px solid #e7e1d8; }
+    .sale-pulse-windows dd { margin: 0; font-weight: 850; }
+    .sale-pulse-sources > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .sale-pulse-sources span { display: grid; gap: 4px; }
+    .sale-pulse-signals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .sale-pulse-list { margin: 0; padding-left: 22px; display: grid; gap: 11px; }
+    .sale-pulse-list li { padding-left: 3px; }
+    .sale-pulse-list span, .sale-pulse-list strong, .sale-pulse-list small { display: block; }
+    .sale-pulse-list span { color: #655f56; font-size: .8rem; font-weight: 800; text-transform: uppercase; }
+    .sale-pulse-list small { margin-top: 2px; color: #655f56; }
+    .sale-pulse-empty { margin: 0; color: #655f56; }
+    .sale-pulse-copy { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 4px; }
+    .sale-pulse-copy p { margin: 0; max-width: 720px; color: #655f56; }
+    @media (max-width: 900px) {
+      .sale-pulse-windows, .sale-pulse-signals { grid-template-columns: 1fr; }
+      .sale-pulse-sources > div { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .sale-pulse-heading, .sale-pulse-copy { align-items: stretch; flex-direction: column; }
+      .sale-pulse-heading button, .sale-pulse-copy button { width: 100%; }
     }
   `;
   document.head.appendChild(style);

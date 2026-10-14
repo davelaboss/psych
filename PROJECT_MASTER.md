@@ -1544,3 +1544,12 @@ Format:
 - Fix: New draft generation and explicit regeneration now load the opposite date/slot packet and add its product IDs to the selector's same-day exclusion input. The opposite packet is read-only and is never replaced by this operation. Existing 14-day `SENT` history remains unchanged.
 - Fallback: With two non-overlapping eligible products, the second slot uses those two. Same-day duplication is permitted only when fewer than two non-overlapping eligible products remain, preserving the established two-product minimum.
 - Regression performed: Complete Node suite passes (20 tests), including the observed Item 115 and Item 056 overlaps, PM-first generation, AM and PM regeneration in both directions, constrained-inventory fallback, availability exclusions, attachments, saved drafts, and duplicate-send behavior.
+
+## 2026-10-14 — Sale Pulse implementation ready for governance review
+
+- Owner/chat: Sale Pulse first-party sales analytics and admin daily brief.
+- Branch: `feature/sale-pulse-command-center`, created from authoritative `origin/main` at `f113e8a865131f6c4a1a7277e7f7df6c988fa028`; merge and production deployment remain intentionally pending.
+- Result: Added a compact 90-day first-party analytics stream for catalog visits, category selection, search, deliberate filter use, product views, and successful server-confirmed cart additions. Anonymous cart-session IDs are one-way hashed, duplicate events are conservatively suppressed, likely email/phone searches are redacted, and no customer name, email, phone, IP address, referrer, or user-agent data is collected.
+- Owner view: Integrated `PULSO DE VENTA` into the existing `/admin` Resumen with 24-hour and 7-day activity, campaign-source breakdown, evidence-backed product signals, payment/pickup/delivery attention counts, tracking-history disclosure, refresh, and a copyable Paraguayan-Spanish daily brief. Empty/error states do not disable the rest of the admin.
+- Regression performed: JavaScript syntax checks, complete Node suite (222 passing tests), diff whitespace checks, and desktop/mobile browser validation of search, category, product view, successful cart add, distinct `story`/`jw-group` attribution, admin refresh, no horizontal overflow, and copied brief privacy.
+- Production follow-up: Apply the new forward-only database migration during normal deployment, then complete the required governance review and owner production NOMINAL check. Low-interest recommendations remain suppressed until at least 24 hours of tracking history exists.
