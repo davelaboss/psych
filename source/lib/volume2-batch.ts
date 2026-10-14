@@ -6,6 +6,7 @@ export const VOLUME2_BATCH_NAME = 'Volumen 2 · venta de mudanza · septiembre 2
 export type Volume2BatchItem = {
   id: string;
   itemNumber: number;
+  slug?: string;
   title: string;
   category: string;
   description: string;
@@ -43,6 +44,7 @@ type Spec = {
   category: string;
   photos: string[];
   asking: number;
+  slug?: string;
   description?: string;
   condition?: string;
   functionality?: string;
@@ -147,7 +149,7 @@ const specs: Spec[] = [
   s('Fuente rectangular de vidrio', 'Hogar', ['IMG_7937.JPG'], 60000, { measurements:'30 × 22 cm.', flag:'' }),
   s('Fuente ovalada de vidrio', 'Hogar', ['IMG_7938.JPG'], 55000, { measurements:'30 × 21 cm, forma ovalada.', flag:'' }),
   s('Vaso térmico de viaje', 'Hogar', ['IMG_7939.JPG'], 50000, { status:'UNLISTED', description:'Retirado del inventario: entregado/regalado.', flag:'' }),
-  s('Recipiente morado con tapa', 'Cocina', ['IMG_7940.JPG','IMG_7941.JPG'], 60000, { publicKnownDefects:"Desgaste por uso normal con detalles. Marca de marcador permanente.", included:['Recipiente y tapa visibles'], flag:'Confirmar capacidad y cierre.' }),
+  s('Recipiente Rubbermaid morado con tapa', 'Cocina', ['IMG_7940.JPG','IMG_7941.JPG'], 60000, { slug:'recipiente-morado-con-tapa-133', description:'Recipiente Rubbermaid morado con tapa.', publicKnownDefects:"Desgaste por uso normal con detalles. Marca de marcador permanente.", included:['Recipiente y tapa visibles'], flag:'Confirmar capacidad y cierre.' }),
   s('Juego de 3 abanicos decorativos', 'Decoración', ['IMG_7942.JPG'], 22000, { flag:'' }),
   s('Lote de bordado y manualidades', 'Manualidades', ['IMG_7943.JPG','IMG_7944.JPG'], 55000, { flag:'Contenido exacto del lote no reconfirmado.' }),
   s('Juego Connect 4', 'Juegos', ['IMG_7946.JPG'], 48000, { flag:'' }),
@@ -186,6 +188,7 @@ function item(spec: Spec, index: number): Volume2BatchItem {
   return {
     id: `real-202609-volume2-${itemNumber}`,
     itemNumber,
+    slug: spec.slug,
     title: spec.title,
     category: spec.category,
     description: [spec.description ?? spec.title, excluded].filter(Boolean).join(' '),

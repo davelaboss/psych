@@ -6,7 +6,8 @@ import test from 'node:test';
 import vm from 'node:vm';
 import sharp from 'sharp';
 import {
-  createDraft, optimizeGroups, parseGroupedNotes, preserveReviewFields, reviewHtml,
+  createDraft, optimizeGroups, parseGroupedNotes, preserveReviewFields,
+  promoteApprovedVolume4, reviewHtml,
 } from './workflow.mjs';
 
 test('batch projection preserves review dimensions and functionality exactly', () => {
@@ -27,6 +28,63 @@ test('batch projection preserves review dimensions and functionality exactly', (
     functionality: 'Funciona bien',
   }]);
   assert.equal(Object.hasOwn(products[0], 'measurements'), false);
+});
+
+test('publication promotion is gated by complete approval and makes Item 423 sold atomically', () => {
+  const retiredIds = new Set([342, 420, 437, 442, 444, 469, 507, 509]);
+  const itemNumbers = Array.from({ length: 182 }, (_, index) => 327 + index)
+    .filter(itemNumber => !retiredIds.has(itemNumber));
+  const products = itemNumbers.map(itemNumber => {
+    return {
+      itemNumber,
+      title: `Item ${itemNumber}`,
+      category: 'Hogar',
+      asking: 10_000,
+      description: `Item ${itemNumber}.`,
+      condition: 'Buen estado',
+      knownDefects: 'Ninguno conocido.',
+      functionality: 'Funciona bien',
+      measurements: '',
+      quantityTotal: 1,
+      saleMode: 'IMMEDIATE',
+      includedAccessories: [],
+      status: 'NEEDS_REVIEW',
+      needsReview: true,
+    };
+  });
+  const edits = Object.fromEntries(products.map(product => [product.itemNumber, {
+    title: product.title,
+    category: product.category,
+    price: product.asking,
+    description: product.description,
+    condition: product.condition,
+    defects: product.knownDefects,
+    functionality: product.functionality,
+    dimensions: product.measurements,
+    quantity: product.quantityTotal,
+    pickupMode: product.saleMode,
+    includedAccessories: product.includedAccessories,
+  }]));
+  const statuses = Object.fromEntries(products.map(product => [product.itemNumber, 'approved']));
+  const handoff = {
+    item423: {
+      action: 'IMPORT_AS_SOLD_ATOMICALLY',
+      requiredStatus: 'SOLD',
+      publicAvailabilityAllowed: false,
+    },
+  };
+
+  const published = promoteApprovedVolume4(products, { edits, statuses }, handoff);
+  assert.equal(published.filter(product => product.status === 'AVAILABLE').length, 174);
+  assert.equal(published.find(product => product.itemNumber === 423).status, 'SOLD');
+  assert.ok(published.every(product => product.needsReview === false));
+  assert.ok(products.every(product => product.status === 'NEEDS_REVIEW'));
+
+  statuses[327] = 're-review';
+  assert.throws(
+    () => promoteApprovedVolume4(products, { edits, statuses }, handoff),
+    /all 175 products to be owner-approved/
+  );
 });
 
 test('group parser supports multiple photos, labels, and ordinary free-form notes', () => {
