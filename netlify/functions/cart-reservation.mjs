@@ -12,6 +12,16 @@ import {
 import { orderAccessToken } from './_shared/order-access.mjs';
 import { recordAnalyticsEvent } from './_shared/sale-pulse.mjs';
 
+const SALE_PULSE_SOURCES = new Set(['story', 'jw-group', 'direct']);
+
+
+function currentUiAnalyticsContext(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const campaignSource = String(value.campaignSource || '').trim().toLowerCase();
+  if (!SALE_PULSE_SOURCES.has(campaignSource)) return null;
+  return { ...value, campaignSource };
+}
+
 
 function setSessionCookie(response, sessionId, request) {
   const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
@@ -86,10 +96,10 @@ export function createCartReservationHandler({
       ? { lease: await claimLease({ cartSessionId, productId, quantity, availability }) }
       : await updateLease({ cartSessionId, productId, quantity, availability });
 
-    if (action === 'claim') {
-      const analytics = body?.analytics && typeof body.analytics === 'object'
-        ? body.analytics
-        : {};
+    const analytics = action === 'claim'
+      ? currentUiAnalyticsContext(body?.analytics)
+      : null;
+    if (analytics) {
       const tracking = Promise.resolve().then(() => recordEvent({
         sessionId: cartSessionId,
         event: {

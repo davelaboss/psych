@@ -7,18 +7,25 @@
   const trackedProductViews = new Set();
 
   function sourceForSession() {
+    const requested = String(new URLSearchParams(window.location.search).get('src') || '')
+      .trim().toLowerCase();
+    if (ALLOWED_SOURCES.has(requested)) {
+      try {
+        sessionStorage.setItem(SOURCE_KEY, requested);
+      } catch {}
+      return requested;
+    }
+
     let stored = '';
     try {
       stored = sessionStorage.getItem(SOURCE_KEY) || '';
     } catch {}
-    if (stored) return ALLOWED_SOURCES.has(stored) ? stored : 'direct';
-    const requested = String(new URLSearchParams(window.location.search).get('src') || '')
-      .trim().toLowerCase();
-    const source = ALLOWED_SOURCES.has(requested) ? requested : 'direct';
+    if (stored === 'direct' || ALLOWED_SOURCES.has(stored)) return stored;
+
     try {
-      sessionStorage.setItem(SOURCE_KEY, source);
+      sessionStorage.setItem(SOURCE_KEY, 'direct');
     } catch {}
-    return source;
+    return 'direct';
   }
 
   function cleanContext(context = {}) {

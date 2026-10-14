@@ -169,6 +169,7 @@ export async function recordAnalyticsEvent({ sessionId, event }, dependencies = 
         AND existing.event_type = $1
         AND existing.anonymous_session_hash IS NOT DISTINCT FROM $2
         AND existing.product_id IS NOT DISTINCT FROM $3
+        AND existing.campaign_source = $4
         AND existing.category IS NOT DISTINCT FROM $5
         AND existing.filter_context = $6::jsonb
     )

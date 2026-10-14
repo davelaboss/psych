@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { createAnalyticsEventHandler } from '../analytics-event.mjs';
 import { createAdminSalePulseHandler } from '../admin-sale-pulse.mjs';
 import { createCartReservationHandler } from '../cart-reservation.mjs';
@@ -16,6 +17,7 @@ import {
 const sessionId = '11111111-1111-4111-8111-111111111111';
 const now = Date.parse('2026-10-14T15:00:00.000Z');
 const hoursAgo = (hours) => new Date(now - hours * 3600000).toISOString();
+const salePulseClient = await readFile(new URL('../../../js/sale-pulse.js', import.meta.url), 'utf8');
 
 function product(number, overrides = {}) {
   return {
@@ -47,15 +49,56 @@ function claimHandler({ claimLease, recordEvent }) {
   });
 }
 
-function claimRequest(analytics = {}) {
+function claimRequest(analytics) {
+  const body = { action: 'claim', productId: 'product-1', quantity: 1 };
+  if (analytics !== undefined) body.analytics = analytics;
   return new Request('https://example.com/api/cart/reservation', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       cookie: `psych_cart_session=${sessionId}`,
     },
-    body: JSON.stringify({ action: 'claim', productId: 'product-1', quantity: 1, analytics }),
+    body: JSON.stringify(body),
   });
+}
+
+async function storefrontSourceScenario({ stored, search = '' } = {}) {
+  const values = new Map();
+  if (stored !== undefined) values.set('psych-sale-pulse-source', stored);
+  const events = [];
+  const sessionStorage = {
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) { values.set(key, String(value)); },
+    removeItem(key) { values.delete(key); },
+  };
+  const window = {
+    location: { pathname: '/', search },
+    addEventListener() {},
+  };
+  const document = { body: { dataset: {} } };
+  const fetch = async (_url, options) => {
+    events.push(JSON.parse(options.body));
+    return { ok: true };
+  };
+  runInNewContext(salePulseClient, {
+    Date,
+    JSON,
+    Number,
+    Object,
+    Promise,
+    Set,
+    String,
+    URLSearchParams,
+    document,
+    fetch,
+    sessionStorage,
+    window,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  return {
+    source: events[0]?.campaignSource,
+    stored: values.get('psych-sale-pulse-source'),
+  };
 }
 
 test('analytics migration is forward-only and creates the compact indexed schema', async () => {
@@ -119,6 +162,40 @@ test('campaign source normalization is conservative', () => {
   assert.equal(normalizeCampaignSource(null), 'direct');
 });
 
+test('campaign source uses direct when neither a stored source nor tag exists', async () => {
+  assert.deepEqual(await storefrontSourceScenario(), { source: 'direct', stored: 'direct' });
+});
+
+test('campaign source stores and uses a fresh explicit story tag', async () => {
+  assert.deepEqual(await storefrontSourceScenario({ search: '?src=story' }), {
+    source: 'story', stored: 'story',
+  });
+});
+
+test('explicit story overrides a stored direct source', async () => {
+  assert.deepEqual(await storefrontSourceScenario({ stored: 'direct', search: '?src=story' }), {
+    source: 'story', stored: 'story',
+  });
+});
+
+test('explicit jw-group overrides a stored story source', async () => {
+  assert.deepEqual(await storefrontSourceScenario({ stored: 'story', search: '?src=jw-group' }), {
+    source: 'jw-group', stored: 'jw-group',
+  });
+});
+
+test('stored story persists across an untagged navigation', async () => {
+  assert.deepEqual(await storefrontSourceScenario({ stored: 'story' }), {
+    source: 'story', stored: 'story',
+  });
+});
+
+test('an invalid explicit source cannot replace a valid stored source', async () => {
+  assert.deepEqual(await storefrontSourceScenario({ stored: 'story', search: '?src=facebook' }), {
+    source: 'story', stored: 'story',
+  });
+});
+
 test('anonymous cart UUID is one-way hashed and never passed raw to storage', async () => {
   const captured = [];
   const result = await recordAnalyticsEvent({
@@ -137,17 +214,36 @@ test('anonymous cart UUID is one-way hashed and never passed raw to storage', as
   assert.equal(captured[0].params[1], hashAnonymousSession(sessionId));
 });
 
-test('deduplication uses conservative event-specific windows and contextual equality', async () => {
+test('deduplication suppresses the same source but preserves a legitimate source transition', async () => {
   assert.equal(dedupeWindowFor('CATALOG_VISIT'), '30 minutes');
   assert.equal(dedupeWindowFor('PRODUCT_VIEW'), '15 minutes');
   assert.equal(dedupeWindowFor('ADD_TO_CART'), '5 minutes');
   let queryText = '';
-  await recordAnalyticsEvent({ sessionId, event: {
+  const seen = new Set();
+  const query = async (sql, params) => {
+    queryText = sql;
+    const key = JSON.stringify(params.slice(0, 6));
+    if (seen.has(key)) return { rows: [] };
+    seen.add(key);
+    return { rows: [{ event_id: seen.size }] };
+  };
+  const contextualEvent = {
     eventType: 'PRODUCT_VIEW', productId: 'product-1', category: 'Muebles',
     filters: { availability: 'IMMEDIATE' }, resultPosition: 2, resultCount: 9,
-  } }, { query: async (sql) => { queryText = sql; return { rows: [] }; } });
+    campaignSource: 'direct',
+  };
+  const first = await recordAnalyticsEvent({ sessionId, event: contextualEvent }, { query });
+  const duplicate = await recordAnalyticsEvent({ sessionId, event: contextualEvent }, { query });
+  const transitioned = await recordAnalyticsEvent({
+    sessionId,
+    event: { ...contextualEvent, campaignSource: 'story' },
+  }, { query });
+  assert.equal(first.accepted, true);
+  assert.equal(duplicate.accepted, false);
+  assert.equal(transitioned.accepted, true);
   assert.match(queryText, /NOT EXISTS/);
   assert.match(queryText, /anonymous_session_hash IS NOT DISTINCT FROM/);
+  assert.match(queryText, /campaign_source = \$4/);
   assert.match(queryText, /filter_context = \$6::jsonb/);
   assert.doesNotMatch(queryText, /search_term/);
 });
@@ -166,7 +262,49 @@ test('public ingest has no read route and rejects public add-to-cart writes', as
   assert.doesNotMatch(redirects, /\/api\/analytics\/(?:events|report|sale-pulse)/);
 });
 
-test('analytics failure never blocks a successful cart claim', async () => {
+test('explicit current UI context records one add-to-cart after a successful claim', async () => {
+  let recorded = 0;
+  let background;
+  const handler = claimHandler({
+    claimLease: async () => ({ items: { 'product-1': 1 }, expiresAt: now + 1000 }),
+    recordEvent: async ({ event: recordedEvent }) => {
+      recorded += 1;
+      assert.equal(recordedEvent.eventType, 'ADD_TO_CART');
+      assert.equal(recordedEvent.campaignSource, 'story');
+    },
+  });
+  const response = await handler(claimRequest({ campaignSource: 'story' }), {
+    waitUntil(promise) { background = promise; },
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).ok, true);
+  await background;
+  assert.equal(recorded, 1);
+});
+
+test('automatic legacy cart recovery claims succeed without add-to-cart tracking', async () => {
+  let recorded = 0;
+  const handler = claimHandler({
+    claimLease: async () => ({ items: { 'product-1': 1 }, expiresAt: now + 1000 }),
+    recordEvent: async () => { recorded += 1; },
+  });
+  const response = await handler(claimRequest());
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).ok, true);
+  assert.equal(recorded, 0);
+});
+
+test('a failed server claim records no add-to-cart event', async () => {
+  let recorded = 0;
+  const handler = claimHandler({
+    claimLease: async () => { throw Object.assign(new Error('reserved'), { status: 409 }); },
+    recordEvent: async () => { recorded += 1; },
+  });
+  assert.equal((await handler(claimRequest({ campaignSource: 'story' }))).status, 409);
+  assert.equal(recorded, 0);
+});
+
+test('analytics failure never blocks a successful explicit cart claim', async () => {
   let background;
   const handler = claimHandler({
     claimLease: async () => ({ items: { 'product-1': 1 }, expiresAt: now + 1000 }),
@@ -178,29 +316,6 @@ test('analytics failure never blocks a successful cart claim', async () => {
   assert.equal(response.status, 200);
   assert.equal((await response.json()).ok, true);
   await background;
-});
-
-test('add-to-cart is recorded only after a successful server claim', async () => {
-  let recorded = 0;
-  let background;
-  const success = claimHandler({
-    claimLease: async () => ({ items: { 'product-1': 1 }, expiresAt: now + 1000 }),
-    recordEvent: async ({ event: recordedEvent }) => {
-      recorded += 1;
-      assert.equal(recordedEvent.eventType, 'ADD_TO_CART');
-    },
-  });
-  const ok = await success(claimRequest(), { waitUntil(promise) { background = promise; } });
-  assert.equal(ok.status, 200);
-  await background;
-  assert.equal(recorded, 1);
-
-  const failure = claimHandler({
-    claimLease: async () => { throw Object.assign(new Error('reserved'), { status: 409 }); },
-    recordEvent: async () => { recorded += 1; },
-  });
-  assert.equal((await failure(claimRequest())).status, 409);
-  assert.equal(recorded, 1);
 });
 
 test('admin endpoint requires x-admin-token authorization before loading data', async () => {
