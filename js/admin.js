@@ -5245,7 +5245,16 @@ function renderAdminOrderDetail(
         body: JSON.stringify({ orderId: order.id, action, targetBuyerGroupId }),
       });
       ADMIN_STATE.buyerGroups = result.buyerGroups || ADMIN_STATE.buyerGroups;
-      const refreshed = await adminFetch(`/api/admin/order?id=${encodeURIComponent(order.id)}`);
+      const [refreshed, fulfillmentBatches] = await Promise.all([
+        adminFetch(`/api/admin/order?id=${encodeURIComponent(order.id)}`),
+        fetchFulfillmentBatches(),
+      ]);
+      ADMIN_STATE.fulfillmentBatches = fulfillmentBatches;
+      const printableCount = fulfillmentBatches.filter(
+        batch => !batch.mergedIntoBatchId && batch.items.length > 0
+      ).length;
+      const planillasBadge = document.querySelector('[data-admin-tab="buyer-sheets"] span');
+      if (planillasBadge) planillasBadge.textContent = String(printableCount);
       renderAdminOrderDetail(refreshed.order, target);
     } catch (error) {
       errorBox.textContent = error instanceof Error ? error.message : 'No se pudo actualizar el comprador.';

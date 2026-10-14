@@ -38,6 +38,17 @@ test('admin order detail separates fulfillment, money, grouping, pickup, and act
   assert.doesNotMatch(admin, /Disponible después de confirmar el pago total\./);
 });
 
+test('buyer regrouping surfaces backend protection errors and refreshes Planillas state', () => {
+  const start = admin.indexOf('const updateBuyerGroup = async');
+  const end = admin.indexOf("target.querySelector('[data-merge-buyer-group]')", start);
+  const body = admin.slice(start, end);
+  assert.match(body, /fetchFulfillmentBatches\(\)/);
+  assert.match(body, /ADMIN_STATE\.fulfillmentBatches = fulfillmentBatches/);
+  assert.ok(body.indexOf('fetchFulfillmentBatches()') < body.indexOf('renderAdminOrderDetail'));
+  assert.match(body, /errorBox\.textContent = error instanceof Error \? error\.message/);
+  assert.match(body, /errorBox\.hidden = false/);
+});
+
 test('planillas explain absent combine targets and preserve timing compatibility checks', () => {
   assert.match(admin, /candidate\.buyerGroupId === batch\.buyerGroupId/);
   assert.match(admin, /candidate\.timingKey === batch\.timingKey/);

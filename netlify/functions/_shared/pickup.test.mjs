@@ -89,6 +89,8 @@ test('mixed order exposes slots only for the eligible timing part', () => {
         pickupWindowStart: '2026-12-09', pickupWindowEnd: '2026-12-12' },
     ],
   });
+  assert.equal(pickupEligible(mixed), false);
+  assert.equal(pickupEligible(mixed, 'IMMEDIATE'), true);
   assert.ok(pickupSlotKeys(mixed, 'IMMEDIATE', '2026-10-01').length > 0);
   assert.deepEqual(pickupSlotKeys(mixed, 'DELAYED:2026-12-09:2026-12-12', '2026-10-01'), []);
 });

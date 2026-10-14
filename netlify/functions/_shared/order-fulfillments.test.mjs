@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { deriveOrderFulfillmentParts } from './order-fulfillments.mjs';
+import { timingKeyForItem } from './fulfillment-batches-core.mjs';
 
 const confirmed = (id, amountPYG, overrides = {}) => ({
   id, type: 'DEPOSIT', amountPYG, amountSource: 'ADMIN_VERIFIED', verifiedBy: 'ADMIN',
@@ -88,10 +89,32 @@ test('immediate-only, delayed-only, refunds, and multiple delayed windows stay d
   assert.equal(deriveOrderFulfillmentParts(multiple).length, 3);
 });
 
-test('legacy pickup migration preserves old any-delayed intent and changes the key safely', async () => {
+test('legacy pickup migration preserves old intent with runtime-identical timing normalization', async () => {
+  const fixtures = [
+    [{ saleMode: 'DELAYED', pickupWindowStart: '2026-12-09', pickupWindowEnd: '2026-12-12' },
+      'DELAYED:2026-12-09:2026-12-12'],
+    [{ saleMode: ' \tDELAYED\r\n', pickupWindowStart: ' 2026-12-09\t', pickupWindowEnd: '\r\n2026-12-12 ' },
+      'DELAYED:2026-12-09:2026-12-12'],
+    [{ saleMode: 'DELAYED', pickupWindowStart: '', pickupWindowEnd: ' \t\r\n' },
+      'DELAYED:UNSET:UNSET'],
+    [{ saleMode: 'DELAYED', pickupWindowStart: null, pickupWindowEnd: null },
+      'DELAYED:UNSET:UNSET'],
+    [{ saleMode: 7, pickupWindowStart: '2026-12-09', pickupWindowEnd: '2026-12-12' },
+      'IMMEDIATE'],
+    [{ saleMode: 'DELAYED', pickupWindowStart: 7, pickupWindowEnd: false },
+      'DELAYED:UNSET:UNSET'],
+  ];
+  for (const [item, expected] of fixtures) assert.equal(timingKeyForItem(item), expected);
+
   const sql = await readFile(new URL('../../database/migrations/20261010_pickup_fulfillment_parts.sql', import.meta.url), 'utf8');
   assert.match(sql, /WITH ORDINALITY/);
-  assert.match(sql, /upper\(btrim\(COALESCE\(item\.value->>'saleMode'/);
+  assert.match(sql, /jsonb_typeof\(item\.value->'saleMode'\) = 'string'/);
+  assert.match(sql, /jsonb_typeof\(item\.value->'pickupWindowStart'\) = 'string'/);
+  assert.match(sql, /jsonb_typeof\(item\.value->'pickupWindowEnd'\) = 'string'/);
+  assert.match(sql, /btrim\(item\.value->>'saleMode', E' \\t\\r\\n'\)/);
+  assert.match(sql, /btrim\(item\.value->>'pickupWindowStart', E' \\t\\r\\n'\)/);
+  assert.match(sql, /btrim\(item\.value->>'pickupWindowEnd', E' \\t\\r\\n'\)/);
+  assert.doesNotMatch(sql, /COALESCE\(item\.value->>'saleMode'/);
   assert.match(sql, /'DELAYED:' \|\|/);
   assert.match(sql, /COALESCE\(\(.*'IMMEDIATE'\)/s);
   assert.match(sql, /PRIMARY KEY \(order_id, timing_key\)/);

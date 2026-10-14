@@ -5,6 +5,8 @@ export const FULFILLMENT_STATUSES = Object.freeze([
   'LEGACY_FROZEN',
 ]);
 
+export const FULFILLMENT_LOCK = 202610060324;
+
 export function orderItems(orderSnapshot) {
   return Array.isArray(orderSnapshot?.items) ? orderSnapshot.items : [];
 }

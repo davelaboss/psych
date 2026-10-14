@@ -21,10 +21,9 @@ const appointmentJson = row => row ? {
 } : null;
 
 export function pickupEligible(order, timingKey) {
-  const part = timingKey
-    ? orderFulfillmentPart(order, timingKey)
-    : deriveOrderFulfillmentParts(order)[0];
-  return Boolean(part?.eligible);
+  if (timingKey) return Boolean(orderFulfillmentPart(order, timingKey)?.eligible);
+  const parts = deriveOrderFulfillmentParts(order);
+  return parts.length > 0 && parts.every(part => part.eligible);
 }
 
 export function pickupSlotKeys(order, timingKey, today = todayLocal()) {
