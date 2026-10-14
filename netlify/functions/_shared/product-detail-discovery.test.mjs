@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const source = readFileSync('js/site.js', 'utf8');
+const unifiedController = readFileSync('js/volume2-storefront.js', 'utf8');
 const styles = readFileSync('css/product-detail-discovery.css', 'utf8');
 
 function extractFunction(name, nextName) {
@@ -296,4 +297,28 @@ test('detail discovery waits for and consumes the authoritative catalog state', 
   assert.match(source, /Array\.isArray\(window\.__catalogProducts\)/);
   assert.match(source, /discoveryCatalog\.length/);
   assert.match(source, /setupProductDiscoveryKeyboard\(discoveryCatalog\.length \? discovery : null\)/);
+});
+
+test('an embedded product miss stays pending for authoritative route resolution', () => {
+  const bootSource = extractFunction('bootStaticStorefront', 'getEmbeddedProductBySlug');
+  const missStart = bootSource.indexOf('if (!product)');
+  const missEnd = bootSource.indexOf('renderProductDetail(product)', missStart);
+  const embeddedMiss = bootSource.slice(missStart, missEnd);
+
+  assert.notEqual(missStart, -1, 'embedded miss handling should exist');
+  assert.notEqual(missEnd, -1, 'embedded miss handling should precede static rendering');
+  assert.match(embeddedMiss, /return;/);
+  assert.doesNotMatch(embeddedMiss, /classList\.remove\(['"]product-route-pending['"]\)/);
+  assert.doesNotMatch(embeddedMiss, /No se encontró el producto|console\.error/);
+
+  assert.match(unifiedController, /const catalog = await fetchCatalog\(requestedSlug\)/);
+  assert.match(unifiedController, /state\.products\.find\(\(item\) => item\.slug === requestedSlug\)/);
+  assert.match(unifiedController, /else \{\s*renderUnavailableProductView\(\);\s*\}/);
+
+  const unavailableStart = unifiedController.indexOf('function renderUnavailableProductView');
+  const unavailableEnd = unifiedController.indexOf('function dedupe', unavailableStart);
+  const unavailableView = unifiedController.slice(unavailableStart, unavailableEnd);
+  assert.notEqual(unavailableStart, -1, 'unavailable view should exist');
+  assert.notEqual(unavailableEnd, -1, 'unavailable view should be bounded');
+  assert.match(unavailableView, /classList\.remove\(['"]product-route-pending['"]\)/);
 });

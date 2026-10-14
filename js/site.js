@@ -18,8 +18,8 @@ async function bootStaticStorefront() {
     const product = getEmbeddedProductBySlug(slug);
 
     if (!product) {
-      document.documentElement.classList.remove('product-route-pending');
-      console.error('No se encontró el producto:', slug);
+      // The unified catalog controller owns authoritative route resolution.
+      // Keep the homepage hidden until it renders the product or unavailable view.
       return;
     }
 
