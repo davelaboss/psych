@@ -78,8 +78,18 @@ test('review page exposes complete detail fields, sequential navigation, and loc
     groupId: '003',
     functionality: 'Works.',
     dimensions: '',
+    currentSellerAskingPrice: 750000,
+    suggestedAskingPrice: 650000,
+    referenceImages: ['/images/volume-4-pilot/reference.webp'],
     flags: ['dimensions: unknown'],
-  }], []);
+  }], [], {
+    storageKeys: {
+      edits: 'test-volume4-owner-edits-v3',
+      statuses: 'test-volume4-owner-statuses-v3',
+    },
+    edits: { 329: { title: 'Seeded owner title' } },
+    statuses: { 329: 'approved' },
+  });
 
   assert.match(html, /src="\.\.\/\.\.\/images\/volume-4-pilot\/two\.webp"/);
   for (const label of ['Item number', 'Title', 'Category', 'Price', 'Description', 'Condition', 'Defects', 'Functionality', 'Dimensions', 'Quantity', 'Pickup mode', 'Included accessories']) {
@@ -90,7 +100,20 @@ test('review page exposes complete detail fields, sequential navigation, and loc
   assert.match(html, /ArrowLeft/);
   assert.match(html, /ArrowRight/);
   assert.match(html, /Edit draft/);
+  assert.match(html, /id="edit-draft" class="edit-draft-button"/);
+  assert.match(html, /id="edit-draft-secondary" class="edit-draft-button secondary-edit"/);
+  assert.match(html, /querySelectorAll\('\.edit-draft-button'\)\.forEach\(button=>button\.onclick=showEdit\)/);
+  assert.match(html, /\.detail-left-column,\.detail-right-column\{display:flex;flex-direction:column;gap:18px/);
+  assert.match(html, /grid-template-areas:"details" "media" "pricing" "internal" "secondary-edit" "seller"/);
+  assert.match(html, /\.detail-left-column,\.detail-right-column\{display:contents\}/);
+  assert.match(html, /class="detail-left-column"[\s\S]*class="detail-media"[\s\S]*class="pricing-review"[\s\S]*class="detail-right-column"[\s\S]*class="field-list"[\s\S]*class="internal-review"[\s\S]*id="edit-draft-secondary"[\s\S]*class="seller-reference"/);
+  assert.match(html, /<h3>Pricing assistance — internal only<\/h3>/);
+  assert.match(html, /<h3>Internal review only<\/h3>/);
+  assert.match(html, /<summary>Private seller reference<\/summary>/);
   assert.match(html, /localStorage/);
+  assert.match(html, /test-volume4-owner-edits-v3/);
+  assert.match(html, /test-volume4-owner-statuses-v3/);
+  assert.match(html, /Seeded owner title/);
   assert.match(html, /does not update source files, admin, Blob, or production/);
   assert.match(html, /Nothing here is published automatically/);
   for (const status of ['Sin revisar', 'Falta información', 'Aprobado', 'Revisar de nuevo']) {
@@ -116,6 +139,17 @@ test('review page exposes complete detail fields, sequential navigation, and loc
   assert.match(html, /id="confirm-save"/);
   assert.match(html, /id="confirm-discard"/);
   assert.match(html, /id="confirm-cancel"/);
+  assert.match(html, /Public photo candidates/);
+  assert.match(html, /Use photo.*as main photo/);
+  assert.match(html, /Reference-only photos — context only; cannot be selected as the public cover/);
+  assert.match(html, /Suggested:.*money\(base\.suggestedAskingPrice\)/);
+  assert.match(html, /function editPriceFor/);
+  assert.match(html, /currentSellerAskingPrice:base\.currentSellerAskingPrice/);
+  assert.match(html, /function enterPhotoMode/);
+  assert.match(html, /function movePhoto/);
+  assert.match(html, /next<0\|\|next>=item\.images\.length/);
+  assert.match(html, /if\(photoMode\).*Escape.*exitPhotoMode\(\);return/s);
+  assert.match(html, /if\(!unsavedConfirm\.hidden\|\|!editPanel\.hidden\)return/);
   assert.match(html, /function savedDraft\(\)\{return editableDraft\(itemAt\(\)\)\}/);
   assert.match(html, /JSON\.stringify\(formDraft\(\)\)!==JSON\.stringify\(savedDraft\(\)\)/);
   assert.doesNotMatch(html, /editStartSnapshot/);
@@ -125,4 +159,10 @@ test('review page exposes complete detail fields, sequential navigation, and loc
   const embeddedScript = html.match(/<script>([\s\S]*)<\/script>/)?.[1];
   assert.ok(embeddedScript);
   assert.doesNotThrow(() => new vm.Script(embeddedScript));
+  const priceFunctionSource = html.match(/function editPriceFor\(base,saved\)\{[^}]+\}/)?.[0];
+  assert.ok(priceFunctionSource);
+  const editPriceFor = vm.runInNewContext(`(${priceFunctionSource.replace('function editPriceFor', 'function')})`);
+  assert.equal(editPriceFor({ currentSellerAskingPrice: null, price: null, suggestedAskingPrice: 650000 }, {}), 650000);
+  assert.equal(editPriceFor({ currentSellerAskingPrice: 750000, price: 750000, suggestedAskingPrice: 650000 }, {}), 750000);
+  assert.equal(editPriceFor({ currentSellerAskingPrice: 750000, price: 750000, suggestedAskingPrice: 650000 }, { price: 700000 }), 700000);
 });
