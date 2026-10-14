@@ -262,13 +262,19 @@ test('responsive styles provide four desktop cards and a narrow scroll-snap row 
   assert.doesNotMatch(styles, /width:\s*100vw/);
 });
 
-test('first render reserves the final two-slot navigation geometry and divider', () => {
+test('first render reserves the final two-slot navigation geometry without clipping text', () => {
   assert.match(source, /product-sequence-navigation\$\{discoveryCatalog\.length \? '' : ' is-pending'\}/);
   assert.match(source, /product-sequence-slot previous/);
   assert.match(source, /product-sequence-slot next/);
   assert.match(source, /product-sequence-divider/);
-  assert.match(styles, /\.product-sequence-navigation\s*\{[^}]*height:\s*94px/s);
-  assert.match(styles, /\.product-sequence-slot\s*\{[^}]*height:\s*72px/s);
+  assert.match(styles, /\.product-sequence-navigation\s*\{[^}]*min-height:\s*94px/s);
+  assert.match(styles, /\.product-sequence-slot\s*\{[^}]*min-height:\s*72px/s);
+  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*?\.product-sequence-navigation\s*\{[^}]*min-height:\s*98px/s);
+  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*?\.product-sequence-slot\s*\{[^}]*min-height:\s*78px/s);
+  assert.match(styles, /\.product-sequence-link > strong\s*\{[^}]*line-height:\s*1\.3/s);
+  assert.match(styles, /\.product-sequence-link > span\s*\{[^}]*line-height:\s*1\.4/s);
+  assert.doesNotMatch(styles, /\.product-sequence-navigation\s*\{[^}]*\n\s*height:\s*(?:94|98)px/s);
+  assert.doesNotMatch(styles, /\.product-sequence-slot\s*\{[^}]*\n\s*height:\s*(?:72|78)px/s);
 });
 
 test('related carousel has accessible paging controls and a catalog escape hatch', () => {
