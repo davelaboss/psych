@@ -419,7 +419,7 @@
       "defects": "Desgaste por uso normal.",
       "functionality": "Funciona bien",
       "dimensions": "35 cm",
-      "quantity": 2,
+      "quantity": 1,
       "pickupMode": "IMMEDIATE",
       "includedAccessories": [],
       "coverIndex": 0
@@ -749,7 +749,7 @@
       "defects": "",
       "functionality": "Funciona muy bien",
       "dimensions": "",
-      "quantity": 2,
+      "quantity": 1,
       "pickupMode": "IMMEDIATE",
       "includedAccessories": [],
       "coverIndex": 0
@@ -2205,7 +2205,7 @@
       "defects": "Desgaste por uso normal.",
       "functionality": "Funciona muy bien",
       "dimensions": "26 cm de diámetro",
-      "quantity": 2,
+      "quantity": 1,
       "pickupMode": "IMMEDIATE",
       "includedAccessories": [],
       "coverIndex": 0
@@ -2219,7 +2219,7 @@
       "defects": "Desgaste por uso normal.",
       "functionality": "Funciona muy bien",
       "dimensions": "26 cm de diámetro",
-      "quantity": 5,
+      "quantity": 1,
       "pickupMode": "IMMEDIATE",
       "includedAccessories": [],
       "coverIndex": 0
@@ -2233,7 +2233,7 @@
       "defects": "Desgaste por uso normal.",
       "functionality": "Funciona muy bien",
       "dimensions": "",
-      "quantity": 6,
+      "quantity": 1,
       "pickupMode": "IMMEDIATE",
       "includedAccessories": [],
       "coverIndex": 0
@@ -2247,7 +2247,7 @@
       "defects": "Desgaste por uso normal.",
       "functionality": "Funciona muy bien",
       "dimensions": "",
-      "quantity": 4,
+      "quantity": 1,
       "pickupMode": "IMMEDIATE",
       "includedAccessories": [],
       "coverIndex": 0
@@ -2261,7 +2261,7 @@
       "defects": "Desgaste por uso normal.",
       "functionality": "Funciona muy bien",
       "dimensions": "",
-      "quantity": 4,
+      "quantity": 1,
       "pickupMode": "IMMEDIATE",
       "includedAccessories": [],
       "coverIndex": 0
@@ -2303,7 +2303,7 @@
       "defects": "Desgaste por uso normal.",
       "functionality": "Funciona muy bien",
       "dimensions": "",
-      "quantity": 2,
+      "quantity": 1,
       "pickupMode": "IMMEDIATE",
       "includedAccessories": [],
       "coverIndex": 0
@@ -2345,7 +2345,7 @@
       "defects": "Desgaste por uso normal.",
       "functionality": "Funciona muy bien",
       "dimensions": "Pequeños: 17 cm de diámetro; medianos: 21,5 cm de diámetro",
-      "quantity": 6,
+      "quantity": 1,
       "pickupMode": "IMMEDIATE",
       "includedAccessories": [],
       "coverIndex": 0
@@ -2698,5 +2698,5 @@
     "506": "approved",
     "508": "approved"
   },
-  "latestOwnerDecision": "Authoritative final owner state reconciled to 175 approved products before mechanical production-style copy normalization."
+  "latestOwnerDecision": "Authoritative final owner state reconciled to 175 approved products. Quantity records count separately purchasable sellable units; physical pieces inside a bundle remain documented in the product copy."
 }
