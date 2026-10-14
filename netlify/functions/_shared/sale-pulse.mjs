@@ -17,6 +17,25 @@ const PUBLIC_EVENT_TYPES = new Set(ANALYTICS_EVENT_TYPES.filter((type) => type !
 const EVENT_TYPES = new Set(ANALYTICS_EVENT_TYPES);
 const CAMPAIGN_SOURCES = new Set(['story', 'jw-group', 'direct']);
 const FILTER_KEYS = new Set(['availability', 'condition', 'maxPrice', 'sort']);
+const CATEGORIES = new Set([
+  'Muebles',
+  'Oficina',
+  'Electrodomésticos',
+  'Accesorios personales',
+  'Decoración',
+  'Hogar',
+  'Jardín',
+  'Electrónica',
+  'Cocina',
+  'Herramientas',
+  'Manualidades',
+]);
+const FILTER_VALUES = Object.freeze({
+  availability: new Set(['IMMEDIATE', 'DELAYED', 'REDUCED']),
+  condition: new Set(['EXCELLENT', 'VERY_GOOD', 'GOOD', 'DETAILS']),
+  maxPrice: new Set(['500000', '1000000', '2000000', '3000000']),
+  sort: new Set(['price-asc', 'price-desc', 'newest', 'reduced']),
+});
 const PAYMENTS_REQUIRING_ATTENTION = new Set([
   'AWAITING_INITIAL_PAYMENT',
   'RECEIPT_RECEIVED',
@@ -41,13 +60,6 @@ function optionalInteger(value, label, minimum, maximum) {
     throw invalid(`${label} no es válido.`);
   }
   return value;
-}
-
-function privacySafeSearchTerm(value) {
-  if (!value) return value;
-  const looksLikeEmail = /\b[^\s@]+@[^\s@]+\.[^\s@]+\b/.test(value);
-  const looksLikePhone = /(?:\+?\d[\s().-]*){7,}/.test(value);
-  return looksLikeEmail || looksLikePhone ? '[redacted]' : value;
 }
 
 export function normalizeCampaignSource(value) {
@@ -94,9 +106,11 @@ export function validateAnalyticsEvent(input, { allowAddToCart = false } = {}) {
   }
 
   const category = optionalText(input.category, 'La categoría', 80);
-  const searchTerm = privacySafeSearchTerm(optionalText(input.searchTerm, 'La búsqueda', 120));
+  const submittedSearchTerm = optionalText(input.searchTerm, 'La búsqueda', 120);
+  const searchTerm = null;
+  if (category && !CATEGORIES.has(category)) throw invalid('La categoría no es válida.');
   if (eventType === 'CATEGORY_SELECT' && !category) throw invalid('Falta la categoría seleccionada.');
-  if (eventType === 'SEARCH' && !searchTerm) throw invalid('Falta la búsqueda.');
+  if (eventType === 'SEARCH' && !submittedSearchTerm) throw invalid('Falta la búsqueda.');
 
   let filters = {};
   if (input.filters != null) {
@@ -104,10 +118,11 @@ export function validateAnalyticsEvent(input, { allowAddToCart = false } = {}) {
       throw invalid('Los filtros no son válidos.');
     }
     for (const [key, value] of Object.entries(input.filters)) {
-      if (!FILTER_KEYS.has(key) || typeof value !== 'string' || !value.trim() || value.length > 50) {
+      const normalizedValue = typeof value === 'string' ? value.trim() : '';
+      if (!FILTER_KEYS.has(key) || !FILTER_VALUES[key]?.has(normalizedValue)) {
         throw invalid('Los filtros no son válidos.');
       }
-      filters[key] = value.trim();
+      filters[key] = normalizedValue;
     }
   }
   if (eventType === 'FILTER_APPLY' && !Object.keys(filters).length) {
@@ -145,18 +160,17 @@ export async function recordAnalyticsEvent({ sessionId, event }, dependencies = 
   const { rows } = await query(`
     INSERT INTO sale_analytics_events (
       event_type,anonymous_session_hash,product_id,campaign_source,category,
-      search_term,filter_context,result_position,result_count
+      filter_context,result_position,result_count
     )
-    SELECT $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9
+    SELECT $1,$2,$3,$4,$5,$6::jsonb,$7,$8
     WHERE NOT EXISTS (
       SELECT 1 FROM sale_analytics_events existing
-      WHERE existing.occurred_at >= clock_timestamp() - $10::interval
+      WHERE existing.occurred_at >= clock_timestamp() - $9::interval
         AND existing.event_type = $1
         AND existing.anonymous_session_hash IS NOT DISTINCT FROM $2
         AND existing.product_id IS NOT DISTINCT FROM $3
         AND existing.category IS NOT DISTINCT FROM $5
-        AND existing.search_term IS NOT DISTINCT FROM $6
-        AND existing.filter_context = $7::jsonb
+        AND existing.filter_context = $6::jsonb
     )
     RETURNING event_id,occurred_at
   `, [
@@ -165,7 +179,6 @@ export async function recordAnalyticsEvent({ sessionId, event }, dependencies = 
     normalized.productId,
     normalized.campaignSource,
     normalized.category,
-    normalized.searchTerm,
     JSON.stringify(normalized.filters),
     normalized.resultPosition,
     normalized.resultCount,

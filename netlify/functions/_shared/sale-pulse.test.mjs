@@ -98,12 +98,18 @@ test('malformed payloads and arbitrary fields are rejected', () => {
   ]) assert.throws(() => validateAnalyticsEvent(payload));
 });
 
-test('search analytics redact likely email addresses and phone numbers', () => {
-  assert.equal(validateAnalyticsEvent({ eventType: 'SEARCH', searchTerm: 'mesa' }).searchTerm, 'mesa');
-  assert.equal(validateAnalyticsEvent({ eventType: 'SEARCH', searchTerm: 'cliente@example.com' }).searchTerm,
-    '[redacted]');
-  assert.equal(validateAnalyticsEvent({ eventType: 'SEARCH', searchTerm: '+595 981 123 456' }).searchTerm,
-    '[redacted]');
+test('search analytics never retain free text and controlled context is allowlisted', () => {
+  assert.equal(validateAnalyticsEvent({ eventType: 'SEARCH', searchTerm: 'mesa' }).searchTerm, null);
+  assert.equal(validateAnalyticsEvent({ eventType: 'SEARCH', searchTerm: 'cliente@example.com' }).searchTerm, null);
+  assert.equal(validateAnalyticsEvent({ eventType: 'SEARCH', searchTerm: '+595 981 123 456' }).searchTerm, null);
+  assert.equal(validateAnalyticsEvent({ eventType: 'CATEGORY_SELECT', category: 'Muebles' }).category, 'Muebles');
+  assert.throws(() => validateAnalyticsEvent({ eventType: 'CATEGORY_SELECT', category: 'Nombre de persona' }));
+  assert.deepEqual(validateAnalyticsEvent({
+    eventType: 'FILTER_APPLY', filters: { availability: 'IMMEDIATE', maxPrice: '500000' },
+  }).filters, { availability: 'IMMEDIATE', maxPrice: '500000' });
+  assert.throws(() => validateAnalyticsEvent({
+    eventType: 'FILTER_APPLY', filters: { availability: 'cliente@example.com' },
+  }));
 });
 
 test('campaign source normalization is conservative', () => {
@@ -142,7 +148,8 @@ test('deduplication uses conservative event-specific windows and contextual equa
   } }, { query: async (sql) => { queryText = sql; return { rows: [] }; } });
   assert.match(queryText, /NOT EXISTS/);
   assert.match(queryText, /anonymous_session_hash IS NOT DISTINCT FROM/);
-  assert.match(queryText, /filter_context = \$7::jsonb/);
+  assert.match(queryText, /filter_context = \$6::jsonb/);
+  assert.doesNotMatch(queryText, /search_term/);
 });
 
 test('public ingest has no read route and rejects public add-to-cart writes', async () => {
@@ -297,6 +304,7 @@ test('storefront records direct and contextual product views plus deliberate cat
   const storefront = await readFile(new URL('../../../js/volume2-storefront.js', import.meta.url), 'utf8');
   const site = await readFile(new URL('../../../js/site.js', import.meta.url), 'utf8');
   assert.match(tracker, /discoveryFor\(product\)/);
+  assert.match(tracker, /trackedProductViews\.has\(product\.id\)/);
   assert.match(tracker, /track\('PRODUCT_VIEW'/);
   assert.match(site, /dataset\.salePulseProductId/);
   assert.match(storefront, /salePulseRememberProductDiscovery/);
@@ -312,4 +320,5 @@ test('source-tagged landing parameters are read without modifying routing or URL
   assert.match(tracker, /URLSearchParams\(window\.location\.search\)\.get\('src'\)/);
   assert.doesNotMatch(tracker, /history\.(?:pushState|replaceState)|location\.search\s*=/);
   assert.match(tracker, /sessionStorage\.setItem\(SOURCE_KEY/);
+  assert.match(tracker, /try \{[\s\S]{0,100}sessionStorage\.getItem\(SOURCE_KEY\)/);
 });

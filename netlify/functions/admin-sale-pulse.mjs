@@ -19,7 +19,6 @@ function eventRow(row) {
     productId: row.product_id,
     campaignSource: row.campaign_source,
     category: row.category,
-    searchTerm: row.search_term,
     filters: row.filter_context,
     resultPosition: row.result_position == null ? null : Number(row.result_position),
     resultCount: row.result_count == null ? null : Number(row.result_count),
@@ -66,7 +65,7 @@ export async function loadSalePulseSnapshot(origin, dependencies = {}) {
   const [trackingResult, eventResult, orderResult, appointmentResult, fulfillmentResult, products] = await Promise.all([
     query('SELECT min(occurred_at) AS tracking_started_at FROM sale_analytics_events'),
     query(`SELECT occurred_at,event_type,anonymous_session_hash,product_id,campaign_source,
-        category,search_term,filter_context,result_position,result_count
+        category,filter_context,result_position,result_count
       FROM sale_analytics_events
       WHERE occurred_at >= clock_timestamp() - interval '7 days'
       ORDER BY occurred_at,event_id`),

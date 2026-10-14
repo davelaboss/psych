@@ -4,14 +4,20 @@
   const DISCOVERY_KEY = 'psych-sale-pulse-discovery';
   const ALLOWED_SOURCES = new Set(['story', 'jw-group']);
   let currentProductContext = null;
+  const trackedProductViews = new Set();
 
   function sourceForSession() {
-    const stored = sessionStorage.getItem(SOURCE_KEY);
+    let stored = '';
+    try {
+      stored = sessionStorage.getItem(SOURCE_KEY) || '';
+    } catch {}
     if (stored) return ALLOWED_SOURCES.has(stored) ? stored : 'direct';
     const requested = String(new URLSearchParams(window.location.search).get('src') || '')
       .trim().toLowerCase();
     const source = ALLOWED_SOURCES.has(requested) ? requested : 'direct';
-    sessionStorage.setItem(SOURCE_KEY, source);
+    try {
+      sessionStorage.setItem(SOURCE_KEY, source);
+    } catch {}
     return source;
   }
 
@@ -72,6 +78,8 @@
 
   function trackProductView(product) {
     if (!product?.id) return;
+    if (trackedProductViews.has(product.id)) return;
+    trackedProductViews.add(product.id);
     const context = discoveryFor(product);
     currentProductContext = { productId: product.id, ...context };
     void track('PRODUCT_VIEW', { productId: product.id, ...context });
