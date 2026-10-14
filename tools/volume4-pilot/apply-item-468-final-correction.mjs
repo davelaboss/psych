@@ -150,7 +150,7 @@ if (!payload.validation.item468Photo3RotatedCounterclockwise
   throw new Error('Item 468 final correction validation failed.');
 }
 
-await writeBatchModule(batchPath, payload.products);
+await writeBatchModule(batchPath, payload.products, ownerState);
 await writeFile(statePath, JSON.stringify(ownerState, null, 2), 'utf8');
 await writeFile(reportPath, JSON.stringify(payload, null, 2), 'utf8');
 await writeReports(reportDir, payload);

@@ -189,7 +189,7 @@ payload.validation.ownerConfirmedItem389 = item389.asking === 20_000
   && review389.currentSellerAskingPrice === 20_000
   && review389.functionality === 'Funciona bien';
 
-await writeBatchModule(batchPath, payload.products);
+await writeBatchModule(batchPath, payload.products, ownerState);
 await writeFile(statePath, JSON.stringify(ownerState, null, 2), 'utf8');
 await writeFile(handoffPath, JSON.stringify(payload.productionHandoff, null, 2), 'utf8');
 await writeFile(reportPath, JSON.stringify(payload, null, 2), 'utf8');

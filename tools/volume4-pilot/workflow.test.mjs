@@ -5,7 +5,29 @@ import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 import sharp from 'sharp';
-import { createDraft, optimizeGroups, parseGroupedNotes, reviewHtml } from './workflow.mjs';
+import {
+  createDraft, optimizeGroups, parseGroupedNotes, preserveReviewFields, reviewHtml,
+} from './workflow.mjs';
+
+test('batch projection preserves review dimensions and functionality exactly', () => {
+  const products = [{ itemNumber: 333, title: 'Vaso térmico' }];
+  const ownerReviewState = {
+    edits: {
+      333: {
+        dimensions: '19 cm de alto',
+        functionality: 'Funciona bien',
+      },
+    },
+  };
+
+  assert.deepEqual(preserveReviewFields(products, ownerReviewState), [{
+    itemNumber: 333,
+    title: 'Vaso térmico',
+    measurements: '19 cm de alto',
+    functionality: 'Funciona bien',
+  }]);
+  assert.equal(Object.hasOwn(products[0], 'measurements'), false);
+});
 
 test('group parser supports multiple photos, labels, and ordinary free-form notes', () => {
   const groups = parseGroupedNotes(`GROUP 012\n\nPhotos:\na.jpg\nb.jpg\n\nName: Blender\nPrice: 120000\n\nNotes:\nWorks correctly.\nOrdinary free-form line.`);

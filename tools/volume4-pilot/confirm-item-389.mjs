@@ -125,7 +125,7 @@ if (!payload.validation.ownerConfirmedItem389 || !payload.validation.zeroOutstan
   throw new Error('Item 389 owner confirmation was not applied completely.');
 }
 
-await writeBatchModule(batchPath, payload.products);
+await writeBatchModule(batchPath, payload.products, ownerState);
 await writeFile(statePath, JSON.stringify(ownerState, null, 2), 'utf8');
 await writeFile(reportPath, JSON.stringify(payload, null, 2), 'utf8');
 await writeReports(reportDir, payload);

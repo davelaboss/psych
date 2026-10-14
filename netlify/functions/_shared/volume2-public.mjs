@@ -249,12 +249,14 @@ function publicProduct(item) {
     tags: [
       item.category.toLowerCase(),
       'venta de mudanza',
-      item.itemNumber >= 169
-        ? 'volumen 3'
-        : item.itemNumber >= 58 &&
+      item.itemNumber >= 327
+        ? 'volumen 4'
+        : item.itemNumber >= 169
+          ? 'volumen 3'
+          : item.itemNumber >= 58 &&
           item.itemNumber <= 158
-          ? 'volumen 2'
-          : 'complementos',
+            ? 'volumen 2'
+            : 'complementos',
     ],
     description:
       cleanDescription(item),

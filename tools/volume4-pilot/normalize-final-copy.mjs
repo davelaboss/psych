@@ -306,7 +306,7 @@ if (!payload.validation.allNeedsReview || payload.validation.publicProjection !=
   throw new Error('Final local publication/review safeguards failed.');
 }
 
-await writeBatchModule(batchPath, payload.products);
+await writeBatchModule(batchPath, payload.products, ownerState);
 await writeFile(statePath, JSON.stringify(ownerState, null, 2), 'utf8');
 await writeFile(reportPath, JSON.stringify(payload, null, 2), 'utf8');
 await writeReports(reportDir, payload);

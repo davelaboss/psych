@@ -39,7 +39,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": true,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "60 × 165,5 × 66 cm",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-328",
@@ -70,7 +72,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-329",
@@ -97,7 +101,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-330",
@@ -124,7 +130,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-331",
@@ -152,7 +160,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-332",
@@ -180,7 +190,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "19,5 × 19,5 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-333",
@@ -207,7 +219,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "19 cm de alto",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-334",
@@ -237,7 +251,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-335",
@@ -267,7 +283,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "36 cm de alto × 22 cm de diámetro",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-336",
@@ -307,7 +325,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-337",
@@ -335,7 +355,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-338",
@@ -363,7 +385,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-339",
@@ -390,7 +414,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-340",
@@ -418,7 +444,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "29 cm × 29 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-341",
@@ -449,7 +477,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-343",
@@ -483,7 +513,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-344",
@@ -513,7 +545,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "35 × 24 × 7 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-345",
@@ -542,7 +576,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "22 cm de diámetro",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-346",
@@ -571,7 +607,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "18 cm de diámetro",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-347",
@@ -602,7 +640,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "22 cm de diámetro",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-348",
@@ -633,7 +673,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "22 cm de diámetro",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-349",
@@ -664,7 +706,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-350",
@@ -692,7 +736,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "15 × 27 × 7 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-351",
@@ -720,7 +766,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "27 cm de diámetro × 14 cm de profundidad",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-352",
@@ -750,7 +798,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "21 cm de diámetro",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-353",
@@ -777,7 +827,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-354",
@@ -804,7 +856,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "35 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-355",
@@ -831,7 +885,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "33 × 21 × 26 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-356",
@@ -858,7 +914,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "36 × 36 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-357",
@@ -885,7 +943,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-358",
@@ -912,7 +972,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-359",
@@ -940,7 +1002,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-360",
@@ -967,7 +1031,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "37 × 47 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-361",
@@ -997,7 +1063,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-362",
@@ -1027,7 +1095,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "16 × 27 × 16 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-363",
@@ -1056,7 +1126,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "Pedestal: 58 cm de alto; fuente: 29 cm de ancho × 55 cm de alto",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-364",
@@ -1087,7 +1159,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-365",
@@ -1114,7 +1188,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-366",
@@ -1141,7 +1217,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-367",
@@ -1169,7 +1247,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-368",
@@ -1197,7 +1277,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-369",
@@ -1227,7 +1309,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-370",
@@ -1255,7 +1339,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-371",
@@ -1283,7 +1369,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-372",
@@ -1310,7 +1398,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-373",
@@ -1337,7 +1427,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-374",
@@ -1364,7 +1456,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-375",
@@ -1392,7 +1486,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-376",
@@ -1419,7 +1515,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-377",
@@ -1446,7 +1544,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-378",
@@ -1474,7 +1574,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-379",
@@ -1502,7 +1604,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-380",
@@ -1530,7 +1634,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-381",
@@ -1559,7 +1665,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-382",
@@ -1591,7 +1699,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-383",
@@ -1619,7 +1729,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": ""
   },
   {
     "id": "real-202610-volume4-384",
@@ -1647,7 +1759,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-385",
@@ -1674,7 +1788,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-386",
@@ -1702,7 +1818,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-387",
@@ -1729,7 +1847,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-388",
@@ -1757,7 +1877,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-389",
@@ -1784,7 +1906,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-390",
@@ -1812,7 +1936,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-391",
@@ -1840,7 +1966,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-392",
@@ -1867,7 +1995,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-393",
@@ -1895,7 +2025,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-394",
@@ -1922,7 +2054,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-395",
@@ -1949,7 +2083,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "55 a 98 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-396",
@@ -1976,7 +2112,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "65 a 126 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-397",
@@ -2003,7 +2141,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "155 a 210 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-398",
@@ -2030,7 +2170,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "155 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-399",
@@ -2057,7 +2199,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "148 a 255 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-400",
@@ -2084,7 +2228,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "148 a 255 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-401",
@@ -2112,7 +2258,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "67 a 126 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-402",
@@ -2139,7 +2287,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "Aproximadamente 4 m",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-403",
@@ -2167,7 +2317,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-404",
@@ -2194,7 +2346,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "204 × 70 × 32–42 cm (alto × ancho × profundidad); base: 83 cm de alto; sección media: 50 cm de alto; sección superior: 67 cm de alto",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-405",
@@ -2223,7 +2377,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-406",
@@ -2250,7 +2406,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "268 × 180 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-407",
@@ -2277,7 +2435,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-408",
@@ -2304,7 +2464,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-409",
@@ -2331,7 +2493,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-410",
@@ -2358,7 +2522,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-411",
@@ -2387,7 +2553,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "48 × 29 × 18 cm (largo × ancho × profundidad)",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-412",
@@ -2415,7 +2583,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "20 × 29 × 6 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-413",
@@ -2443,7 +2613,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "99 × 191 × 22 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-414",
@@ -2470,7 +2642,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "74 × 78 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-415",
@@ -2497,7 +2671,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "181 × 100 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-416",
@@ -2524,7 +2700,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "96 × 148 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-417",
@@ -2551,7 +2729,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "57 × 167 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-418",
@@ -2580,7 +2760,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-419",
@@ -2609,7 +2791,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-421",
@@ -2637,7 +2821,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-422",
@@ -2667,7 +2853,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-423",
@@ -2698,7 +2886,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
     "dateListed": "2026-10-11",
-    "intendedPublicationStatus": "SOLD"
+    "intendedPublicationStatus": "SOLD",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-424",
@@ -2728,7 +2918,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "36 cm de ancho × 36 cm de alto × 23 cm de profundidad",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-425",
@@ -2756,7 +2948,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-426",
@@ -2787,7 +2981,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-427",
@@ -2815,7 +3011,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "14 cm de alto",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-428",
@@ -2842,7 +3040,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "54 × 36 cm",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-429",
@@ -2871,7 +3071,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-430",
@@ -2898,7 +3100,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-431",
@@ -2925,7 +3129,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-432",
@@ -2952,7 +3158,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-433",
@@ -2979,7 +3187,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-434",
@@ -3006,7 +3216,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "3 m",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-435",
@@ -3033,7 +3245,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-436",
@@ -3062,7 +3276,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-438",
@@ -3090,7 +3306,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-439",
@@ -3118,7 +3336,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-440",
@@ -3145,7 +3365,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-441",
@@ -3176,7 +3398,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-443",
@@ -3203,7 +3427,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "cama matrimonial",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-445",
@@ -3231,7 +3457,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-446",
@@ -3259,7 +3487,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-447",
@@ -3288,7 +3518,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-448",
@@ -3316,7 +3548,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-449",
@@ -3343,7 +3577,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "6,3 mm de ancho × 6 m de largo",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-450",
@@ -3371,7 +3607,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-451",
@@ -3400,7 +3638,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-452",
@@ -3427,7 +3667,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-453",
@@ -3455,7 +3697,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-454",
@@ -3483,7 +3727,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "48 × 29 × 18 cm (largo × ancho × profundidad)",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-455",
@@ -3511,7 +3757,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-456",
@@ -3540,7 +3788,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "33 × 24 cm (largo × alto)",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-457",
@@ -3567,7 +3817,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-458",
@@ -3594,7 +3846,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-459",
@@ -3621,7 +3875,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-460",
@@ -3648,7 +3904,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-461",
@@ -3675,7 +3933,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-462",
@@ -3702,7 +3962,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-463",
@@ -3729,7 +3991,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-464",
@@ -3756,7 +4020,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-465",
@@ -3783,7 +4049,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-466",
@@ -3811,7 +4079,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-467",
@@ -3838,7 +4108,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-468",
@@ -3868,7 +4140,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-470",
@@ -3895,7 +4169,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-471",
@@ -3922,7 +4198,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-472",
@@ -3949,7 +4227,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-473",
@@ -3976,7 +4256,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-474",
@@ -4003,7 +4285,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-475",
@@ -4040,7 +4324,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": true,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-476",
@@ -4067,7 +4353,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "34 cm de diámetro",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-477",
@@ -4094,7 +4382,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "28 cm de diámetro",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-478",
@@ -4121,7 +4411,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "22 cm de diámetro",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-479",
@@ -4149,7 +4441,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-480",
@@ -4177,7 +4471,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-481",
@@ -4207,7 +4503,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-482",
@@ -4235,7 +4533,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-483",
@@ -4263,7 +4563,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-484",
@@ -4291,7 +4593,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-485",
@@ -4318,7 +4622,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "26 cm de diámetro",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-486",
@@ -4345,7 +4651,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "26 cm de diámetro",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-487",
@@ -4372,7 +4680,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-488",
@@ -4399,7 +4709,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-489",
@@ -4426,7 +4738,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-490",
@@ -4454,7 +4768,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-491",
@@ -4482,7 +4798,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-492",
@@ -4509,7 +4827,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-493",
@@ -4536,7 +4856,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-494",
@@ -4563,7 +4885,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-495",
@@ -4590,7 +4914,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "Pequeños: 17 cm de diámetro; medianos: 21,5 cm de diámetro",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-496",
@@ -4618,7 +4944,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "40 × 27 × 23 cm",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-497",
@@ -4646,7 +4974,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "25 × 17 × 23,8 cm (23,8 cm de alto)",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-498",
@@ -4673,7 +5003,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-499",
@@ -4700,7 +5032,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-500",
@@ -4727,7 +5061,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-501",
@@ -4755,7 +5091,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-502",
@@ -4783,7 +5121,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-503",
@@ -4810,7 +5150,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-504",
@@ -4839,7 +5181,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona bien"
   },
   {
     "id": "real-202610-volume4-505",
@@ -4867,7 +5211,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-506",
@@ -4895,7 +5241,9 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   },
   {
     "id": "real-202610-volume4-508",
@@ -4922,6 +5270,8 @@ export const VOLUME4_ITEMS = Object.freeze([
     "needsReview": true,
     "requiresVehicle": false,
     "requiresLoadingHelp": false,
-    "dateListed": "2026-10-11"
+    "dateListed": "2026-10-11",
+    "measurements": "",
+    "functionality": "Funciona muy bien"
   }
 ]);

@@ -474,7 +474,7 @@ payload.validation.item468OriginalPreserved = (await stat(path.join(root, rotate
 payload.validation.item468FullGalleryPreserved = productByItem.get(468).photos.length === 4
   && reviewByItem.get(468).sourcePhotos.length === 4;
 
-await writeBatchModule(batchPath, activeProducts);
+await writeBatchModule(batchPath, activeProducts, finalOwnerReviewState);
 await writeFile(finalStatePath, JSON.stringify(finalOwnerReviewState, null, 2), 'utf8');
 await writeFile(path.join(root, 'volume4/production-handoff.json'), JSON.stringify(payload.productionHandoff, null, 2), 'utf8');
 await writeFile(reportPath, JSON.stringify(payload, null, 2), 'utf8');
