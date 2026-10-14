@@ -1,5 +1,5 @@
 import { adminAuthorized, jsonResponse } from './_shared/commerce.mjs';
-import { changePickup, getPickupAppointment, listUpcomingPickups, pickupAvailability } from './_shared/pickup.mjs';
+import { changePickup, listUpcomingPickups, pickupFulfillments } from './_shared/pickup.mjs';
 import { getOrder } from './_shared/commerce.mjs';
 import { dispatchSellerNotificationsSafely } from './_shared/seller-notifications.mjs';
 
@@ -13,11 +13,12 @@ export default async function handler(request) {
     const order = await getOrder(orderId);
     if (!order) return jsonResponse({ error: 'Pedido no encontrado.' }, 404);
     if (request.method === 'POST') {
-      await changePickup({ orderId, slotKey: params.slotKey || null, actor: 'ADMIN' });
+      const timingKey = String(params.timingKey || '').trim();
+      if (!timingKey) return jsonResponse({ error: 'Falta el tipo de retiro.' }, 400);
+      await changePickup({ orderId, timingKey, slotKey: params.slotKey || null, actor: 'ADMIN' });
       await dispatchSellerNotificationsSafely();
     }
-    const appointment = await getPickupAppointment(orderId);
-    return jsonResponse({ ok: true, appointment, slots: await pickupAvailability(order, appointment) });
+    return jsonResponse({ ok: true, fulfillments: await pickupFulfillments(order) });
   } catch (error) {
     if (!error.status) console.error('Admin pickup failed', { code: error.code || 'unknown' });
     return jsonResponse({ error: error.status ? error.message : 'No se pudo actualizar el retiro.' }, error.status || 500);

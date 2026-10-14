@@ -1,4 +1,5 @@
 import { orderAccessToken } from './order-access.mjs';
+import { deriveOrderFulfillmentParts } from './order-fulfillments.mjs';
 
 async function database() {
   const module = await import('./inventory-database.mjs');
@@ -77,20 +78,23 @@ export function customerNotification({ order, type, details = {}, privateOrderLi
       }
       const depositJustSatisfied = Number(details.previousConfirmedPaidPYG || 0) <
         Number(order.totals?.dueNowPYG || 0);
+      const immediateReady = deriveOrderFulfillmentParts(order)
+        .some(part => part.timingKey === 'IMMEDIATE' && part.eligible);
       return depositJustSatisfied
         ? { subject: `Seña confirmada · ${id}`, text: completeCustomerMessage(order,
-          `${hello}\n\nConfirmamos un pago de ${amount}. La seña de tu pedido ${id} está completa.\n\nPagado confirmado: ${paid}\nSaldo pendiente: ${remaining}\n\nPodés realizar pagos adicionales antes de la fecha final. Podés seguir el estado desde este enlace:\n\n${privateOrderLink}`) }
+          `${hello}\n\nConfirmamos un pago de ${amount}. La seña de tu pedido ${id} está completa.\n\nPagado confirmado: ${paid}\nSaldo pendiente: ${remaining}\n\n${immediateReady ? 'Los artículos de retiro inmediato ya se pueden agendar. El retiro posterior seguirá esperando el pago final.\n\n' : ''}Podés realizar pagos adicionales antes de la fecha final. Podés seguir el estado desde este enlace:\n\n${immediateReady ? pickupSchedulerLink : privateOrderLink}`) }
         : { subject: `Pago adicional confirmado · ${id}`, text: completeCustomerMessage(order,
           `${hello}\n\nConfirmamos un pago adicional de ${amount} para tu pedido ${id}.\n\nPagado confirmado: ${paid}\nSaldo pendiente: ${remaining}\n\nPodés seguir el estado de tu pedido desde este enlace:\n\n${privateOrderLink}`) };
     }
     case 'PICKUP_SCHEDULED':
     case 'PICKUP_CHANGED': {
+      const timing = String(details.timingLabel || '').trim();
       if (!details.slot) return { subject: `Retiro cancelado · ${id}`, text: completeCustomerMessage(order,
-        `${hello}\n\nSe canceló el horario de retiro de tu pedido ${id}.\n\nTu compra sigue confirmada. Elegí otro horario desde este enlace:\n\n${pickupSchedulerLink}`) };
+        `${hello}\n\nSe canceló el horario${timing ? ` de ${timing.toLowerCase()}` : ' de retiro'} de tu pedido ${id}.\n\nTu compra sigue confirmada. Elegí otro horario desde este enlace:\n\n${pickupSchedulerLink}`) };
       const { date, time } = slotParts(details.slot);
       return { subject: type === 'PICKUP_SCHEDULED' ? `Retiro agendado · ${id}` : `Retiro modificado · ${id}`,
         text: completeCustomerMessage(order,
-          `${hello}\n\n¡Gracias! Tu horario de retiro quedó registrado.\n\nFecha:\n${date}\n\nHora:\n${time}\n\nEsta es la ubicación de nuestra casa:\n\nhttps://goo.gl/maps/TMeEA6Fnoe1tcCmYA?g_st=aw\n\nSi necesitás cambiar el horario elegido, podés hacerlo desde este enlace:\n\n${privateOrderLink}`) };
+          `${hello}\n\n¡Gracias! Tu horario de retiro quedó registrado.${timing ? `\n\nParte del pedido: ${timing}` : ''}\n\nFecha:\n${date}\n\nHora:\n${time}\n\nEsta es la ubicación de nuestra casa:\n\nhttps://goo.gl/maps/TMeEA6Fnoe1tcCmYA?g_st=aw\n\nSi necesitás cambiar el horario elegido, podés hacerlo desde este enlace:\n\n${privateOrderLink}`) };
     }
     case 'ORDER_RESERVATION_EXPIRING':
       return { subject: `Tu reserva vence pronto · ${id}`, text: completeCustomerMessage(order,

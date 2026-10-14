@@ -570,6 +570,7 @@ import {
 } from './inventory-database.mjs';
 import { recoverOrderBlob, readRecoverableOrder } from './order-recovery.mjs';
 import { publicPayments, withPaymentState } from './order-payments.mjs';
+import { deriveOrderFulfillmentParts } from './order-fulfillments.mjs';
 
 export async function writeNewOrder(order) {
   try {
@@ -624,6 +625,7 @@ export function publicOrder(order) {
     },
 
     items: order.items,
+    fulfillments: deriveOrderFulfillmentParts(order),
 
     totals: order.totals,
     grossOrderTotalPYG: order.grossOrderTotalPYG,

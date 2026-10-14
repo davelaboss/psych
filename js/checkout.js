@@ -847,11 +847,25 @@ function displayOrder(
         FULLY_PAID: 'Pago completo',
       })[paymentState] || orderStatusLabel(order.status);
 
-  const items =
-    order.items
-      .map(
+  const fulfillmentParts = Array.isArray(order.fulfillments) && order.fulfillments.length
+    ? order.fulfillments
+    : [{ timingKey: 'IMMEDIATE', timingLabel: 'Retiro', items: order.items,
+        dueNowPYG: dueNow, futureBalancePYG: Number(order.totals.futureBalancePYG || 0),
+        eligible: remainingBalance === 0 }];
+  const items = fulfillmentParts.map(part => `
+    <section class="order-fulfillment-part ${part.timingKey === 'IMMEDIATE' ? 'is-immediate' : 'is-delayed'}">
+      <header>
+        <span class="section-kicker">${escapeHtml(part.timingLabel).toUpperCase()}</span>
+        <strong>${part.eligible ? 'Pago confirmado · listo para agendar' :
+          part.timingKey === 'IMMEDIATE' ? 'Pendiente de completar el pago requerido ahora' : 'Saldo pendiente'}</strong>
+      </header>
+      <div class="fulfillment-financials">
+        <span>Pago requerido ahora: ${formatPYG(part.dueNowPYG)}</span>
+        ${Number(part.futureBalancePYG || 0) > 0 ? `<span>Saldo posterior de estos artículos: ${formatPYG(part.futureBalancePYG)}</span>` : ''}
+      </div>
+      ${(part.items || []).map(
         (item) => `
-          <article class="order-item">
+          <article class="order-item ${item.image ? 'has-image' : ''}">
             ${
               item.image
                 ? `
@@ -916,8 +930,9 @@ function displayOrder(
             </div>
           </article>
         `
-      )
-      .join('');
+      ).join('')}
+    </section>
+  `).join('');
 
   const awaitingInitialPayment = order.status === 'AWAITING_INITIAL_PAYMENT';
   const awaitingFinalPayment = order.status === 'DEPOSIT_CONFIRMED' && remainingBalance > 0;
@@ -1103,44 +1118,59 @@ async function setupPickupScheduler(order, access) {
     const response = await fetch(`/api/orders/pickup?${query}`, { cache: 'no-store' });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los horarios.');
-    const appointment = data.appointment?.status === 'SCHEDULED' ? data.appointment : null;
-    const current = appointment?.slotKey ? appointment.slotKey.replace('|', ' · ') : '';
     target.innerHTML = `<h2>Retiro</h2>
       <div class="pickup-policy-reminder">
         <strong>Antes de retirarte con los artículos, revisalos y asegurate de estar conforme. Una vez retirados del domicilio, la venta es final.</strong>
         <span>${NO_DELIVERY_NOTICE}</span>
         ${order.items.some((item) => item.saleMode === 'DELAYED') ? `<span>${DELAYED_PICKUP_NOTICE}</span>` : ''}
       </div>
-      ${appointment ? `<p><strong>Horario confirmado:</strong> ${escapeHtml(current)}</p>` : ''}
-      ${data.eligible ? `<form id="pickup-scheduler-form">
-        <label for="pickup-slot">${appointment ? 'Cambiar horario' : 'Elegí un horario'}</label>
-        <select id="pickup-slot" name="slotKey" required>
-          <option value="">Seleccioná fecha y horario</option>
-          ${data.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
-            `<option value="${escapeHtml(slot.key)}">${escapeHtml(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}
-        </select>
-        <button class="primary-action" type="submit">${appointment ? 'Cambiar retiro' : 'Agendar retiro'}</button>
-        <p class="form-error" id="pickup-scheduler-error" role="alert" hidden></p>
-      </form>` : `<p>${order.status === 'CANCELLED' ? 'Pedido cancelado.' : 'Podrás agendar cuando el vendedor confirme el pago total.'}</p>`}`;
-    target.querySelector('form')?.addEventListener('submit', async event => {
-      event.preventDefault();
-      const button = target.querySelector('button[type="submit"]');
-      const error = document.getElementById('pickup-scheduler-error');
-      button.disabled = true;
-      error.hidden = true;
-      try {
-        const saved = await fetch('/api/orders/pickup', { method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ orderId: order.id, access,
-            slotKey: document.getElementById('pickup-slot').value }) });
-        const result = await saved.json();
-        if (!saved.ok) throw new Error(result.error || 'No se pudo agendar el retiro.');
-        await setupPickupScheduler(order, access);
-      } catch (problem) {
-        error.textContent = problem.message;
-        error.hidden = false;
-        button.disabled = false;
-      }
+      <div class="pickup-fulfillment-list">
+        ${(data.fulfillments || []).map((part, index) => {
+          const appointment = part.appointment?.status === 'SCHEDULED' ? part.appointment : null;
+          const current = appointment?.slotKey ? appointment.slotKey.replace('|', ' · ') : '';
+          const formId = `pickup-scheduler-form-${index}`;
+          return `<section class="pickup-fulfillment-card">
+            <h3>${escapeHtml(part.timingLabel)}</h3>
+            <p>Artículos: ${(part.items || []).map(item => escapeHtml(orderItemLabel(item))).join(', ')}</p>
+            ${appointment ? `<p><strong>Horario confirmado:</strong> ${escapeHtml(current)}</p>` : ''}
+            ${part.eligible ? `<form id="${formId}" data-pickup-timing-key="${escapeHtml(part.timingKey)}">
+              <label>${appointment ? 'Cambiar horario' : 'Elegí un horario'}
+                <select name="slotKey" required>
+                  <option value="">Seleccioná fecha y horario</option>
+                  ${(part.slots || []).filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
+                    `<option value="${escapeHtml(slot.key)}">${escapeHtml(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}
+                </select>
+              </label>
+              <button class="primary-action" type="submit">${appointment ? 'Cambiar retiro' : 'Agendar retiro'}</button>
+              <p class="form-error" role="alert" hidden></p>
+            </form>` : `<p>${part.status === 'CANCELLED' ? 'Pedido cancelado.' : part.timingKey === 'IMMEDIATE'
+              ? 'Disponible cuando se complete el importe requerido ahora.'
+              : `Todavía no disponible para retiro. Saldo pendiente del pedido: ${formatPYG(part.orderRemainingBalancePYG)}.`}</p>`}
+          </section>`;
+        }).join('')}
+      </div>`;
+    target.querySelectorAll('[data-pickup-timing-key]').forEach(form => {
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const button = form.querySelector('button[type="submit"]');
+        const error = form.querySelector('.form-error');
+        button.disabled = true;
+        error.hidden = true;
+        try {
+          const saved = await fetch('/api/orders/pickup', { method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ orderId: order.id, access,
+              timingKey: form.dataset.pickupTimingKey,
+              slotKey: new FormData(form).get('slotKey') }) });
+          const result = await saved.json();
+          if (!saved.ok) throw new Error(result.error || 'No se pudo agendar el retiro.');
+          await setupPickupScheduler(order, access);
+        } catch (problem) {
+          error.textContent = problem.message;
+          error.hidden = false;
+          button.disabled = false;
+        }
+      });
     });
   } catch (error) {
     target.innerHTML = `<h2>Retiro</h2><p>${escapeHtml(error.message)}</p>`;
@@ -1690,6 +1720,38 @@ function injectCheckoutStyles() {
       display: block;
     }
 
+    .order-fulfillment-part,
+    .pickup-fulfillment-card {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--forest);
+      border-radius: 10px;
+      background: #fffdfa;
+    }
+
+    .order-fulfillment-part + .order-fulfillment-part,
+    .pickup-fulfillment-card + .pickup-fulfillment-card {
+      margin-top: 14px;
+    }
+
+    .order-fulfillment-part.is-delayed {
+      border-left-color: #b27622;
+      background: #fff8e7;
+    }
+
+    .order-fulfillment-part header,
+    .fulfillment-financials,
+    .pickup-fulfillment-list {
+      display: grid;
+      gap: 6px;
+    }
+
+    .pickup-fulfillment-card h3 {
+      margin: 0;
+    }
+
     .checkout-card label,
     #receipt-form label {
       display: grid;
@@ -1771,8 +1833,11 @@ function injectCheckoutStyles() {
     }
 
     .order-item {
-      grid-template-columns:
-        86px 1fr;
+      grid-template-columns: 1fr;
+    }
+
+    .order-item.has-image {
+      grid-template-columns: 86px 1fr;
     }
 
     .order-item img {

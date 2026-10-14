@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { database, inventoryTransaction } from './inventory-database.mjs';
 import { ensureAllBuyerGroups } from './buyer-groups.mjs';
 import {
+  FULFILLMENT_LOCK,
   assertExpectedRevision,
   explicitProductIds,
   nextStatus,
@@ -11,7 +12,6 @@ import {
   timingLabel,
 } from './fulfillment-batches-core.mjs';
 
-const FULFILLMENT_LOCK = 202610060324;
 const conflict = (message, code = 'FULFILLMENT_CONFLICT') =>
   Object.assign(new Error(message), { status: 409, code });
 

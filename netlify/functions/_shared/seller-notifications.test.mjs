@@ -73,6 +73,25 @@ test('deposit confirmation keeps delayed orders on the private order page', () =
   assertOneOrderAction(text);
 });
 
+test('mixed-order due-now confirmation links to the immediate scheduler without claiming delayed is ready', () => {
+  const text = render('PAYMENT_CONFIRMED', {
+    status: 'DEPOSIT_CONFIRMED', remainingBalancePYG: 37_500, paidAmountPYG: 72_500,
+    totals: { totalPYG: 110_000, dueNowPYG: 72_500, futureBalancePYG: 37_500 },
+    paymentAdjustments: [],
+    payments: [{ id: 'confirmed', type: 'DEPOSIT', amountPYG: 72_500,
+      amountSource: 'ADMIN_VERIFIED', verifiedBy: 'ADMIN', verificationStatus: 'CONFIRMED' }],
+    items: [
+      { productId: '381', saleMode: 'IMMEDIATE', quantity: 1, unitPricePYG: 60_000,
+        dueNowPYG: 60_000, futureBalancePYG: 0 },
+      { productId: '474', saleMode: 'DELAYED', quantity: 1, unitPricePYG: 50_000,
+        dueNowPYG: 12_500, futureBalancePYG: 37_500 },
+    ],
+  }, { paymentState: 'DEPOSIT_SATISFIED', verifiedAmountPYG: 72_500, previousConfirmedPaidPYG: 0 });
+  assert.match(text, /Los artículos de retiro inmediato ya se pueden agendar/);
+  assert.match(text, /El retiro posterior seguirá esperando el pago final/);
+  assertOneOrderAction(text, true);
+});
+
 test('payment confirmation copy distinguishes partial, installment, and fully paid states', () => {
   const partial = render('PAYMENT_CONFIRMED', {
     remainingBalancePYG: 1_505_000,

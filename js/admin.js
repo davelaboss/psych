@@ -3964,6 +3964,11 @@ function renderBuyerSheetsTab() {
             candidate.timingKey === batch.timingKey &&
             candidate.status !== 'DELIVERED'
           );
+          const hasDifferentTimingForBuyer = printable.some(candidate =>
+            candidate.fulfillmentBatchId !== batch.fulfillmentBatchId &&
+            candidate.buyerGroupId === batch.buyerGroupId &&
+            candidate.timingKey !== batch.timingKey &&
+            candidate.status !== 'DELIVERED');
           return `
           <article class="buyer-sheet" data-fulfillment-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
             <header>
@@ -4038,7 +4043,9 @@ function renderBuyerSheetsTab() {
                 <button class="secondary-action" type="button" data-combine-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
                   Combinar lotes
                 </button>
-              ` : ''}
+              ` : batch.status !== 'DELIVERED' ? `<p class="fulfillment-combine-explanation">${hasDifferentTimingForBuyer
+                ? 'Los otros artículos de este comprador tienen un tipo de retiro diferente.'
+                : 'No hay otra planilla compatible para este comprador y tipo de retiro.'}</p>` : ''}
             </div>
           </article>
         `; }).join('') : '<div class="admin-empty-v2">Todavía no hay artículos confirmados para preparar.</div>'}
@@ -4786,26 +4793,33 @@ function renderAdminOrderDetail(
   order,
   target
 ) {
-  const items =
-    (order.items || [])
-      .map((item) => {
+  const fulfillmentParts = Array.isArray(order.fulfillments) && order.fulfillments.length
+    ? order.fulfillments
+    : [{ timingKey: 'IMMEDIATE', timingLabel: 'Retiro', items: order.items || [],
+        dueNowPYG: order.totals?.dueNowPYG || 0, futureBalancePYG: order.totals?.futureBalancePYG || 0,
+        eligible: false, status: 'WAITING_FOR_CURRENT_PAYMENT' }];
+  const items = fulfillmentParts.map(part => `
+    <article class="admin-fulfillment-part ${part.timingKey === 'IMMEDIATE' ? 'is-immediate' : 'is-delayed'}">
+      <header>
+        <div><span class="section-kicker">${adminEscape(part.timingLabel).toUpperCase()}</span>
+          <strong>${part.eligible ? 'Pago actual satisfecho · listo para agendar' :
+            part.timingKey === 'IMMEDIATE' ? 'Falta completar el pago exigible ahora' :
+              `Saldo pendiente del pedido ${adminMoney(part.orderRemainingBalancePYG)}`}</strong></div>
+        <div><span>A pagar ahora: ${adminMoney(part.dueNowPYG)}</span>
+          ${Number(part.futureBalancePYG || 0) > 0 ? `<span>Saldo futuro de estos artículos: ${adminMoney(part.futureBalancePYG)}</span>` : ''}</div>
+      </header>
+      <ul>${(part.items || []).map(item => {
         const delayed = item.saleMode === 'DELAYED';
         const pickupWindow = adminPickupWindow(item);
-
-        return `
-          <li class="admin-order-item ${delayed ? 'is-delayed' : 'is-immediate'}">
-            <strong>${adminEscape(adminFormatItem(item.itemNumber))} · ${adminEscape(item.title)}</strong>
-            <br>
-            <span>Cantidad: ${item.quantity}</span>
-            <div class="admin-order-item-fulfillment">
-              <strong>${delayed ? 'RETIRO POSTERIOR' : 'RETIRO INMEDIATO'}</strong>
-              ${delayed ? `<span>Seña ${Number(item.depositPercent || 0)}%</span>` : ''}
-              ${delayed && pickupWindow ? `<span>Retiro: ${adminEscape(pickupWindow)}</span>` : ''}
-            </div>
-          </li>
-        `;
-      })
-      .join('');
+        return `<li class="admin-order-item ${delayed ? 'is-delayed' : 'is-immediate'}">
+          <strong>${adminEscape(adminFormatItem(item.itemNumber))} · ${adminEscape(item.title)}</strong><br>
+          <span>Cantidad: ${item.quantity}</span>
+          ${delayed ? `<span> · Seña ${Number(item.depositPercent || 0)}%</span>` : ''}
+          ${delayed && pickupWindow ? `<span> · Retiro: ${adminEscape(pickupWindow)}</span>` : ''}
+        </li>`;
+      }).join('')}</ul>
+    </article>
+  `).join('');
 
   const payments = order.payments || [];
   const paymentNotes = order.paymentNotes || [];
@@ -4836,6 +4850,8 @@ function renderAdminOrderDetail(
   const buyerGroupOrder = buyerGroup?.orders.find(
     (candidate) => candidate.id === order.id
   );
+  const buyerGroupOtherOrders = (buyerGroup?.orders || []).filter(candidate => candidate.id !== order.id);
+  const buyerGroupTargets = ADMIN_STATE.buyerGroups.filter(group => group.buyerGroupId !== buyerGroup?.buyerGroupId);
 
   const canCancel = !order.initialPaymentConfirmedAt &&
     ['AWAITING_INITIAL_PAYMENT', 'RESERVATION_EXPIRED', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(order.status);
@@ -4943,6 +4959,8 @@ function renderAdminOrderDetail(
 
       <div class="order-detail-columns">
         <div>
+          <section class="admin-detail-card">
+          <h3>1. Pedido y comprador</h3>
           <p>
             <strong>
               ${adminEscape(
@@ -4992,13 +5010,16 @@ function renderAdminOrderDetail(
               <span>No indiques al cliente que transfiera hasta recuperar el inventario completo.</span>
             </div>
           ` : ''}
+          </section>
 
-          <ul>
-            ${items}
-          </ul>
+          <section class="admin-detail-card">
+            <h3>2. Artículos y retiro</h3>
+            <div class="admin-fulfillment-parts">${items}</div>
+          </section>
         </div>
 
-        <div>
+        <section class="admin-detail-card">
+          <h3>3. Estado financiero</h3>
           <dl class="admin-summary-list">
             <div>
               <dt>TOTAL ORIGINAL</dt>
@@ -5060,11 +5081,11 @@ function renderAdminOrderDetail(
             </div>
             ${overpayment > 0 ? `<div><dt>SOBREPAGO</dt><dd><strong>${adminMoney(overpayment)}</strong></dd></div>` : ''}
           </dl>
-        </div>
+        </section>
       </div>
 
       <section class="admin-buyer-group-card">
-        <h3>Identidad del comprador</h3>
+        <h3>4. Comprador y agrupación</h3>
         <p>
           Comprador vinculado:
           <strong>${adminEscape(buyerGroup?.displayName || order.buyer?.name || '')}</strong>
@@ -5077,52 +5098,35 @@ function renderAdminOrderDetail(
               ? 'Este pedido fue combinado manualmente.'
               : 'Asignación automática conservadora: nombre y teléfono deben coincidir.'}
         </small>
-        <p>La separación operativa se administra desde Planillas sin crear otra identidad.</p>
+        <p>Otros pedidos vinculados: ${buyerGroupOtherOrders.length
+          ? buyerGroupOtherOrders.map(candidate => `<strong>${adminEscape(candidate.id)}</strong>`).join(', ')
+          : 'ninguno'}.</p>
+        <div class="admin-buyer-group-actions">
+          <label><span>Combinar este grupo con otro comprador</span>
+            <select data-buyer-group-target>
+              <option value="">Seleccioná un comprador y revisá sus pedidos…</option>
+              ${buyerGroupTargets.map(group => `<option value="${adminEscapeAttribute(group.buyerGroupId)}">
+                ${adminEscape(group.displayName)} · ${adminEscape(group.displayPhone || 'sin teléfono')} · pedidos ${group.orders.map(candidate => adminEscape(candidate.id)).join(', ')}
+              </option>`).join('')}
+            </select>
+          </label>
+          <button class="secondary-action" type="button" data-merge-buyer-group>Combinar los grupos seleccionados</button>
+          <button class="secondary-action" type="button" data-separate-buyer-group>Mantener solo este pedido en un grupo separado</button>
+        </div>
+        <p class="form-error" data-buyer-group-error hidden></p>
       </section>
 
       ${order.status === 'CANCELLED' ? '<p role="status"><strong>Pedido cancelado</strong>. Los artículos fueron liberados y volvieron a estar disponibles. El pedido se conserva para consulta.</p>' : ''}
 
-      <section id="admin-pickup-editor"><h3>Retiro</h3><p>Cargando horarios…</p></section>
+      <section class="admin-detail-card" id="admin-pickup-editor"><h3>5. Retiros</h3><p>Cargando horarios…</p></section>
 
       <div class="order-detail-actions">
-        ${canCancel ? `
-          <div>
-            <button class="secondary-action" type="button" data-cancel-order>
-              CANCELAR PEDIDO Y LIBERAR ARTÍCULOS
-            </button>
-            <p>No se puede usar después de confirmar el pago.</p>
-          </div>
-        ` : ''}
-        ${paymentHistory ? `<section class="admin-payment-history"><h3>Historial de pagos</h3>${paymentHistory}</section>` : ''}
-        ${adjustmentHistory || canRecordAdjustment ? `
-          <section class="admin-payment-history">
-            <h3>Ajustes / reembolsos</h3>
-            ${adjustmentHistory || '<p>Todavía no hay ajustes registrados.</p>'}
-            ${canRecordAdjustment ? `
-              <form data-post-sale-adjustment>
-                <label><span>Importe del reembolso / ajuste (PYG)</span>
-                  <input name="amountPYG" type="number" min="1" max="${adminEscapeAttribute(safeRefundableAmount)}"
-                    step="1" inputmode="numeric" required>
-                </label>
-                <label><span>Tipo</span>
-                  <select name="kind" required>
-                    <option value="POST_SALE_PRICE_ADJUSTMENT">Ajuste de precio posterior a la venta</option>
-                  </select>
-                </label>
-                <label><span>Nota interna obligatoria</span>
-                  <textarea name="internalNote" maxlength="2000" required></textarea>
-                </label>
-                <small>Máximo reembolsable actualmente: ${adminMoney(safeRefundableAmount)}</small>
-                <p class="form-error" data-post-sale-adjustment-error hidden></p>
-                <button class="secondary-action" type="submit">Registrar reembolso / ajuste posterior a la venta</button>
-              </form>
-            ` : ''}
-          </section>
-        ` : ''}
+        ${paymentHistory ? `<section class="admin-payment-history admin-detail-card"><h3>6. Historial de pagos</h3>${paymentHistory}</section>` : ''}
         ${
           canUploadReceipt
               ? `
-                <form data-admin-receipt-upload>
+                <form class="admin-detail-card" data-admin-receipt-upload>
+                  <h3>7. Comprobantes / registrar pago</h3>
                   <label>
                     <span>${paidAmount > 0 ? 'Subir comprobante del saldo' : 'Subir comprobante recibido'}</span>
                     <input type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" required>
@@ -5148,8 +5152,9 @@ function renderAdminOrderDetail(
           </div>
         ` : ''}
         ${pendingPayment && !hasLegacyAssumedPayments ? `
-          <form data-confirm-payment-form data-payment-id="${adminEscapeAttribute(pendingPayment.id)}">
-            <h3>Confirmar importe realmente recibido</h3>
+          <form class="admin-detail-card" data-confirm-payment-form data-payment-id="${adminEscapeAttribute(pendingPayment.id)}">
+            <h3>7. Comprobantes / registrar pago</h3>
+            <h4>Confirmar importe realmente recibido</h4>
             <p>Total ajustado: <strong>${adminMoney(adjustedOrderTotal)}</strong> · Esperado ahora: <strong>${adminMoney(expectedNow)}</strong> · Pagado: <strong>${adminMoney(paidAmount)}</strong> · Saldo: <strong>${adminMoney(remainingBalance)}</strong></p>
             <label><span>Clasificación</span>
               <select name="paymentType" required>
@@ -5176,6 +5181,41 @@ function renderAdminOrderDetail(
           </form>
         ` : ''}
 
+        ${adjustmentHistory || canRecordAdjustment ? `
+          <section class="admin-payment-history admin-detail-card">
+            <h3>8. Ajustes y reembolsos</h3>
+            ${adjustmentHistory || '<p>Todavía no hay ajustes registrados.</p>'}
+            ${canRecordAdjustment ? `
+              <form data-post-sale-adjustment>
+                <label><span>Importe del reembolso / ajuste (PYG)</span>
+                  <input name="amountPYG" type="number" min="1" max="${adminEscapeAttribute(safeRefundableAmount)}"
+                    step="1" inputmode="numeric" required>
+                </label>
+                <label><span>Tipo</span>
+                  <select name="kind" required>
+                    <option value="POST_SALE_PRICE_ADJUSTMENT">Ajuste de precio posterior a la venta</option>
+                  </select>
+                </label>
+                <label><span>Nota interna obligatoria</span>
+                  <textarea name="internalNote" maxlength="2000" required></textarea>
+                </label>
+                <small>Máximo reembolsable actualmente: ${adminMoney(safeRefundableAmount)}</small>
+                <p class="form-error" data-post-sale-adjustment-error hidden></p>
+                <button class="secondary-action" type="submit">Registrar reembolso / ajuste posterior a la venta</button>
+              </form>
+            ` : ''}
+          </section>
+        ` : ''}
+
+        <div class="admin-detail-card"><h3>9. Acciones / contacto</h3>
+        ${canCancel ? `
+          <div>
+            <button class="secondary-action" type="button" data-cancel-order>
+              CANCELAR PEDIDO Y LIBERAR ARTÍCULOS
+            </button>
+            <p>No se puede usar después de confirmar el pago.</p>
+          </div>
+        ` : ''}
         <a
           class="secondary-action"
           target="_blank"
@@ -5189,12 +5229,58 @@ function renderAdminOrderDetail(
           )}"
         >
           Escribir al comprador
-        </a>
+        </a></div>
       </div>
     </section>
   `;
 
   setupAdminPickup(order);
+
+  const updateBuyerGroup = async (action, targetBuyerGroupId = null) => {
+    const errorBox = target.querySelector('[data-buyer-group-error]');
+    errorBox.hidden = true;
+    try {
+      const result = await adminFetch('/api/admin/assign-buyer-group', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, action, targetBuyerGroupId }),
+      });
+      ADMIN_STATE.buyerGroups = result.buyerGroups || ADMIN_STATE.buyerGroups;
+      const [refreshed, fulfillmentBatches] = await Promise.all([
+        adminFetch(`/api/admin/order?id=${encodeURIComponent(order.id)}`),
+        fetchFulfillmentBatches(),
+      ]);
+      ADMIN_STATE.fulfillmentBatches = fulfillmentBatches;
+      const printableCount = fulfillmentBatches.filter(
+        batch => !batch.mergedIntoBatchId && batch.items.length > 0
+      ).length;
+      const planillasBadge = document.querySelector('[data-admin-tab="buyer-sheets"] span');
+      if (planillasBadge) planillasBadge.textContent = String(printableCount);
+      renderAdminOrderDetail(refreshed.order, target);
+    } catch (error) {
+      errorBox.textContent = error instanceof Error ? error.message : 'No se pudo actualizar el comprador.';
+      errorBox.hidden = false;
+    }
+  };
+  target.querySelector('[data-merge-buyer-group]')?.addEventListener('click', () => {
+    const targetId = target.querySelector('[data-buyer-group-target]')?.value || '';
+    const destination = ADMIN_STATE.buyerGroups.find(group => group.buyerGroupId === targetId);
+    if (!destination) {
+      const errorBox = target.querySelector('[data-buyer-group-error]');
+      errorBox.textContent = 'Seleccioná el comprador con el que querés combinar este grupo.';
+      errorBox.hidden = false;
+      return;
+    }
+    const sourceOrders = (buyerGroup?.orders || []).map(candidate => candidate.id).join(', ');
+    const destinationOrders = destination.orders.map(candidate => candidate.id).join(', ');
+    if (window.confirm(`Se combinarán los pedidos ${sourceOrders} con el comprador ${destination.displayName} (${destinationOrders}). ¿Continuar?`)) {
+      updateBuyerGroup('MERGE', targetId);
+    }
+  });
+  target.querySelector('[data-separate-buyer-group]')?.addEventListener('click', () => {
+    if (window.confirm(`El pedido ${order.id} quedará deliberadamente separado de los demás pedidos de este comprador. ¿Continuar?`)) {
+      updateBuyerGroup('SEPARATE');
+    }
+  });
 
   target.querySelectorAll('[data-view-receipt]').forEach(button => {
     button.addEventListener('click', () => viewAdminReceipt(order.id, button.dataset.viewReceipt));
@@ -5311,7 +5397,7 @@ async function loadUpcomingPickups() {
   try {
     const data = await adminFetch('/api/admin/pickup');
     target.innerHTML = `<h2>Próximos retiros</h2>${data.upcoming.length ? `<ol>${data.upcoming.map(item =>
-      `<li><strong>${adminEscape(item.slotKey.replace('|', ' · '))}</strong> · ${adminEscape(item.orderId)} · ${adminEscape(item.buyer)} · Items ${item.itemNumbers.map(n => adminEscape(String(n).padStart(3, '0'))).join(', ')}</li>`).join('')}</ol>` : '<p>No hay retiros próximos.</p>'}`;
+      `<li><strong>${adminEscape(item.slotKey.replace('|', ' · '))}</strong> · ${adminEscape(item.timingLabel)} · ${adminEscape(item.orderId)} · ${adminEscape(item.buyer)} · Items ${item.itemNumbers.map(n => adminEscape(String(n).padStart(3, '0'))).join(', ')}</li>`).join('')}</ol>` : '<p>No hay retiros próximos.</p>'}`;
   } catch (error) { target.innerHTML = `<h2>Próximos retiros</h2><p>${adminEscape(error.message)}</p>`; }
 }
 
@@ -5320,33 +5406,46 @@ async function setupAdminPickup(order) {
   if (!target) return;
   try {
     const data = await adminFetch(`/api/admin/pickup?id=${encodeURIComponent(order.id)}`);
-    const appointment = data.appointment?.status === 'SCHEDULED' ? data.appointment : null;
-    target.innerHTML = `<h3>Retiro</h3>
-      ${appointment ? `<p><strong>Agendado:</strong> ${adminEscape(appointment.slotKey.replace('|', ' · '))}</p>` : '<p>Sin horario agendado.</p>'}
-      ${data.slots.length ? `<form data-admin-pickup-form>
-        <label>Horario <select name="slotKey" required><option value="">Seleccioná fecha y horario</option>
-          ${data.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
-            `<option value="${adminEscapeAttribute(slot.key)}">${adminEscape(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}</select></label>
-        <button class="primary-action" type="submit">${appointment ? 'Cambiar retiro' : 'Agendar retiro'}</button>
-      </form>` : '<p>Disponible después de confirmar el pago total.</p>'}
-      ${appointment ? '<button class="secondary-action" type="button" data-admin-cancel-pickup>Cancelar solo el retiro</button>' : ''}
-      <p class="form-error" data-admin-pickup-error role="alert" hidden></p>`;
-    const save = async slotKey => {
-      const error = target.querySelector('[data-admin-pickup-error]');
-      error.hidden = true;
-      try {
-        await adminFetch('/api/admin/pickup', { method: 'POST',
-          headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderId: order.id, slotKey }) });
-        await setupAdminPickup(order);
-        await loadUpcomingPickups();
-      } catch (problem) { error.textContent = problem.message; error.hidden = false; }
-    };
-    target.querySelector('form')?.addEventListener('submit', event => {
-      event.preventDefault();
-      save(new FormData(event.currentTarget).get('slotKey'));
+    target.innerHTML = `<h3>5. Retiros</h3><div class="admin-pickup-parts">
+      ${(data.fulfillments || []).map(part => {
+        const appointment = part.appointment?.status === 'SCHEDULED' ? part.appointment : null;
+        return `<article class="admin-pickup-part" data-admin-pickup-part="${adminEscapeAttribute(part.timingKey)}">
+          <h4>${adminEscape(part.timingLabel)}</h4>
+          <p>Artículos: ${(part.items || []).map(item => adminEscape(adminFormatItem(item.itemNumber))).join(', ')}</p>
+          ${appointment ? `<p><strong>Agendado:</strong> ${adminEscape(appointment.slotKey.replace('|', ' · '))}</p>` : '<p>Sin horario agendado.</p>'}
+          ${part.eligible ? `<p><strong>Pago satisfecho. Listo para agendar.</strong></p>` : `<p>${part.timingKey === 'IMMEDIATE'
+            ? 'Falta completar el importe exigible ahora.'
+            : `Todavía no disponible para retiro. Saldo pendiente del pedido: ${adminMoney(part.orderRemainingBalancePYG)}.`}</p>`}
+          ${part.slots.length ? `<form data-admin-pickup-form>
+            <label>Horario <select name="slotKey" required><option value="">Seleccioná fecha y horario</option>
+              ${part.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
+                `<option value="${adminEscapeAttribute(slot.key)}">${adminEscape(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}</select></label>
+            <button class="primary-action" type="submit">${appointment ? 'Cambiar este retiro' : 'Agendar este retiro'}</button>
+          </form>` : ''}
+          ${appointment ? '<button class="secondary-action" type="button" data-admin-cancel-pickup>Cancelar este retiro</button>' : ''}
+          <p class="form-error" data-admin-pickup-error role="alert" hidden></p>
+        </article>`;
+      }).join('')}</div>`;
+    target.querySelectorAll('[data-admin-pickup-part]').forEach(partElement => {
+      const timingKey = partElement.dataset.adminPickupPart;
+      const save = async slotKey => {
+        const error = partElement.querySelector('[data-admin-pickup-error]');
+        error.hidden = true;
+        try {
+          await adminFetch('/api/admin/pickup', { method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ orderId: order.id, timingKey, slotKey }) });
+          await setupAdminPickup(order);
+          await loadUpcomingPickups();
+        } catch (problem) { error.textContent = problem.message; error.hidden = false; }
+      };
+      partElement.querySelector('form')?.addEventListener('submit', event => {
+        event.preventDefault();
+        save(new FormData(event.currentTarget).get('slotKey'));
+      });
+      partElement.querySelector('[data-admin-cancel-pickup]')?.addEventListener('click', () => save(null));
     });
-    target.querySelector('[data-admin-cancel-pickup]')?.addEventListener('click', () => save(null));
-  } catch (error) { target.innerHTML = `<h3>Retiro</h3><p>${adminEscape(error.message)}</p>`; }
+  } catch (error) { target.innerHTML = `<h3>5. Retiros</h3><p>${adminEscape(error.message)}</p>`; }
 }
 
 
@@ -6379,6 +6478,58 @@ function injectAdminStyles() {
       gap: 28px;
     }
 
+    .admin-detail-card,
+    .admin-fulfillment-part,
+    .admin-pickup-part {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fffdfa;
+    }
+
+    .admin-detail-card + .admin-detail-card {
+      margin-top: 16px;
+    }
+
+    .admin-detail-card > h3,
+    .admin-fulfillment-part h4,
+    .admin-pickup-part h4 {
+      margin: 0 0 12px;
+    }
+
+    .admin-fulfillment-parts,
+    .admin-pickup-parts {
+      display: grid;
+      gap: 14px;
+    }
+
+    .admin-fulfillment-part,
+    .admin-pickup-part {
+      border-left: 4px solid var(--forest);
+    }
+
+    .admin-fulfillment-part.is-delayed {
+      border-left-color: #b27622;
+      background: #fff8e7;
+    }
+
+    .admin-fulfillment-part header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+    }
+
+    .admin-fulfillment-part header > div {
+      display: grid;
+      gap: 5px;
+    }
+
+    .admin-fulfillment-part ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
     .admin-order-item {
       margin-bottom: 12px;
       padding: 12px;
@@ -6405,10 +6556,8 @@ function injectAdminStyles() {
     }
 
     .order-detail-actions {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
       gap: 10px;
-      align-items: center;
       margin-top: 18px;
     }
 
@@ -6836,6 +6985,65 @@ function injectAdminStyles() {
 
       .admin-filter-grid {
         grid-template-columns: 1fr;
+      }
+
+      .admin-fulfillment-part header {
+        grid-template-columns: 1fr;
+      }
+
+      .admin-buyer-group-actions {
+        display: grid;
+      }
+
+      .buyer-sheet {
+        padding: 16px;
+        overflow: hidden;
+      }
+
+      .buyer-sheet table,
+      .buyer-sheet tbody,
+      .buyer-sheet tr,
+      .buyer-sheet td {
+        display: block;
+        width: 100%;
+      }
+
+      .buyer-sheet thead {
+        display: none;
+      }
+
+      .buyer-sheet tr {
+        border-bottom: 1px solid var(--line);
+        padding: 10px 0;
+      }
+
+      .buyer-sheet td {
+        border: 0;
+        padding: 4px 0;
+        overflow-wrap: anywhere;
+      }
+
+      .buyer-sheet td::before {
+        display: inline-block;
+        width: 92px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .buyer-sheet td:nth-child(1)::before { content: 'Artículo'; }
+      .buyer-sheet td:nth-child(2)::before { content: 'Descripción'; }
+      .buyer-sheet td:nth-child(3)::before { content: 'Cantidad'; }
+      .buyer-sheet td:nth-child(4)::before { content: 'Pedido'; }
+      .buyer-sheet td:nth-child(5)::before { content: 'Control'; }
+
+      .buyer-sheet-checks {
+        min-width: 0;
+      }
+
+      .fulfillment-batch-actions {
+        display: grid;
       }
 
       .legacy-product-summary,
