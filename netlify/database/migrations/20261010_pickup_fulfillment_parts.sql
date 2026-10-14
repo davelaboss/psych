@@ -7,27 +7,15 @@ ALTER TABLE pickup_appointments ADD COLUMN IF NOT EXISTS timing_key text;
 UPDATE pickup_appointments appointment
 SET timing_key = COALESCE((
   SELECT 'DELAYED:' ||
-    CASE
-      WHEN jsonb_typeof(item.value->'pickupWindowStart') = 'string'
-        THEN COALESCE(NULLIF(btrim(item.value->>'pickupWindowStart', E' \t\r\n'), ''), 'UNSET')
-      ELSE 'UNSET'
-    END || ':' ||
-    CASE
-      WHEN jsonb_typeof(item.value->'pickupWindowEnd') = 'string'
-        THEN COALESCE(NULLIF(btrim(item.value->>'pickupWindowEnd', E' \t\r\n'), ''), 'UNSET')
-      ELSE 'UNSET'
-    END
+    COALESCE(NULLIF(btrim(item.value->>'pickupWindowStart', E' \t\r\n'), ''), 'UNSET') || ':' ||
+    COALESCE(NULLIF(btrim(item.value->>'pickupWindowEnd', E' \t\r\n'), ''), 'UNSET')
   FROM checkout_attempts attempt
   CROSS JOIN LATERAL jsonb_array_elements(
     CASE WHEN jsonb_typeof(attempt.order_snapshot->'items') = 'array'
       THEN attempt.order_snapshot->'items' ELSE '[]'::jsonb END
   ) WITH ORDINALITY AS item(value, ordinal)
   WHERE attempt.order_id = appointment.order_id
-    AND upper(CASE
-      WHEN jsonb_typeof(item.value->'saleMode') = 'string'
-        THEN btrim(item.value->>'saleMode', E' \t\r\n')
-      ELSE 'IMMEDIATE'
-    END) = 'DELAYED'
+    AND upper(btrim(COALESCE(item.value->>'saleMode', ''), E' \t\r\n')) = 'DELAYED'
   ORDER BY item.ordinal
   LIMIT 1
 ), 'IMMEDIATE')

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { deriveOrderFulfillmentParts } from './order-fulfillments.mjs';
@@ -89,7 +90,7 @@ test('immediate-only, delayed-only, refunds, and multiple delayed windows stay d
   assert.equal(deriveOrderFulfillmentParts(multiple).length, 3);
 });
 
-test('legacy pickup migration preserves old intent with runtime-identical timing normalization', async () => {
+test('immutable legacy pickup migration is corrected forward with runtime-identical timing normalization', async () => {
   const fixtures = [
     [{ saleMode: 'DELAYED', pickupWindowStart: '2026-12-09', pickupWindowEnd: '2026-12-12' },
       'DELAYED:2026-12-09:2026-12-12'],
@@ -106,16 +107,25 @@ test('legacy pickup migration preserves old intent with runtime-identical timing
   ];
   for (const [item, expected] of fixtures) assert.equal(timingKeyForItem(item), expected);
 
-  const sql = await readFile(new URL('../../database/migrations/20261010_pickup_fulfillment_parts.sql', import.meta.url), 'utf8');
-  assert.match(sql, /WITH ORDINALITY/);
-  assert.match(sql, /jsonb_typeof\(item\.value->'saleMode'\) = 'string'/);
-  assert.match(sql, /jsonb_typeof\(item\.value->'pickupWindowStart'\) = 'string'/);
-  assert.match(sql, /jsonb_typeof\(item\.value->'pickupWindowEnd'\) = 'string'/);
-  assert.match(sql, /btrim\(item\.value->>'saleMode', E' \\t\\r\\n'\)/);
-  assert.match(sql, /btrim\(item\.value->>'pickupWindowStart', E' \\t\\r\\n'\)/);
-  assert.match(sql, /btrim\(item\.value->>'pickupWindowEnd', E' \\t\\r\\n'\)/);
-  assert.doesNotMatch(sql, /COALESCE\(item\.value->>'saleMode'/);
-  assert.match(sql, /'DELAYED:' \|\|/);
-  assert.match(sql, /COALESCE\(\(.*'IMMEDIATE'\)/s);
-  assert.match(sql, /PRIMARY KEY \(order_id, timing_key\)/);
+  const originalSql = await readFile(
+    new URL('../../database/migrations/20261010_pickup_fulfillment_parts.sql', import.meta.url), 'utf8');
+  const normalizedOriginalSql = originalSql.replace(/\r\n/g, '\n');
+  assert.equal(createHash('sha256').update(normalizedOriginalSql).digest('hex'),
+    '360aa2222298bc426022474800a947d03f6b2f97c20463b177facccbf6395c4f');
+  assert.match(originalSql, /WITH ORDINALITY/);
+  assert.match(originalSql, /PRIMARY KEY \(order_id, timing_key\)/);
+
+  const correctionSql = await readFile(
+    new URL('../../database/migrations/20261011_pickup_timing_normalization.sql', import.meta.url), 'utf8');
+  assert.match(correctionSql, /jsonb_typeof\(item\.value->'saleMode'\) = 'string'/);
+  assert.match(correctionSql, /jsonb_typeof\(item\.value->'pickupWindowStart'\) = 'string'/);
+  assert.match(correctionSql, /jsonb_typeof\(item\.value->'pickupWindowEnd'\) = 'string'/);
+  assert.match(correctionSql, /btrim\(item\.value->>'saleMode', E' \\t\\r\\n'\)/);
+  assert.match(correctionSql, /btrim\(item\.value->>'pickupWindowStart', E' \\t\\r\\n'\)/);
+  assert.match(correctionSql, /btrim\(item\.value->>'pickupWindowEnd', E' \\t\\r\\n'\)/);
+  assert.match(correctionSql, /appointment\.timing_key = correction\.original_timing_key/);
+  assert.match(correctionSql, /correction\.original_timing_key <> correction\.normalized_timing_key/);
+  assert.match(correctionSql, /NOT EXISTS[\s\S]*existing\.timing_key = correction\.normalized_timing_key/);
+  assert.match(correctionSql, /SET timing_key = correction\.normalized_timing_key/);
+  assert.doesNotMatch(correctionSql, /SET\s+(?:revision|status)\s*=/);
 });
