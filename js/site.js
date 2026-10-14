@@ -582,6 +582,8 @@ function renderProductDetail(product) {
 
   document.title = product.title + ' | Venta de Mudanza';
   document.body.classList.add('product-detail-route');
+  document.body.dataset.salePulseProductId = product.id;
+  document.body.dataset.salePulseProductSlug = product.slug || '';
 
   const price = formatPYG(product.askingPricePYG);
   const dueNow = dueNowForProduct(product);
@@ -1021,6 +1023,9 @@ function renderProductDetail(product) {
   `;
 
   document.documentElement.classList.remove('product-route-pending');
+  window.dispatchEvent(new CustomEvent('sale-pulse:product-view', {
+    detail: { product },
+  }));
   setupProductCartButton(product);
   setupProductDiscoveryKeyboard(discoveryCatalog.length ? discovery : null);
   setupRelatedProductsCarousel();
@@ -1516,7 +1521,10 @@ function setupCatalogCartButtons() {
 
     actionButton.addEventListener('click', async function () {
       actionButton.disabled = true;
-      const added = await addStaticCartItem(product.id);
+      const added = await addStaticCartItem(
+        product.id,
+        window.salePulseCartContext?.(product.id) || null
+      );
       if (added) {
         actionButton.textContent = 'En carrito';
       } else {
@@ -1546,7 +1554,10 @@ function setupProductCartButton(product) {
 
   button.addEventListener('click', async function () {
     button.disabled = true;
-    const added = await addStaticCartItem(product.id);
+    const added = await addStaticCartItem(
+      product.id,
+      window.salePulseCartContext?.(product.id) || null
+    );
     if (added) button.textContent = 'Ya está en el carrito';
     else button.disabled = false;
   });
@@ -1722,12 +1733,17 @@ function saveStaticCart(cart) {
 }
 
 
-async function addStaticCartItem(productId) {
+async function addStaticCartItem(productId, analytics = null) {
   const cart = getStaticCart();
   if (cart.ids.includes(productId)) return true;
   saveStaticCart(cart);
   try {
-    const result = await postCartReservation('claim', { productId, quantity: 1 });
+    const trackingContext = analytics || window.salePulseCartContext?.(productId) || null;
+    const result = await postCartReservation('claim', {
+      productId,
+      quantity: 1,
+      ...(trackingContext ? { analytics: trackingContext } : {}),
+    });
     if (!result.ok) throw new Error(result.error || 'No se pudo reservar el artículo.');
     setStaticCartFromLease(result.lease);
     return true;

@@ -203,9 +203,41 @@
   function installCatalogEvents(grid) {
     const c = state.controls;
 
-    c.search?.addEventListener('input', applyFilters);
-    [c.category, c.availability, c.condition, c.price, c.sort]
-      .forEach((select) => select?.addEventListener('change', applyFilters));
+    let searchTimer = null;
+    c.search?.addEventListener('input', () => {
+      applyFilters();
+      clearTimeout(searchTimer);
+      const searchTerm = String(c.search.value || '').trim();
+      if (!searchTerm) return;
+      searchTimer = setTimeout(() => {
+        window.salePulseTrack?.('SEARCH', {
+          ...catalogDiscoveryContext(),
+          searchTerm,
+        });
+      }, 650);
+    });
+
+    c.category?.addEventListener('change', () => {
+      applyFilters();
+      const category = selectedCategory();
+      if (category) window.salePulseTrack?.('CATEGORY_SELECT', {
+        ...catalogDiscoveryContext(),
+        category,
+      });
+    });
+
+    [c.availability, c.condition, c.price].forEach((select) => {
+      select?.addEventListener('change', () => {
+        applyFilters();
+        const filters = activeFilters();
+        if (Object.keys(filters).length) window.salePulseTrack?.('FILTER_APPLY', {
+          ...catalogDiscoveryContext(),
+          filters,
+        });
+      });
+    });
+
+    c.sort?.addEventListener('change', applyFilters);
 
     c.categoryButtons.forEach((button) => {
       button.addEventListener('click', (event) => {
@@ -219,6 +251,11 @@
           other.classList.toggle('active', other === button)
         );
         applyFilters();
+        const category = selectedCategory();
+        if (category) window.salePulseTrack?.('CATEGORY_SELECT', {
+          ...catalogDiscoveryContext(),
+          category,
+        });
       });
     });
 
@@ -240,6 +277,37 @@
     grid.addEventListener('click', handleProductCardClick);
   }
 
+  function selectedCategory() {
+    const category = String(state.controls.category?.selectedOptions?.[0]?.textContent || '').trim();
+    return !category || normalize(category) === 'todas' ? '' : category;
+  }
+
+  function activeFilters() {
+    const c = state.controls;
+    const filters = {};
+    if (c.availability?.value && c.availability.value !== 'ALL') filters.availability = c.availability.value;
+    if (c.condition?.value && c.condition.value !== 'ALL') filters.condition = c.condition.value;
+    if (c.price?.value && Number(c.price.value) > 0) filters.maxPrice = String(c.price.value);
+    if (c.sort?.value && c.sort.value !== 'recommended') filters.sort = c.sort.value;
+    return filters;
+  }
+
+  function catalogDiscoveryContext(product = null) {
+    const context = {
+      resultCount: state.filtered.length,
+      filters: activeFilters(),
+    };
+    const category = selectedCategory();
+    const searchTerm = String(state.controls.search?.value || '').trim();
+    if (category) context.category = category;
+    if (searchTerm) context.searchTerm = searchTerm;
+    if (product) {
+      const position = state.filtered.findIndex((candidate) => candidate.id === product.id);
+      if (position >= 0) context.resultPosition = position + 1;
+    }
+    return context;
+  }
+
   async function handleProductCardClick(event) {
     const card = event.target.closest('.product-card');
     if (!card) return;
@@ -255,6 +323,7 @@
       if (product.status !== 'AVAILABLE') return;
       if (typeof window.addStaticCartItem === 'function') {
         cartButton.disabled = true;
+        window.salePulseSetCartContext?.(product, catalogDiscoveryContext(product));
         const added = await window.addStaticCartItem(product.id);
         if (added) cartButton.textContent = 'En carrito';
         else cartButton.disabled = false;
@@ -265,11 +334,13 @@
     const cardLink = event.target.closest('[data-product-card-link]');
     if (cardLink) {
       sessionStorage.setItem('mudanza-catalog-scroll', String(window.scrollY));
+      window.salePulseRememberProductDiscovery?.(product, catalogDiscoveryContext(product));
       return;
     }
 
     event.preventDefault();
     sessionStorage.setItem('mudanza-catalog-scroll', String(window.scrollY));
+    window.salePulseRememberProductDiscovery?.(product, catalogDiscoveryContext(product));
     window.location.assign(`/producto/${encodeURIComponent(product.slug)}`);
   }
 
