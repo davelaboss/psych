@@ -146,10 +146,14 @@ test('search analytics never retain free text and controlled context is allowlis
   assert.equal(validateAnalyticsEvent({ eventType: 'SEARCH', searchTerm: 'cliente@example.com' }).searchTerm, null);
   assert.equal(validateAnalyticsEvent({ eventType: 'SEARCH', searchTerm: '+595 981 123 456' }).searchTerm, null);
   assert.equal(validateAnalyticsEvent({ eventType: 'CATEGORY_SELECT', category: 'Muebles' }).category, 'Muebles');
+  assert.equal(validateAnalyticsEvent({ eventType: 'CATEGORY_SELECT', category: 'Juegos' }).category, 'Juegos');
   assert.throws(() => validateAnalyticsEvent({ eventType: 'CATEGORY_SELECT', category: 'Nombre de persona' }));
   assert.deepEqual(validateAnalyticsEvent({
     eventType: 'FILTER_APPLY', filters: { availability: 'IMMEDIATE', maxPrice: '500000' },
   }).filters, { availability: 'IMMEDIATE', maxPrice: '500000' });
+  assert.deepEqual(validateAnalyticsEvent({
+    eventType: 'FILTER_APPLY', filters: { showSold: 'true' },
+  }).filters, { showSold: 'true' });
   assert.throws(() => validateAnalyticsEvent({
     eventType: 'FILTER_APPLY', filters: { availability: 'cliente@example.com' },
   }));

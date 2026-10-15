@@ -87,56 +87,24 @@
         </div>
         <p>51<!-- --> <!-- -->artículos<!-- --> · Retiro en <!-- -->San Lorenzo</p>
       </div>
-      <div class="search-panel"><label class="search-field wide"><span aria-hidden="true">⌕</span><span
-            class="sr-only">Buscar artículos</span><input type="search"
-            placeholder="Buscar heladera, mesa, herramientas…" value="" /></label><label><span>Categoría</span><select>
-            <option selected="">Todas</option>
-            <option>Muebles</option>
-            <option>Oficina</option>
-            <option>Electrodomésticos</option>
-            <option>Accesorios personales</option>
-            <option>Decoración</option>
-            <option>Hogar</option>
-            <option>Jardín</option>
-            <option>Electrónica</option>
-            <option>Cocina</option>
-            <option>Herramientas</option>
-            <option>Manualidades</option>
-          </select></label><label><span>Disponibilidad</span><select>
-            <option value="ALL" selected="">Todas</option>
-            <option value="IMMEDIATE">Disponible ahora</option>
-            <option value="DELAYED">Retiro posterior</option>
-            <option value="REDUCED">Rebajados</option>
-          </select></label><label><span>Estado</span><select>
-            <option selected="">Todas</option>
-            <option>Buen estado visual</option>
-
-
-            <option>Muy buen estado</option>
-            <option>Buen estado y funcional</option>
-            <option>Excelente estado</option>
-
-
-
-          </select></label><label><span>Precio máximo</span><select>
-            <option value="" selected="">Sin límite</option>
-            <option value="500000">Gs. 500.000</option>
-            <option value="1000000">Gs. 1.000.000</option>
-            <option value="2000000">Gs. 2.000.000</option>
-            <option value="3000000">Gs. 3.000.000</option>
-          </select></label><label><span>Ordenar</span><select>
-            <option value="recommended" selected="">Recomendados</option>
-            <option value="price-asc">Precio menor a mayor</option>
-            <option value="price-desc">Precio mayor a menor</option>
-            <option value="newest">Más recientes</option>
-            <option value="reduced">Rebajados recientemente</option>
-          </select></label></div>
-      <div class="category-row" aria-label="Categorías populares"><button class="active"
-          type="button">Todas</button><button class="" type="button">Muebles</button><button class=""
-          type="button">Oficina</button><button class="" type="button">Electrodomésticos</button><button class=""
-          type="button">Accesorios personales</button><button class="" type="button">Decoración</button><button class=""
-          type="button">Hogar</button><button class="" type="button">Jardín</button><button class="reset-filters"
-          type="button">Restablecer filtros</button></div>
+      <div class="search-panel">
+        <label class="catalog-search-label" for="catalog-search">
+          <span>¿Qué estás buscando?</span>
+          <input id="catalog-search" type="search" placeholder="Ej.: mesa, licuadora o Item 125" autocomplete="off" />
+          <small>Podés buscar por palabra o número de Item.</small>
+        </label>
+      </div>
+      <div class="catalog-discovery" data-catalog-discovery>
+        <p class="category-prompt">O elegí una categoría</p>
+        <div class="category-row" aria-label="Categorías principales">
+          <button class="active" type="button">Todas</button><button type="button">Cocina</button><button type="button">Hogar</button><button type="button">Oficina</button><button type="button">Electrodomésticos</button><button type="button">Jardín</button><button type="button">Muebles</button><button type="button">Herramientas</button><button class="more-categories-toggle" type="button">Más categorías</button>
+        </div>
+        <div class="availability-choices">
+          <p>¿Cuándo lo necesitás?</p>
+          <div class="availability-row"><button class="active" type="button">Todos</button><button type="button">Disponible ahora</button><button type="button">Retiro posterior</button></div>
+        </div>
+        <div class="catalog-toolbar"><strong>Artículos disponibles</strong><button class="more-filters-static" type="button">Más filtros</button></div>
+      </div>
       <div class="product-grid">
         <article class="product-card  "><button class="product-photo" type="button"
             aria-label="Ampliar fotos de Mesa auxiliar plegable blanca"><img
@@ -779,56 +747,6 @@
               <h3>Mesa auxiliar plegable blanca marmolada</h3>
             </a><strong class="price">Gs. 220.000</strong><div class="card-detail-row"><a href="/producto/mesa-auxiliar-plegable-blanca-marmolada">Ver detalle</a><span class="card-category">Muebles</span></div><div class="card-actions"><button
                 type="button">Agregar al carrito</button></div><div class="card-availability"><span class="status-now">DISPONIBLE AHORA</span></div>
-
-          </div>
-        </article>
-      </div>
-      <a class="back-to-top" href="#inicio">↑ Volver arriba</a>
-    </section>
-    <section class="shelf warm" data-delayed-shelf aria-labelledby="delayed-shelf-title">
-      <div class="shelf-heading"><span class="section-kicker">SEÑA CONFIGURABLE</span>
-        <h2 id="delayed-shelf-title">Reservá hoy, retirá en la fecha indicada</h2>
-      </div>
-      <div class="shelf-grid">
-        <article class="product-card compact "><button class="product-photo" type="button"
-            aria-label="Ampliar fotos de Silla ergonómica de oficina con apoyacabeza"><img
-              src="assets/media/real-20260828-01-0.jpg?v=1789311777876"
-              alt="Silla ergonómica de oficina con apoyacabeza" loading="lazy" /><span
-              class="image-enlarge-hint">Ampliar foto</span></button>
-          <div class="product-copy">
-            <span
-              class="item-number">Item 001</span><a href="/producto/silla-ergonomica-de-oficina-con-apoyacabeza">
-              <h3>Silla ergonómica de oficina con apoyacabeza</h3>
-            </a><strong class="price">Gs. 850.000</strong><div class="card-detail-row"><a href="/producto/silla-ergonomica-de-oficina-con-apoyacabeza">Ver
-                detalle</a><span class="card-category">Oficina</span></div><div class="card-actions"><button type="button">Agregar al carrito</button></div><div class="card-availability"><span class="status-later">RETIRO 9–12 DIC.</span><span class="deposit-note">Seña 25%</span></div>
-
-
-          </div>
-        </article>
-        <article class="product-card compact "><button class="product-photo" type="button"
-            aria-label="Ampliar fotos de Dispensador de agua JAM con 4 bidones"><img
-              src="assets/media/real-20260828-02-0.jpg" alt="Dispensador de agua JAM con 4 bidones"
-              loading="lazy" /><span class="image-enlarge-hint">Ampliar foto</span></button>
-          <div class="product-copy">
-            <span class="item-number">Item 002</span><a href="/producto/dispenser-de-agua-jam-con-4-bidones">
-              <h3>Dispensador de agua JAM con 4 bidones</h3>
-            </a><strong class="price">Gs. 450.000</strong><div class="card-detail-row"><a href="/producto/dispenser-de-agua-jam-con-4-bidones">Ver detalle</a><span class="card-category">Electrodomésticos</span></div><div class="card-actions"><button
-                type="button">Agregar al carrito</button></div><div class="card-availability"><span class="status-later">RETIRO 9–12 DIC.</span><span class="deposit-note">Seña 25%</span></div>
-
-
-          </div>
-        </article>
-        <article class="product-card compact "><button class="product-photo" type="button"
-            aria-label="Ampliar fotos de Garrafa Copesa Gas de 13 kg"><img
-              src="assets/media/real-20260828-23-0.jpg?v=1789316746427" alt="Garrafa Copesa Gas de 13 kg"
-              loading="lazy" /><span class="image-enlarge-hint">Ampliar foto</span></button>
-          <div class="product-copy">
-            <span
-              class="item-number">Item 023</span><a href="/producto/garrafa-gastotal-de-13-kg">
-              <h3>Garrafa Copesa Gas de 13 kg</h3>
-            </a><strong class="price">Gs. 250.000</strong><div class="card-detail-row"><a href="/producto/garrafa-gastotal-de-13-kg">Ver detalle</a><span class="card-category">Cocina</span></div><div class="card-actions"><button
-                type="button">Agregar al carrito</button></div><div class="card-availability"><span class="status-later">RETIRO 9–12 DIC.</span><span class="deposit-note">Seña 25%</span></div>
-
 
           </div>
         </article>
