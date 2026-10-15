@@ -20,7 +20,7 @@
 /api/admin/sale-pulse          /.netlify/functions/admin-sale-pulse         200
 /api/analytics/event           /.netlify/functions/analytics-event          200
 
-/producto/*             /index.html                            200
+/producto/*             /.netlify/functions/product-page?slug=:splat 200
 /carrito                /index.html                            200
 /checkout               /index.html                            200
 /pedido/*               /index.html                            200
