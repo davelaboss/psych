@@ -8,6 +8,14 @@
 .site-footer .brand-photo{width:72px;height:54px}
 .intro h1{margin-top:0}
 @media (max-width:700px){.brand-photo{width:70px;height:53px}}
+
+.add-to-cart-error-backdrop{position:fixed;z-index:12000;inset:0;display:grid;place-items:center;padding:24px;background:rgb(13 31 25 / 78%)}
+.add-to-cart-error-dialog{width:min(100%,520px);padding:30px;border:1px solid var(--line);border-radius:14px;background:var(--paper);color:var(--ink);box-shadow:0 28px 80px rgb(0 0 0 / 38%);text-align:center}
+.add-to-cart-error-dialog h2{margin:0;color:var(--forest-dark);font-family:Georgia,serif;font-size:clamp(28px,5vw,38px);font-weight:600;line-height:1.1}
+.add-to-cart-error-dialog p{margin:16px 0 24px;color:var(--ink);font-size:18px;line-height:1.55}
+.add-to-cart-error-dialog button{width:100%;min-height:54px;padding:12px 24px;border:0;border-radius:8px;background:var(--forest);color:#fff;font-size:18px;font-weight:850}
+.add-to-cart-error-dialog button:focus-visible{outline:3px solid var(--ochre);outline-offset:3px}
+@media (max-width:520px){.add-to-cart-error-backdrop{padding:16px}.add-to-cart-error-dialog{padding:26px 20px}.add-to-cart-error-dialog p{font-size:17px}}
 .product-card h3{font-size:23px;line-height:1.16;min-height:54px}
 .product-card .price{font-size:21px!important}
 .product-card .item-number{font-size:16px!important}

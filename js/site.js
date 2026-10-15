@@ -1694,6 +1694,111 @@ async function postCartReservation(action, payload = {}) {
 }
 
 
+function addToCartErrorContent(message) {
+  const text = String(message || '').trim();
+  const normalized = text.toLocaleLowerCase('es');
+
+  if (
+    normalized.includes('temporalmente reservado') ||
+    normalized.includes('reservado por otro comprador') ||
+    normalized.includes('reservado por otra persona')
+  ) {
+    return {
+      title: 'Este artículo ya está reservado',
+      body: 'Otra persona lo tiene reservado temporalmente en este momento.',
+    };
+  }
+
+  if (
+    normalized.includes('ya no está disponible') ||
+    normalized.includes('no está disponible') ||
+    normalized.includes('no encontramos el inventario')
+  ) {
+    return {
+      title: 'Este artículo ya no está disponible',
+      body: 'El artículo no se agregó al carrito.',
+    };
+  }
+
+  if (
+    normalized.includes('sesión del carrito venció') ||
+    normalized.includes('reserva temporal venció') ||
+    normalized.includes('carrito venció')
+  ) {
+    return {
+      title: 'La sesión del carrito venció',
+      body: 'El artículo no se agregó al carrito.',
+    };
+  }
+
+  if (normalized.includes('ventas todavía no están abiertas')) {
+    return {
+      title: 'Las ventas todavía no están abiertas',
+      body: 'El artículo no se agregó al carrito.',
+    };
+  }
+
+  return {
+    title: 'No pudimos agregar el artículo',
+    body: 'Hubo un problema temporal y el artículo no se agregó al carrito.',
+  };
+}
+
+
+function showAddToCartErrorDialog(message, returnFocusTo = document.activeElement) {
+  const previous = document.getElementById('add-to-cart-error-backdrop');
+  if (previous) previous.remove();
+
+  const content = addToCartErrorContent(message);
+  const previousOverflow = document.documentElement.style.overflow;
+  const backdrop = document.createElement('div');
+  const dialog = document.createElement('section');
+  const title = document.createElement('h2');
+  const body = document.createElement('p');
+  const acknowledge = document.createElement('button');
+
+  backdrop.id = 'add-to-cart-error-backdrop';
+  backdrop.className = 'add-to-cart-error-backdrop';
+  dialog.className = 'add-to-cart-error-dialog';
+  dialog.setAttribute('role', 'alertdialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', 'add-to-cart-error-title');
+  dialog.setAttribute('aria-describedby', 'add-to-cart-error-body');
+  title.id = 'add-to-cart-error-title';
+  title.textContent = content.title;
+  body.id = 'add-to-cart-error-body';
+  body.textContent = content.body;
+  acknowledge.type = 'button';
+  acknowledge.textContent = 'Entendido';
+
+  dialog.append(title, body, acknowledge);
+  backdrop.appendChild(dialog);
+  document.body.appendChild(backdrop);
+  document.documentElement.style.overflow = 'hidden';
+
+  const close = () => {
+    backdrop.remove();
+    document.documentElement.style.overflow = previousOverflow;
+    if (
+      returnFocusTo &&
+      returnFocusTo.isConnected &&
+      typeof returnFocusTo.focus === 'function'
+    ) {
+      returnFocusTo.focus({ preventScroll: true });
+    }
+  };
+
+  acknowledge.addEventListener('click', close, { once: true });
+  backdrop.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    event.preventDefault();
+    acknowledge.focus();
+  });
+
+  window.requestAnimationFrame(() => acknowledge.focus());
+}
+
+
 function showCartNotice(message) {
   let notice = document.getElementById('cart-notice');
   if (!notice) {
@@ -1734,6 +1839,7 @@ function saveStaticCart(cart) {
 
 
 async function addStaticCartItem(productId, analytics = null) {
+  const returnFocusTo = document.activeElement;
   const cart = getStaticCart();
   if (cart.ids.includes(productId)) return true;
   saveStaticCart(cart);
@@ -1748,7 +1854,12 @@ async function addStaticCartItem(productId, analytics = null) {
     setStaticCartFromLease(result.lease);
     return true;
   } catch (error) {
-    showCartNotice(error instanceof Error ? error.message : 'No se pudo reservar el artículo.');
+    showAddToCartErrorDialog(
+      error instanceof Error
+        ? error.message
+        : 'No se pudo reservar el artículo.',
+      returnFocusTo
+    );
     return false;
   }
 }
