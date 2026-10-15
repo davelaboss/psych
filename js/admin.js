@@ -1086,130 +1086,11 @@ function renderOverviewTab() {
       'admin-tab-content'
     );
 
-  const stats =
-    ADMIN_STATE.stats;
-
   target.innerHTML = `
     <section class="admin-content-v2">
-      <div class="stats-grid-v2">
-        ${statCard(
-          'Inventario recuperado',
-          stats.totalProducts,
-          'Registros reconstruidos desde el sistema anterior.'
-        )}
-
-        ${statCard(
-          'Publicados',
-          stats.published,
-          'Artículos encontrados en el catálogo público actual.'
-        )}
-
-        ${statCard(
-          'Fuente ≠ producción',
-          stats.sourceDrift,
-          'Items 001–057 cuyo catálogo base no coincide con los datos públicos activos.'
-        )}
-
-        ${statCard(
-          'Pendientes de revisión',
-          stats.review,
-          'Registros legacy que todavía no aparecen publicados.'
-        )}
-
-        ${statCard(
-          'Volumen 2',
-          stats.volume2,
-          'El lote 058–158 del sistema anterior.'
-        )}
-
-        ${statCard(
-          'Pedidos',
-          stats.orderCount,
-          'Pedidos creados en el nuevo backend.'
-        )}
-
-        ${statCard(
-          'Pagos a revisar',
-          stats.awaitingPayment,
-          'Pedidos que todavía requieren acción.'
-        )}
-      </div>
-
-      <div class="admin-columns-v2">
-        <section class="admin-panel-card">
-          <span class="section-kicker">
-            ACCIÓN PRIORITARIA
-          </span>
-
-          <h2>
-            Pagos por confirmar
-          </h2>
-
-          ${renderPriorityOrders()}
-        </section>
-
-        <section class="admin-panel-card">
-          <span class="section-kicker">
-            INVENTARIO
-          </span>
-
-          <h2>
-            Estado de recuperación
-          </h2>
-
-          <dl class="admin-summary-list">
-            <div>
-              <dt>
-                Inventario inicial / legacy
-              </dt>
-
-              <dd>
-                ${stats.initial}
-              </dd>
-            </div>
-
-            <div>
-              <dt>
-                Volumen 2
-              </dt>
-
-              <dd>
-                ${stats.volume2}
-              </dd>
-            </div>
-
-            <div>
-              <dt>
-                Publicados actualmente
-              </dt>
-
-              <dd>
-                ${stats.published}
-              </dd>
-            </div>
-
-            <div>
-              <dt>
-                No publicados / por revisar
-              </dt>
-
-              <dd>
-                ${stats.review}
-              </dd>
-            </div>
-          </dl>
-
-          <button
-            type="button"
-            class="primary-action"
-            data-go-review
-          >
-            Abrir cola de revisión
-          </button>
-        </section>
-      </div>
-
       ${renderSalePulsePanel()}
+      ${renderOverviewActions()}
+      ${renderOverviewTechnicalInfo()}
     </section>
   `;
 
@@ -1234,18 +1115,13 @@ function renderOverviewTab() {
     });
 
   target
-    .querySelector(
-      '[data-go-review]'
-    )
-    ?.addEventListener(
-      'click',
-      () => {
-        ADMIN_STATE.activeTab =
-          'review';
-
+    .querySelectorAll('[data-go-tab]')
+    .forEach((button) => {
+      button.addEventListener('click', () => {
+        ADMIN_STATE.activeTab = button.getAttribute('data-go-tab') || 'overview';
         renderAdminTab();
-      }
-    );
+      });
+    });
 
   target
     .querySelectorAll(
@@ -1275,6 +1151,119 @@ function renderOverviewTab() {
         );
       }
     );
+}
+
+
+function overviewActionCard({ label, value, detail, tab, body = '' }) {
+  return `
+    <article class="admin-action-card">
+      <div class="admin-action-card-heading">
+        <div>
+          <span>${adminEscape(label)}</span>
+          <strong>${Number(value || 0)}</strong>
+        </div>
+        <button class="secondary-action" type="button" data-go-tab="${adminEscapeAttribute(tab)}">
+          Abrir ${adminEscape(tab === 'review' ? 'Revisión' : tab === 'inventory' ? 'Inventario' : 'Pedidos')}
+        </button>
+      </div>
+      <p>${adminEscape(detail)}</p>
+      ${body}
+    </article>`;
+}
+
+
+function renderOverviewActions() {
+  const stats = ADMIN_STATE.stats;
+  const operations = ADMIN_STATE.salePulse?.operations || {};
+  const cards = [];
+
+  if (stats.awaitingPayment > 0) {
+    cards.push(overviewActionCard({
+      label: 'Pagos por confirmar',
+      value: stats.awaitingPayment,
+      detail: 'Pedidos que todavía requieren revisión o confirmación del pago.',
+      tab: 'orders',
+      body: renderPriorityOrders(),
+    }));
+  }
+
+  if (Number(operations.eligiblePickupsUnscheduled || 0) > 0) {
+    cards.push(overviewActionCard({
+      label: 'Retiros sin horario',
+      value: operations.eligiblePickupsUnscheduled,
+      detail: 'Retiros habilitados que todavía necesitan una fecha y un horario.',
+      tab: 'orders',
+    }));
+  }
+
+  if (Number(operations.scheduledPickupsPending || 0) > 0) {
+    cards.push(overviewActionCard({
+      label: 'Retiros programados pendientes',
+      value: operations.scheduledPickupsPending,
+      detail: 'Retiros ya agendados que aún no fueron completados.',
+      tab: 'orders',
+    }));
+  }
+
+  if (stats.review > 0) {
+    cards.push(overviewActionCard({
+      label: 'Pendientes de revisión',
+      value: stats.review,
+      detail: 'Registros recuperados que todavía requieren atención en Revisión.',
+      tab: 'review',
+    }));
+  }
+
+  if (stats.sourceDrift > 0) {
+    cards.push(overviewActionCard({
+      label: 'Fuente ≠ producción',
+      value: stats.sourceDrift,
+      detail: 'Artículos 001–057 respaldados por la fuente cuyos datos activos no coinciden. Revisá cada caso; no se sincroniza automáticamente.',
+      tab: 'inventory',
+    }));
+  }
+
+  if (!cards.length) return '';
+
+  return `
+    <section class="admin-overview-actions" aria-labelledby="admin-overview-actions-title">
+      <div class="admin-section-heading-v2">
+        <div>
+          <span class="section-kicker">ATENCIÓN OPERATIVA</span>
+          <h2 id="admin-overview-actions-title">Acciones pendientes</h2>
+        </div>
+      </div>
+      <div class="admin-action-grid">${cards.join('')}</div>
+    </section>`;
+}
+
+
+function renderOverviewTechnicalInfo() {
+  const stats = ADMIN_STATE.stats;
+  return `
+    <details class="admin-technical-details">
+      <summary>
+        <span>
+          <strong>Información técnica</strong>
+          <small>Inventario, pedidos acumulados y recuperación</small>
+        </span>
+      </summary>
+      <div class="admin-technical-content">
+        <div class="stats-grid-v2">
+          ${statCard('Inventario recuperado', stats.totalProducts, 'Registros reconstruidos desde el sistema anterior.')}
+          ${statCard('Publicados', stats.published, 'Artículos encontrados en el catálogo público actual.')}
+          ${statCard('Volumen 2', stats.volume2, 'El lote 058–158 del sistema anterior.')}
+          ${statCard('Pedidos acumulados', stats.orderCount, 'Total histórico de pedidos en el backend actual.')}
+        </div>
+        <dl class="admin-summary-list">
+          <div><dt>Inventario inicial / histórico</dt><dd>${stats.initial}</dd></div>
+          <div><dt>Volumen 2</dt><dd>${stats.volume2}</dd></div>
+          <div><dt>Publicados actualmente</dt><dd>${stats.published}</dd></div>
+          <div><dt>No publicados / por revisar</dt><dd>${stats.review}</dd></div>
+        </dl>
+        <button type="button" class="secondary-action" data-go-tab="inventory">Abrir Inventario</button>
+      </div>
+    </details>`;
 }
 
 
@@ -7387,7 +7376,7 @@ function injectSalePulseStyles() {
   const style = document.createElement('style');
   style.id = 'sale-pulse-admin-styles';
   style.textContent = `
-    .sale-pulse-panel { margin-top: 24px; display: grid; gap: 22px; }
+    .sale-pulse-panel { display: grid; gap: 22px; }
     .sale-pulse-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
     .sale-pulse-heading h2 { margin: 4px 0 8px; }
     .sale-pulse-heading p { margin: 4px 0; color: #655f56; }
@@ -7409,13 +7398,34 @@ function injectSalePulseStyles() {
     .sale-pulse-empty { margin: 0; color: #655f56; }
     .sale-pulse-copy { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 4px; }
     .sale-pulse-copy p { margin: 0; max-width: 720px; color: #655f56; }
+    .admin-overview-actions { display: grid; gap: 14px; margin-top: 24px; }
+    .admin-overview-actions .admin-section-heading-v2 { margin-bottom: 0; }
+    .admin-overview-actions .admin-section-heading-v2 h2 { margin-bottom: 0; }
+    .admin-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .admin-action-card { min-width: 0; padding: 18px; border: 1px solid #dfc282; border-left: 5px solid #b57b17; border-radius: 14px; background: #fffaf0; }
+    .admin-action-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+    .admin-action-card-heading > div { display: flex; align-items: baseline; gap: 10px; }
+    .admin-action-card-heading span { font-weight: 800; }
+    .admin-action-card-heading strong { color: #875d20; font-size: 1.5rem; }
+    .admin-action-card > p { margin: 10px 0 0; color: #655f56; line-height: 1.5; }
+    .admin-action-card .priority-order-list { margin-top: 14px; }
+    .admin-technical-details { margin-top: 24px; border: 1px solid #ded8cd; border-radius: 14px; background: #faf8f4; }
+    .admin-technical-details summary { display: flex; cursor: pointer; padding: 16px 18px; }
+    .admin-technical-details summary span { display: grid; gap: 3px; }
+    .admin-technical-details summary small { color: #655f56; font-weight: 500; }
+    .admin-technical-content { display: grid; gap: 18px; padding: 0 18px 18px; border-top: 1px solid #e7e1d8; }
+    .admin-technical-content .stats-grid-v2 { margin-top: 18px; }
+    .admin-technical-content .admin-summary-list { margin-bottom: 0; }
+    .admin-technical-content > button { justify-self: start; }
     @media (max-width: 900px) {
-      .sale-pulse-windows, .sale-pulse-signals { grid-template-columns: 1fr; }
+      .sale-pulse-windows, .sale-pulse-signals, .admin-action-grid { grid-template-columns: 1fr; }
       .sale-pulse-sources > div { grid-template-columns: 1fr; }
     }
     @media (max-width: 620px) {
       .sale-pulse-heading, .sale-pulse-copy { align-items: stretch; flex-direction: column; }
       .sale-pulse-heading button, .sale-pulse-copy button { width: 100%; }
+      .admin-action-card-heading { align-items: stretch; flex-direction: column; }
+      .admin-action-card-heading button, .admin-technical-content > button { width: 100%; }
     }
   `;
   document.head.appendChild(style);
