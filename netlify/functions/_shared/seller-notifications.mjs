@@ -107,22 +107,33 @@ export function customerNotification({ order, type, details = {}, privateOrderLi
   }
 }
 
+const CUSTOMER_RECEIPT_NOTIFICATION_TYPES = new Set([
+  'RECEIPT_UPLOADED',
+  'FINAL_RECEIPT_UPLOADED',
+]);
+
+export function notificationRecipients({ type, customerEmail }) {
+  const normalizedCustomerEmail = String(customerEmail || '').trim();
+  if (!normalizedCustomerEmail) return [{ role: 'SELLER', email: null }];
+  if (CUSTOMER_RECEIPT_NOTIFICATION_TYPES.has(type)) {
+    return [{ role: 'CUSTOMER', email: normalizedCustomerEmail }];
+  }
+  return [];
+}
+
 export async function queueOrderNotifications(client, { key, order, type, details = {} }) {
+  const entries = notificationRecipients({ type, customerEmail: order.buyer?.email });
+  if (!entries.length) return;
   const attempt = (await client.query('SELECT session_id FROM checkout_attempts WHERE order_id=$1', [order.id])).rows[0];
   if (!attempt?.session_id) throw new Error(`Missing checkout session for notification: ${order.id}`);
   const links = notificationLinks(order.id, attempt.session_id);
   const { subject, text } = customerNotification({ order, type, details, ...links });
-  const customerEmail = String(order.buyer?.email || '').trim();
-  const entries = [
-    { role: 'SELLER', email: null, message: text },
-    ...(customerEmail ? [{ role: 'CUSTOMER', email: customerEmail, message: text }] : []),
-  ];
   for (const entry of entries) {
     await client.query(`INSERT INTO seller_notifications
       (event_key,order_id,event_type,payload,recipient_role,recipient_email,subject,message)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(event_key) DO NOTHING`, [
       `${key}:${entry.role.toLowerCase()}`, order.id, type,
-      JSON.stringify({ orderId: order.id }), entry.role, entry.email, subject, entry.message,
+      JSON.stringify({ orderId: order.id }), entry.role, entry.email, subject, text,
     ]);
   }
 }

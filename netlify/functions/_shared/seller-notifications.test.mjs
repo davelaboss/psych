@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { customerNotification, notificationLinks } from './seller-notifications.mjs';
+import {
+  customerNotification,
+  notificationLinks,
+  queueOrderNotifications,
+} from './seller-notifications.mjs';
 
 const order = (overrides = {}) => ({
   id: 'VM-2026-TEST',
@@ -29,6 +33,97 @@ function assertOneOrderAction(text, scheduler = false) {
   assert.equal(matches.length, 1);
   assert.equal(matches[0].endsWith('#pickup-scheduler'), scheduler);
 }
+
+const notificationTypes = [
+  'ORDER_CREATED',
+  'RECEIPT_UPLOADED',
+  'FINAL_RECEIPT_UPLOADED',
+  'PAYMENT_CONFIRMED',
+  'PICKUP_SCHEDULED',
+  'PICKUP_CHANGED',
+  'ORDER_RESERVATION_EXPIRING',
+  'ORDER_RESERVATION_EXPIRED',
+];
+
+async function queuedRows(type, email) {
+  const rows = [];
+  const queries = [];
+  const client = { async query(sql, params = []) {
+    queries.push(sql);
+    if (sql.includes('SELECT session_id FROM checkout_attempts')) {
+      return { rows: [{ session_id: 'cart-session' }] };
+    }
+    if (sql.includes('INSERT INTO seller_notifications')) {
+      rows.push({
+        eventKey: params[0],
+        orderId: params[1],
+        eventType: params[2],
+        payload: JSON.parse(params[3]),
+        recipientRole: params[4],
+        recipientEmail: params[5],
+        subject: params[6],
+        message: params[7],
+      });
+      return { rows: [] };
+    }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  await queueOrderNotifications(client, {
+    key: `event:${type.toLowerCase()}`,
+    order: order({ buyer: { ...order().buyer, email } }),
+    type,
+    details: type === 'PAYMENT_CONFIRMED'
+      ? { paymentState: 'FULLY_PAID', verifiedAmountPYG: 100_000 }
+      : type.startsWith('PICKUP_') ? { slot: '2026-12-09|08:00-12:00' } : {},
+  });
+  return { rows, queries };
+}
+
+test('queue routing sends emailed buyers only the two receipt acknowledgements', async () => {
+  for (const type of notificationTypes) {
+    const { rows, queries } = await queuedRows(type, '  maria@example.com  ');
+    if (['RECEIPT_UPLOADED', 'FINAL_RECEIPT_UPLOADED'].includes(type)) {
+      assert.equal(rows.length, 1, type);
+      assert.equal(rows[0].recipientRole, 'CUSTOMER', type);
+      assert.equal(rows[0].recipientEmail, 'maria@example.com', type);
+      assert.equal(rows[0].eventType, type);
+      assert.equal(rows[0].eventKey, `event:${type.toLowerCase()}:customer`);
+    } else {
+      assert.deepEqual(rows, [], type);
+      assert.deepEqual(queries, [], `${type} should not touch the notification queue`);
+    }
+  }
+});
+
+test('queue routing sends every supported lifecycle event to the seller when buyer email is unusable', async () => {
+  for (const email of ['', '   ', null, undefined]) {
+    for (const type of notificationTypes) {
+      const { rows } = await queuedRows(type, email);
+      assert.equal(rows.length, 1, `${type} / ${String(email)}`);
+      assert.equal(rows[0].recipientRole, 'SELLER', type);
+      assert.equal(rows[0].recipientEmail, null, type);
+      assert.equal(rows[0].eventType, type);
+      assert.equal(rows[0].eventKey, `event:${type.toLowerCase()}:seller`);
+      assert.deepEqual(rows[0].payload, { orderId: 'VM-2026-TEST' });
+    }
+  }
+});
+
+test('queued rows preserve approved copy, tokenized links, subjects, and role-qualified idempotency keys', async () => {
+  const receipt = (await queuedRows('RECEIPT_UPLOADED', 'maria@example.com')).rows[0];
+  assert.equal(receipt.subject, 'Comprobante recibido · VM-2026-TEST');
+  assert.match(receipt.message, /Recibimos el comprobante de tu pedido VM-2026-TEST\./);
+  assert.match(receipt.message, /La carga del comprobante no confirma el pago automáticamente\./);
+  assert.match(receipt.message, /https?:\/\/localhost:8888\/pedido\/VM-2026-TEST\?access=[0-9a-f]+/);
+  assert.doesNotMatch(receipt.message, /admin/i);
+  assert.equal(receipt.eventKey, 'event:receipt_uploaded:customer');
+
+  const created = (await queuedRows('ORDER_CREATED', '')).rows[0];
+  assert.equal(created.subject, 'Pedido VM-2026-TEST recibido');
+  assert.match(created.message, /realizá la transferencia y cargá el comprobante/);
+  assert.match(created.message, /https?:\/\/localhost:8888\/pedido\/VM-2026-TEST\?access=[0-9a-f]+/);
+  assert.equal(created.eventKey, 'event:order_created:seller');
+});
 
 test('order-created email uses the approved copy and private order link', () => {
   const text = render('ORDER_CREATED');
