@@ -7,6 +7,9 @@ const controller = await readFile(new URL('../../../js/volume2-storefront.js', i
 const staticStorefront = await readFile(new URL('../../../js/site.js', import.meta.url), 'utf8');
 const sourceStorefront = await readFile(new URL('../../../source/components/storefront.tsx', import.meta.url), 'utf8');
 const sourceProductCard = await readFile(new URL('../../../source/components/product-card.tsx', import.meta.url), 'utf8');
+const sourcePageScroll = await readFile(new URL('../../../source/components/history-scroll-restoration.tsx', import.meta.url), 'utf8');
+const sourceProductPage = await readFile(new URL('../../../source/app/producto/[slug]/page.tsx', import.meta.url), 'utf8');
+const sourceCartPage = await readFile(new URL('../../../source/app/carrito/page.tsx', import.meta.url), 'utf8');
 const instrumentedController = controller.replace(
   /\}\)\(\);\s*$/,
   `globalThis.__catalogHistory = {
@@ -229,7 +232,12 @@ test('catalog state is saved continuously and legacy global scroll storage is ab
   assert.match(controller, /window\.history\.scrollRestoration = isStorefrontFlow \? 'manual' : 'auto'/);
   assert.match(controller, /PAGE_SCROLL_HISTORY_KEY = 'mudanzaPageScrollState'/);
   assert.match(controller, /restorePageHistoryScroll\(savedPageScroll\)/);
-  assert.match(controller, /window\.addEventListener\('pagehide', flushPageScroll\)/);
+  assert.match(controller, /window\.addEventListener\('pagehide', \(\) => flushPageScroll\(!state\.pageLinkNavigation\)\)/);
+  assert.match(sourcePageScroll, /HISTORY_KEY = 'mudanzaPageScrollState'/);
+  assert.match(sourcePageScroll, /document\.addEventListener\('click', captureLinkNavigation, true\)/);
+  assert.match(sourcePageScroll, /window\.addEventListener\('pagehide', saveCurrent\)/);
+  assert.match(sourceProductPage, /<HistoryScrollRestoration \/>/);
+  assert.match(sourceCartPage, /<HistoryScrollRestoration \/>/);
   assert.match(staticStorefront, /window\.persistCatalogHistoryState\?\.\(\)/);
   assert.match(sourceStorefront, /window\.history\.replaceState/);
   assert.match(sourceProductCard, /persistCatalogHistoryState\?\.\(\)/);

@@ -17,6 +17,8 @@
     restoringPage: false,
     pageScrollTrackingInstalled: false,
     pageScrollSaveTimer: null,
+    pageScrollY: 0,
+    pageLinkNavigation: false,
   };
 
   const INITIAL_RENDER_COUNT = 48;
@@ -717,7 +719,7 @@
     replacePageScrollHistoryState(
       window.history,
       window.location.href,
-      pageScrollSnapshot(state.pageScrollPath, window.scrollY),
+      pageScrollSnapshot(state.pageScrollPath, state.pageScrollY),
     );
   }
 
@@ -740,6 +742,7 @@
 
       window.scrollTo({ top: Math.min(targetScroll, maxScroll), left: 0, behavior: 'auto' });
       window.requestAnimationFrame(() => {
+        state.pageScrollY = window.scrollY;
         state.restoringPage = false;
         persistPageScrollHistoryState();
       });
@@ -756,37 +759,44 @@
       clearTimeout(state.pageScrollSaveTimer);
       state.pageScrollSaveTimer = window.setTimeout(() => {
         state.pageScrollSaveTimer = null;
+        state.pageScrollY = window.scrollY;
         persistPageScrollHistoryState();
       }, SCROLL_SAVE_DELAY_MS);
     };
-    const flushPageScroll = () => {
+    const flushPageScroll = (captureCurrent = true) => {
       clearTimeout(state.pageScrollSaveTimer);
       state.pageScrollSaveTimer = null;
+      if (captureCurrent) state.pageScrollY = window.scrollY;
       persistPageScrollHistoryState();
     };
 
     window.addEventListener('scroll', scheduleScrollSave, { passive: true });
-    window.addEventListener('pagehide', flushPageScroll);
+    window.addEventListener('pagehide', () => flushPageScroll(!state.pageLinkNavigation));
     window.addEventListener('pageshow', (event) => {
       if (!event.persisted || !state.pageScrollPath) return;
       const saved = readPageScrollHistoryState(window.history.state, state.pageScrollPath);
       if (!saved) return;
+      state.pageLinkNavigation = false;
       state.restoringPage = true;
       restorePageHistoryScroll(saved);
     });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') flushPageScroll();
+      if (document.visibilityState === 'hidden') {
+        flushPageScroll(!state.pageLinkNavigation);
+      }
     });
     document.addEventListener('click', (event) => {
       const link = event.target.closest?.('a[href]');
       if (!link || link.target === '_blank' || link.hasAttribute('download')) return;
-      flushPageScroll();
+      state.pageLinkNavigation = true;
+      flushPageScroll(false);
     }, true);
   }
 
   function initializePageScrollRestoration(path) {
     state.pageScrollPath = path;
     const saved = readPageScrollHistoryState(window.history.state, path);
+    state.pageScrollY = saved?.scrollY ?? window.scrollY;
     state.restoringPage = Boolean(saved);
     installPageScrollHistoryTracking();
     return saved;
