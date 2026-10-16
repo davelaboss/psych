@@ -33,6 +33,15 @@ class FakeElement {
     return child;
   }
 
+  insertAdjacentElement(position, child) {
+    assert.equal(position, 'afterend');
+    const index = this.parentElement.children.indexOf(this);
+    child.parentElement = this.parentElement;
+    child.setConnected(this.parentElement.isConnected);
+    this.parentElement.children.splice(index + 1, 0, child);
+    return child;
+  }
+
   setConnected(value) {
     this.isConnected = value;
     this.children.forEach((child) => child.setConnected(value));
@@ -107,6 +116,9 @@ function createHarness(pathname = '/') {
   document.documentElement.setConnected(true);
   document.body = new FakeElement('body', document);
   document.documentElement.appendChild(document.body);
+  const header = new FakeElement('header', document);
+  header.className = 'site-header';
+  document.body.appendChild(header);
 
   const trigger = new FakeElement('button', document);
   trigger.textContent = 'Agregar al carrito';
@@ -130,19 +142,31 @@ function createHarness(pathname = '/') {
     },
   };
 
+  const timers = [];
+  let fetchCalls = 0;
+  document.querySelector = (selector) => selector === '.site-header' ? header : null;
+  document.querySelectorAll = (selector) => {
+    const attribute = selector.match(/^\[([^\]]+)\]$/)?.[1];
+    return attribute ? walk(document.documentElement).filter((element) => element.attributes.has(attribute)) : [];
+  };
+
   const context = vm.createContext({
     console,
     document,
     localStorage,
     window,
     fetch: async () => {
+      fetchCalls += 1;
       if (nextResponse.throw) throw nextResponse.throw;
       return {
         ok: nextResponse.ok,
         json: async () => nextResponse.body,
       };
     },
-    setTimeout: () => 1,
+    setTimeout: (callback) => {
+      timers.push(callback);
+      return timers.length;
+    },
     clearTimeout() {},
     setInterval: () => 1,
     clearInterval() {},
@@ -158,6 +182,9 @@ function createHarness(pathname = '/') {
     localStorage,
     trigger,
     window,
+    header,
+    timers,
+    get fetchCalls() { return fetchCalls; },
     setResponse(response) {
       nextResponse = response;
     },
@@ -187,6 +214,7 @@ async function rejectedAdd(error, pathname = '/') {
   assert.equal(harness.window.location.pathname, originalPath);
   const cart = JSON.parse(harness.localStorage.getItem('mudanza-demo-cart'));
   assert.deepEqual(cart.ids, []);
+  assert.equal(harness.document.getElementById('add-to-cart-success-backdrop'), null);
   return { ...harness, ...modalElements(harness.document) };
 }
 
@@ -235,17 +263,17 @@ test('generic server and network failures use a clear acknowledgement-only modal
   assert.equal(network.buttons.length, 1);
 });
 
-test('successful Add to Cart keeps normal behavior and does not open a failure modal', async () => {
+test('successful Add to Cart keeps normal behavior and opens the two-hour success modal from server expiresAt', async () => {
   const harness = createHarness('/');
   await harness.window.__staticCartReady;
+  const expiresAt = Date.now() + 2 * 60 * 60 * 1000;
   harness.setResponse({
     ok: true,
     body: {
       ok: true,
       lease: {
         createdAt: 1,
-        expiresAt: Date.now() + 35 * 60 * 1000,
-        extensionUsed: false,
+        expiresAt,
         items: { 'item-1': 1 },
       },
     },
@@ -253,8 +281,39 @@ test('successful Add to Cart keeps normal behavior and does not open a failure m
 
   assert.equal(await harness.context.addStaticCartItem('item-1'), true);
   assert.equal(harness.document.getElementById('add-to-cart-error-backdrop'), null);
+  const backdrop = harness.document.getElementById('add-to-cart-success-backdrop');
+  assert.ok(backdrop);
+  const elements = walk(backdrop);
+  assert.equal(elements.find((element) => element.id === 'add-to-cart-success-backdrop-title').textContent, 'Artículo reservado por 2 horas');
+  assert.equal(
+    elements.find((element) => element.id === 'add-to-cart-success-backdrop-body').textContent,
+    `Podés seguir mirando. Para conservarlo, completá tu compra antes de ${harness.context.formatReservationDeadline(expiresAt)}.`
+  );
+  assert.deepEqual(elements.filter((element) => element.tagName === 'BUTTON').map((button) => button.textContent), [
+    'Ir al carrito', 'Seguir mirando',
+  ]);
   const cart = JSON.parse(harness.localStorage.getItem('mudanza-demo-cart'));
   assert.deepEqual(cart.ids, ['item-1']);
+});
+
+test('success modal traps focus and Seguir mirando closes it and restores focus', async () => {
+  const harness = createHarness('/producto/mesa');
+  await harness.window.__staticCartReady;
+  harness.setResponse({
+    ok: true,
+    body: { ok: true, lease: { createdAt: 1, expiresAt: Date.now() + 2 * 60 * 60 * 1000, items: { 'item-1': 1 } } },
+  });
+  assert.equal(await harness.context.addStaticCartItem('item-1'), true);
+  const backdrop = harness.document.getElementById('add-to-cart-success-backdrop');
+  const buttons = walk(backdrop).filter((element) => element.tagName === 'BUTTON');
+  assert.equal(harness.document.activeElement, buttons[0]);
+  let prevented = false;
+  backdrop.dispatchEvent({ type: 'keydown', key: 'Tab', shiftKey: false, preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(harness.document.activeElement, buttons[1]);
+  buttons[1].dispatchEvent({ type: 'click' });
+  assert.equal(harness.document.getElementById('add-to-cart-success-backdrop'), null);
+  assert.equal(harness.document.activeElement, harness.trigger);
 });
 
 test('homepage and product detail Add to Cart share the same blocking failure path', async () => {
@@ -319,4 +378,76 @@ test('cart reservation semantics remain an atomic server claim outside the modal
     /postCartReservation\('claim',[\s\S]*?if \(!result\.ok\) throw new Error/m
   );
   assert.match(storefrontSource, /setStaticCartFromLease\(result\.lease\);[\s\S]*?return true;/m);
+});
+
+test('active lease installs the site-wide banner and authoritative lease removal hides it', async () => {
+  const harness = createHarness('/producto/mesa');
+  await harness.window.__staticCartReady;
+  const expiresAt = Date.now() + 2 * 60 * 60 * 1000;
+  harness.context.setStaticCartFromLease({ createdAt: Date.now(), expiresAt, items: { 'item-1': 1 } });
+  assert.ok(harness.document.getElementById('cart-reservation-banner'));
+
+  harness.setResponse({ ok: true, body: { ok: true, lease: null, expiredAt: null } });
+  await harness.context.syncStaticCartFromServer();
+  assert.equal(harness.document.getElementById('cart-reservation-banner'), null);
+  assert.deepEqual(JSON.parse(harness.localStorage.getItem('mudanza-demo-cart')).ids, []);
+});
+
+test('an older expiration callback cannot synchronize or clear a newer lease', async () => {
+  const harness = createHarness('/');
+  await harness.window.__staticCartReady;
+  const oldExpiration = Date.now() + 60 * 60 * 1000;
+  const newExpiration = oldExpiration + 30 * 60 * 1000;
+  harness.context.setStaticCartFromLease({ createdAt: 1, expiresAt: oldExpiration, items: { A: 1 } });
+  const staleCallback = harness.timers.at(-1);
+  harness.context.setStaticCartFromLease({ createdAt: 1, expiresAt: newExpiration, items: { A: 1, B: 1 } });
+  const callsBeforeStaleTimer = harness.fetchCalls;
+  staleCallback();
+  assert.equal(harness.fetchCalls, callsBeforeStaleTimer);
+  assert.equal(JSON.parse(harness.localStorage.getItem('mudanza-demo-cart')).expiresAt, newExpiration);
+});
+
+test('approaching-expiration warning is once per exact deadline and a later deadline is eligible', async () => {
+  const harness = createHarness('/');
+  await harness.window.__staticCartReady;
+  const firstDeadline = 1000;
+  harness.context.showApproachingExpirationDialog(firstDeadline);
+  assert.ok(harness.document.getElementById('cart-expiring-backdrop'));
+  harness.document.getElementById('cart-expiring-backdrop').remove();
+  harness.context.showApproachingExpirationDialog(firstDeadline);
+  assert.equal(harness.document.getElementById('cart-expiring-backdrop'), null);
+  harness.context.showApproachingExpirationDialog(firstDeadline + 1);
+  assert.ok(harness.document.getElementById('cart-expiring-backdrop'));
+});
+
+test('authoritative expiration notification is once per released deadline', async () => {
+  const harness = createHarness('/carrito');
+  await harness.window.__staticCartReady;
+  harness.context.showCartExpirationDialog(1234);
+  const modal = harness.document.getElementById('cart-expired-backdrop');
+  assert.ok(modal);
+  const elements = walk(modal);
+  assert.equal(elements.find((element) => element.id === 'cart-expired-backdrop-title').textContent, 'Tu reserva venció');
+  assert.match(elements.find((element) => element.id === 'cart-expired-backdrop-body').textContent, /fueron liberados/);
+  modal.remove();
+  harness.context.showCartExpirationDialog(1234);
+  assert.equal(harness.document.getElementById('cart-expired-backdrop'), null);
+});
+
+test('Asuncion deadline copy distinguishes today, tomorrow, and later dates', async () => {
+  const harness = createHarness('/');
+  await harness.window.__staticCartReady;
+  const beforeMidnight = Date.parse('2026-10-16T23:30:00-03:00');
+  assert.equal(
+    harness.context.formatReservationDeadline(Date.parse('2026-10-16T23:45:00-03:00'), beforeMidnight),
+    'hoy a las 23:45'
+  );
+  assert.equal(
+    harness.context.formatReservationDeadline(Date.parse('2026-10-17T01:00:00-03:00'), beforeMidnight),
+    'mañana a las 01:00'
+  );
+  assert.match(
+    harness.context.formatReservationDeadline(Date.parse('2026-10-19T09:15:00-03:00'), beforeMidnight),
+    /^el 19 de octubre a las 09:15$/
+  );
 });

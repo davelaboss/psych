@@ -124,9 +124,6 @@ function getCheckoutCart() {
       expiresAt:
         Number(stored.expiresAt || 0) || null,
 
-      extensionUsed:
-        Boolean(stored.extensionUsed),
-
       ids:
         Array.isArray(stored.ids)
           ? stored.ids
@@ -143,7 +140,6 @@ function getCheckoutCart() {
     return {
       createdAt: null,
       expiresAt: null,
-      extensionUsed: false,
       ids: [],
       quantities: {},
     };
@@ -325,19 +321,7 @@ async function renderCheckoutPage() {
           Tus datos
         </h1>
 
-        <p>
-          Tu pedido quedará reservado por 2 horas mientras realizás la transferencia.
-          Si no enviás el comprobante dentro de ese plazo, la reserva puede vencer y
-          los artículos pueden volver a estar disponibles.
-        </p>
-        ${leaseExpiresAt ? `<p class="cart-lease-countdown" id="checkout-lease-countdown" data-expires-at="${leaseExpiresAt}">Tu carrito queda reservado por <strong></strong>.</p>` : ''}
-        ${leaseExpiresAt ? `
-          <div class="pickup-confirm" id="checkout-cart-extension" ${cart.extensionUsed ? '' : 'hidden'}>
-            <strong>${cart.extensionUsed ? 'Reserva extendida' : '¿Necesitás más tiempo?'}</strong>
-            <span>${cart.extensionUsed ? 'Tenés 20 minutos adicionales para terminar tu compra.' : 'Podés extender tu reserva una vez por 20 minutos para terminar de comprar.'}</span>
-            ${cart.extensionUsed ? '' : '<button class="secondary-action" type="button" id="extend-checkout-reservation">Necesito más tiempo (+20 min)</button>'}
-          </div>
-        ` : ''}
+        ${leaseExpiresAt && typeof reservationCardHtml === 'function' ? reservationCardHtml('Completá este paso') : ''}
       </div>
 
       <div class="checkout-grid">
@@ -346,13 +330,6 @@ async function renderCheckoutPage() {
           id="checkout-form"
           class="checkout-card"
         >
-          <section class="final-sale-policy" aria-labelledby="checkout-final-sale-title">
-            <h2 id="checkout-final-sale-title">Todas las ventas son finales.</h2>
-            <p>La mayoría de los artículos son usados y se venden en el estado en que se encuentran, según las fotos y la descripción publicada. Al retirar tu compra, por favor revisá el artículo antes de llevártelo. Una vez que el artículo sale de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</p>
-            <p>${NO_DELIVERY_NOTICE}</p>
-            ${items.some(({ product }) => product.saleMode === 'DELAYED') ? `<p>${DELAYED_PICKUP_NOTICE}</p>` : ''}
-          </section>
-
           <label>
             <span>
               Nombre y apellido
@@ -420,10 +397,6 @@ async function renderCheckoutPage() {
             de transferencia
           </button>
 
-          <small>
-            Al continuar, los artículos quedan reservados durante 2 horas mientras
-            realizás la transferencia y cargás el comprobante.
-          </small>
         </form>
 
         <aside
@@ -497,7 +470,6 @@ async function renderCheckoutPage() {
   injectCheckoutStyles();
 
   startCheckoutLeaseCountdown();
-  setupCheckoutReservationExtension();
 
   document
     .getElementById(
@@ -621,6 +593,7 @@ async function renderCheckoutPage() {
             CHECKOUT_CART_KEY
           );
           localStorage.removeItem(CHECKOUT_ID_KEY);
+          if (typeof clearCartReservationUi === 'function') clearCartReservationUi();
 
           if (
             typeof updateStaticCartCount ===
@@ -1574,64 +1547,10 @@ function orderItemLabel(item) {
 
 
 function startCheckoutLeaseCountdown() {
-  const target = document.querySelector('#checkout-lease-countdown strong');
-  const wrapper = document.getElementById('checkout-lease-countdown');
-  if (!target || !wrapper) return;
-  const expiresAt = Number(wrapper.dataset.expiresAt || 0);
-  clearInterval(startCheckoutLeaseCountdown.timer);
-  const update = () => {
-    const currentExpiration = Number(wrapper.dataset.expiresAt || expiresAt);
-    const remaining = currentExpiration - Date.now();
-    const extension = document.getElementById('checkout-cart-extension');
-    if (remaining <= 0) {
-      target.textContent = 'vencida';
-      const button = document.querySelector('#checkout-form button[type="submit"]');
-      if (button) button.disabled = true;
-      wrapper.textContent = 'La reserva temporal venció y este artículo volvió a estar disponible.';
-      clearInterval(startCheckoutLeaseCountdown.timer);
-      return;
-    }
-    const seconds = Math.ceil(remaining / 1000);
-    target.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-    if (extension && !extension.dataset.used && remaining <= 10 * 60 * 1000) extension.hidden = false;
-  };
-  update();
-  startCheckoutLeaseCountdown.timer = setInterval(update, 1000);
-}
-
-
-function setupCheckoutReservationExtension() {
-  const button = document.getElementById('extend-checkout-reservation');
-  if (!button) return;
-  button.addEventListener('click', async function () {
-    button.disabled = true;
-    try {
-      const response = await fetch('/api/cart/reservation', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'extend' }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.lease) throw new Error(result.error || 'No se pudo extender la reserva.');
-      if (typeof setStaticCartFromLease === 'function') setStaticCartFromLease(result.lease);
-      const wrapper = document.getElementById('checkout-lease-countdown');
-      if (wrapper) wrapper.dataset.expiresAt = String(result.lease.expiresAt);
-      const extension = document.getElementById('checkout-cart-extension');
-      if (extension) {
-        extension.dataset.used = 'true';
-        extension.hidden = false;
-        extension.innerHTML = '<strong>Reserva extendida</strong><span>Tenés 20 minutos adicionales para terminar tu compra.</span>';
-      }
-      startCheckoutLeaseCountdown();
-    } catch (error) {
-      button.disabled = false;
-      const errorBox = document.getElementById('checkout-error');
-      if (errorBox) {
-        errorBox.textContent = error instanceof Error ? error.message : 'No se pudo extender la reserva.';
-        errorBox.hidden = false;
-      }
-    }
-  });
+  const cart = getCheckoutCart();
+  if (cart.expiresAt && typeof startCartReservationCountdown === 'function') {
+    startCartReservationCountdown(cart.expiresAt);
+  }
 }
 
 

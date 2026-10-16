@@ -558,7 +558,7 @@ function correctItem054058DefectNote(product) {
 }
 
 export {
-  claimCartLease, updateCartLease, releaseCartLease, extendCartLease, getCartLeaseStatus,
+  claimCartLease, updateCartLease, releaseCartLease, getCartLeaseStatus,
   transitionCartLeaseToOrder, getCartCheckoutAttempt, recordOrderReceipt,
   commitInventoryHold, confirmOrderPayment, updateProductCapacity, cancelOrder,
   refreshOrderReservation,

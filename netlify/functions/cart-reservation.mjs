@@ -1,7 +1,6 @@
 import {
   claimCartLease,
   cartSessionIdFromRequest,
-  extendCartLease,
   getCartLeaseStatus,
   jsonResponse,
   loadCatalog,
@@ -35,7 +34,6 @@ export function createCartReservationHandler({
   claimLease = claimCartLease,
   getLeaseStatus = getCartLeaseStatus,
   releaseLease = releaseCartLease,
-  extendLease = extendCartLease,
   updateLease = updateCartLease,
   loadProducts = loadCatalog,
   salesOpen = salesAreOpen,
@@ -64,8 +62,7 @@ export function createCartReservationHandler({
       return jsonResponse({ ok: true, ...result });
     }
     if (action === 'extend') {
-      const result = await extendLease(cartSessionId);
-      return jsonResponse({ ok: true, ...result });
+      return jsonResponse({ error: 'La reserva del carrito no admite extensiones.' }, 400);
     }
 
     const productId = String(body?.productId || '');
