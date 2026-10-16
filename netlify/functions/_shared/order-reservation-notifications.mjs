@@ -1,9 +1,12 @@
 import { inventoryTransaction } from './inventory-database.mjs';
 import { queueOrderNotifications } from './seller-notifications.mjs';
 
-export async function enqueueDueOrderReservationNotifications(limit = 20) {
+export async function enqueueDueOrderReservationNotifications(limit = 20, dependencies = {}) {
+  const runTransaction = dependencies.transaction || inventoryTransaction;
+  const queueNotifications = dependencies.queueNotifications || queueOrderNotifications;
+  const currentTime = dependencies.now || Date.now;
   for (let i = 0; i < limit; i++) {
-    const found = await inventoryTransaction(async client => {
+    const found = await runTransaction(async client => {
       const event = (await client.query(`SELECT * FROM order_reservation_events
         WHERE due_at<=clock_timestamp() AND cancelled_at IS NULL AND processed_at IS NULL
         ORDER BY due_at,event_id FOR UPDATE SKIP LOCKED LIMIT 1`)).rows[0];
@@ -15,9 +18,9 @@ export async function enqueueDueOrderReservationNotifications(limit = 20) {
       const stillUnpaid = orderRow && !orderRow.committed_at &&
         ['AWAITING_INITIAL_PAYMENT', 'RESERVATION_EXPIRED'].includes(orderRow.order_snapshot.status);
       const due = event.event_type === 'ORDER_RESERVATION_EXPIRING'
-        ? currentExpiration > Date.now() : currentExpiration <= Date.now();
+        ? currentExpiration > currentTime() : currentExpiration <= currentTime();
       if (matches && stillUnpaid && due) {
-        await queueOrderNotifications(client, { key: `reservation:${event.event_id}`,
+        await queueNotifications(client, { key: `reservation:${event.event_id}`,
           order: orderRow.order_snapshot, type: event.event_type });
       }
       await client.query('UPDATE order_reservation_events SET processed_at=clock_timestamp() WHERE event_id=$1',
