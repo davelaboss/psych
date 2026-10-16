@@ -17,15 +17,14 @@ import { queueOrderNotifications } from './seller-notifications.mjs';
 
 const RESERVED = 'Este artículo está temporalmente reservado por otro comprador.';
 const EXPIRED = 'La reserva temporal venció y este artículo volvió a estar disponible.';
-const INITIAL_CART_TTL = 35 * 60 * 1000;
-const CART_EXTENSION = 20 * 60 * 1000;
-const MAX_CART_TTL = 55 * 60 * 1000;
+export const CART_HOLD_MS = 2 * 60 * 60 * 1000;
 export const ORDER_HOLD_MS = 2 * 60 * 60 * 1000;
 const ORDER_EXPIRING_LEAD_MS = 30 * 60 * 1000;
 const ms = value => value == null ? null : new Date(value).getTime();
 const fail = message => Object.assign(new Error(message), { status: 409 });
 let databaseClient;
 export const database = () => databaseClient ||= getDatabase();
+export function setInventoryDatabaseClientForTests(client) { databaseClient = client; }
 
 export async function inventoryTransaction(operation) {
   for (let retry = 0; retry < 3; retry++) {
@@ -74,7 +73,6 @@ async function expireCart(client, session, timestamp) {
 async function leaseStatus(client, session) {
   const items = await cartRows(client, session.session_id);
   return { lease: items.length ? { createdAt: ms(session.created_at), expiresAt: ms(session.expires_at),
-    extensionUsed: Boolean(session.extension_used_at), extensionUsedAt: ms(session.extension_used_at),
     items: Object.fromEntries(items.map(row => [row.product_id, row.quantity])) } : null,
   expiredAt: ms(session.expired_at) };
 }
@@ -170,31 +168,43 @@ export async function getCartLeaseStatus(sessionId) {
 async function setCartQuantity({ cartSessionId, productId, quantity, availability }, allowNew) {
   return inventoryTransaction(async client => {
     const session = await sessionLock(client, cartSessionId);
-    const rows = await cartRows(client, cartSessionId);
-    await productLocks(client, [...rows.map(row => row.product_id), productId], { [productId]: availability });
+    const lockedRows = await cartRows(client, cartSessionId);
+    await productLocks(client, [...lockedRows.map(row => row.product_id), productId], { [productId]: availability });
     const timestamp = await now(client);
     await expireCart(client, session, timestamp);
+    const rows = await cartRows(client, cartSessionId);
+    const existing = rows.find(row => row.product_id === productId);
     if (!session.expires_at) {
       if (!allowNew || quantity <= 0) return leaseStatus(client, session);
+    }
+    if (quantity > 0 && (await available(client, productId, cartSessionId)) < quantity) throw fail(RESERVED);
+
+    const meaningfulAddition = quantity > Number(existing?.quantity || 0);
+    if (!session.expires_at) {
       session.created_at = new Date(timestamp);
-      session.expires_at = new Date(timestamp + INITIAL_CART_TTL);
       session.expired_at = null;
       session.extension_used_at = null;
-      await client.query('UPDATE cart_sessions SET generation=generation+1,created_at=$2,expires_at=$3,expired_at=NULL,extension_used_at=NULL WHERE session_id=$1',
-        [cartSessionId, session.created_at, session.expires_at]);
+      await client.query('UPDATE cart_sessions SET generation=generation+1,created_at=$2,expired_at=NULL,extension_used_at=NULL WHERE session_id=$1',
+        [cartSessionId, session.created_at]);
     }
     if (quantity > 0) {
-      if ((await available(client, productId, cartSessionId)) < quantity) throw fail(RESERVED);
       await client.query(`INSERT INTO inventory_reservations(product_id,session_id,quantity,phase,expires_at)
         VALUES ($1,$2,$3,'CART',$4) ON CONFLICT(session_id,product_id) WHERE phase='CART'
         DO UPDATE SET quantity=EXCLUDED.quantity,updated_at=clock_timestamp()`,
-      [productId, cartSessionId, quantity, session.expires_at]);
+      [productId, cartSessionId, quantity, session.expires_at || new Date(timestamp + CART_HOLD_MS)]);
     } else {
       await client.query("DELETE FROM inventory_reservations WHERE session_id=$1 AND product_id=$2 AND phase='CART'", [cartSessionId, productId]);
     }
-    if (!(await cartRows(client, cartSessionId)).length) {
+    const currentRows = await cartRows(client, cartSessionId);
+    if (!currentRows.length) {
       await client.query('UPDATE cart_sessions SET expires_at=NULL WHERE session_id=$1', [cartSessionId]);
       session.expires_at = null;
+    } else if (meaningfulAddition) {
+      session.expires_at = new Date(timestamp + CART_HOLD_MS);
+      await client.query('UPDATE cart_sessions SET expires_at=$2 WHERE session_id=$1',
+        [cartSessionId, session.expires_at]);
+      await client.query("UPDATE inventory_reservations SET expires_at=$2,updated_at=clock_timestamp() WHERE session_id=$1 AND phase='CART'",
+        [cartSessionId, session.expires_at]);
     }
     return leaseStatus(client, session);
   });
@@ -524,28 +534,6 @@ export async function cancelOrder(orderId) {
     await client.query('UPDATE checkout_attempts SET order_snapshot=$2,expires_at=$3,projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1',
       [orderId, JSON.stringify(snapshot), new Date(timestamp)]);
     return snapshot;
-  });
-}
-
-export async function extendCartLease(sessionId) {
-  return inventoryTransaction(async client => {
-    const session = await sessionLock(client, sessionId);
-    const rows = await cartRows(client, sessionId);
-    await productLocks(client, rows.map(row => row.product_id));
-    const timestamp = await now(client);
-    await expireCart(client, session, timestamp);
-    if (!session.expires_at || !(await cartRows(client, sessionId)).length) throw fail(EXPIRED);
-    if (session.extension_used_at) throw fail('Esta reserva ya usó su extensión de 20 minutos.');
-    const maximum = ms(session.created_at) + MAX_CART_TTL;
-    const extended = Math.min(ms(session.expires_at) + CART_EXTENSION, maximum);
-    if (extended <= timestamp) throw fail(EXPIRED);
-    session.expires_at = new Date(extended);
-    session.extension_used_at = new Date(timestamp);
-    await client.query('UPDATE cart_sessions SET expires_at=$2,extension_used_at=$3 WHERE session_id=$1',
-      [sessionId, session.expires_at, session.extension_used_at]);
-    await client.query("UPDATE inventory_reservations SET expires_at=$2,updated_at=clock_timestamp() WHERE session_id=$1 AND phase='CART'",
-      [sessionId, session.expires_at]);
-    return leaseStatus(client, session);
   });
 }
 

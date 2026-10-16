@@ -1,6 +1,9 @@
 // File: js/site.js
 
 const STATIC_CART_KEY = 'mudanza-demo-cart';
+const CART_WARNING_DEADLINES_KEY = 'mudanza-cart-warning-deadlines';
+const CART_EXPIRATION_EVENTS_KEY = 'mudanza-cart-expiration-events';
+const RESERVATION_TIME_ZONE = 'America/Asuncion';
 const DELAYED_FINAL_PAYMENT_WINDOW = '1–8 diciembre 2026';
 const FINAL_SALE_POLICY_VERSION = '2026-10-02-v1';
 const FINAL_SALE_SHORT_NOTICE = 'Importante: La mayoría de los artículos son usados. Todas las ventas son finales.';
@@ -31,6 +34,7 @@ async function bootStaticStorefront() {
 
   await window.__staticCartReady;
   updateStaticCartCount();
+  refreshCartReservationUi();
 
   if (path === '/carrito') {
     await renderCartPage();
@@ -1150,15 +1154,7 @@ async function renderCartPage() {
 
         <h2>Lo que vas a pagar</h2>
 
-        ${cart.expiresAt ? '<div class="cart-lease-countdown" id="cart-lease-countdown" role="status">Reserva temporal · <strong></strong></div>' : ''}
-
-        ${cart.expiresAt ? `
-          <div class="pickup-confirm" id="cart-extension" ${cart.extensionUsed ? '' : 'hidden'}>
-            <strong>${cart.extensionUsed ? 'Reserva extendida' : '¿Necesitás más tiempo?'}</strong>
-            <span>${cart.extensionUsed ? 'Tenés 20 minutos adicionales para terminar tu compra.' : 'Podés extender tu reserva una vez por 20 minutos para terminar de comprar.'}</span>
-            ${cart.extensionUsed ? '' : '<button class="secondary-action" type="button" id="extend-cart-reservation">Necesito más tiempo (+20 min)</button>'}
-          </div>
-        ` : ''}
+        ${cart.expiresAt ? reservationCardHtml('Completá tu compra') : ''}
 
         <dl>
           <div>
@@ -1229,7 +1225,6 @@ async function renderCartPage() {
 
         <small>
           En el siguiente paso confirmaremos tus datos y la forma de pago.
-          La reserva inicial del carrito dura 35 minutos. Podés extenderla una vez por 20 minutos.
         </small>
       </aside>
 
@@ -1244,26 +1239,7 @@ async function renderCartPage() {
 
 
 function startCartCountdown(cart) {
-  clearInterval(startCartCountdown.timer);
-  const expiresAt = cart?.expiresAt;
-  if (!expiresAt) return;
-  const update = async () => {
-    const remaining = Number(expiresAt) - Date.now();
-    const target = document.querySelector('#cart-lease-countdown strong');
-    const extension = document.getElementById('cart-extension');
-    if (!target) return;
-    if (remaining <= 0) {
-      clearInterval(startCartCountdown.timer);
-      await syncStaticCartFromServer();
-      await renderCartPage();
-      return;
-    }
-    const seconds = Math.ceil(remaining / 1000);
-    target.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-    if (extension && !cart.extensionUsed && remaining <= 10 * 60 * 1000) extension.hidden = false;
-  };
-  void update();
-  startCartCountdown.timer = setInterval(update, 1000);
+  if (cart?.expiresAt) startCartReservationCountdown(cart.expiresAt);
 }
 
 
@@ -1442,21 +1418,6 @@ function setupCartPageEvents(hasUnavailable) {
     });
   }
 
-  const extendButton = document.getElementById('extend-cart-reservation');
-  if (extendButton) {
-    extendButton.addEventListener('click', async function () {
-      extendButton.disabled = true;
-      const result = await postCartReservation('extend');
-      if (!result.ok || !result.lease) {
-        extendButton.disabled = false;
-        showCartNotice(result.error || 'No se pudo extender la reserva.');
-        return;
-      }
-      setStaticCartFromLease(result.lease);
-      await renderCartPage();
-    });
-  }
-
   const continueButton =
     document.getElementById('continue-checkout');
 
@@ -1606,7 +1567,6 @@ function getStaticCart() {
       return {
         createdAt: null,
         expiresAt: null,
-        extensionUsed: false,
         ids: stored.filter(
           (id) => typeof id === 'string'
         ),
@@ -1621,7 +1581,6 @@ function getStaticCart() {
     return {
       createdAt: Number(stored.createdAt || 0) || null,
       expiresAt: Number(stored.expiresAt || 0) || null,
-      extensionUsed: Boolean(stored.extensionUsed),
       ids: Array.isArray(stored.ids)
         ? stored.ids
         : [],
@@ -1636,7 +1595,6 @@ function getStaticCart() {
     return {
       createdAt: null,
       expiresAt: null,
-      extensionUsed: false,
       ids: [],
       quantities: {},
     };
@@ -1649,14 +1607,19 @@ function setStaticCartFromLease(lease) {
   saveStaticCart({
     createdAt: lease.createdAt,
     expiresAt: lease.expiresAt,
-    extensionUsed: Boolean(lease.extensionUsed),
     ids: Object.keys(lease.items || {}),
     quantities: lease.items || {},
   });
+  refreshCartReservationUi();
+  startCartReservationCountdown(lease.expiresAt);
   clearTimeout(setStaticCartFromLease.expiryTimer);
+  const expectedExpiration = Number(lease.expiresAt);
   setStaticCartFromLease.expiryTimer = setTimeout(
-    () => void syncStaticCartFromServer(),
-    Math.max(0, Number(lease.expiresAt) - Date.now() + 50)
+    () => {
+      if (Number(getStaticCart().expiresAt) !== expectedExpiration) return;
+      void synchronizeExpiredCart(expectedExpiration);
+    },
+    Math.max(0, expectedExpiration - Date.now() + 50)
   );
 }
 
@@ -1671,6 +1634,7 @@ async function syncStaticCartFromServer({ migrateLegacy = false } = {}) {
     if (result.checkoutRecovery) {
       localStorage.setItem('mudanza-last-order', JSON.stringify({ id: result.checkoutRecovery.orderId, access: result.checkoutRecovery.accessToken }));
       saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
+      clearCartReservationUi();
       localStorage.removeItem('mudanza-cart-checkout-id');
       if (typeof installMyOrderLink === 'function') installMyOrderLink();
       return null;
@@ -1681,7 +1645,8 @@ async function syncStaticCartFromServer({ migrateLegacy = false } = {}) {
     }
     if (result.expiredAt) {
       saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
-      showCartNotice('La reserva temporal venció y este artículo volvió a estar disponible.');
+      clearCartReservationUi();
+      showCartExpirationDialog(result.expiredAt);
       return null;
     }
     if (migrateLegacy && local.ids.length) {
@@ -1706,6 +1671,7 @@ async function syncStaticCartFromServer({ migrateLegacy = false } = {}) {
       }
     }
     if (local.ids.length) saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
+    clearCartReservationUi();
     return null;
   } catch (error) {
     showCartNotice(error instanceof Error ? error.message : 'No se pudo consultar la reserva.');
@@ -1830,6 +1796,267 @@ function showAddToCartErrorDialog(message, returnFocusTo = document.activeElemen
 }
 
 
+function showReservationDialog({ id, title, body, primaryLabel, primaryHref, secondaryLabel = '' }, returnFocusTo = document.activeElement) {
+  const previous = document.getElementById(id);
+  if (previous) previous.remove();
+
+  const previousOverflow = document.documentElement.style.overflow;
+  const backdrop = document.createElement('div');
+  const dialog = document.createElement('section');
+  const heading = document.createElement('h2');
+  const message = document.createElement('p');
+  const actions = document.createElement('div');
+  const primary = document.createElement('button');
+  const secondary = secondaryLabel ? document.createElement('button') : null;
+
+  backdrop.id = id;
+  backdrop.className = 'reservation-modal-backdrop';
+  dialog.className = 'reservation-modal-dialog';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', `${id}-title`);
+  dialog.setAttribute('aria-describedby', `${id}-body`);
+  heading.id = `${id}-title`;
+  heading.textContent = title;
+  message.id = `${id}-body`;
+  message.textContent = body;
+  actions.className = 'reservation-modal-actions';
+  primary.type = 'button';
+  primary.className = 'primary-action';
+  primary.textContent = primaryLabel;
+  actions.appendChild(primary);
+  if (secondary) {
+    secondary.type = 'button';
+    secondary.className = 'secondary-action';
+    secondary.textContent = secondaryLabel;
+    actions.appendChild(secondary);
+  }
+  dialog.append(heading, message, actions);
+  backdrop.appendChild(dialog);
+  document.body.appendChild(backdrop);
+  document.documentElement.style.overflow = 'hidden';
+
+  const focusable = secondary ? [primary, secondary] : [primary];
+  const close = () => {
+    backdrop.remove();
+    document.documentElement.style.overflow = previousOverflow;
+    if (returnFocusTo?.isConnected && typeof returnFocusTo.focus === 'function') {
+      returnFocusTo.focus({ preventScroll: true });
+    }
+  };
+  primary.addEventListener('click', () => {
+    close();
+    window.location.assign(primaryHref);
+  }, { once: true });
+  secondary?.addEventListener('click', close, { once: true });
+  backdrop.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && secondary) {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    event.preventDefault();
+    const currentIndex = focusable.indexOf(document.activeElement);
+    const direction = event.shiftKey ? -1 : 1;
+    focusable[(currentIndex + direction + focusable.length) % focusable.length].focus();
+  });
+  window.requestAnimationFrame(() => primary.focus());
+}
+
+
+function showAddToCartSuccessDialog(lease, returnFocusTo) {
+  showReservationDialog({
+    id: 'add-to-cart-success-backdrop',
+    title: 'Artículo reservado por 2 horas',
+    body: `Podés seguir mirando. Para conservarlo, completá tu compra antes de ${formatReservationDeadline(lease.expiresAt)}.`,
+    primaryLabel: 'Ir al carrito',
+    primaryHref: '/carrito',
+    secondaryLabel: 'Seguir mirando',
+  }, returnFocusTo);
+}
+
+
+function showApproachingExpirationDialog(expiresAt) {
+  const key = String(expiresAt);
+  if (!rememberOneTimeEvent(CART_WARNING_DEADLINES_KEY, key)) return;
+  showReservationDialog({
+    id: 'cart-expiring-backdrop',
+    title: 'Tu reserva vence pronto',
+    body: 'Te quedan aproximadamente 15 minutos para completar tu compra.',
+    primaryLabel: 'Ir al carrito',
+    primaryHref: '/carrito',
+    secondaryLabel: 'Seguir mirando',
+  });
+}
+
+
+function showCartExpirationDialog(expiredAt) {
+  const key = String(expiredAt);
+  if (!rememberOneTimeEvent(CART_EXPIRATION_EVENTS_KEY, key)) return;
+  showReservationDialog({
+    id: 'cart-expired-backdrop',
+    title: 'Tu reserva venció',
+    body: 'Los artículos de este carrito fueron liberados y pueden estar disponibles para otros compradores.',
+    primaryLabel: 'Volver al catálogo',
+    primaryHref: '/#articulos',
+  });
+}
+
+
+function rememberOneTimeEvent(storageKey, eventKey) {
+  let values = [];
+  try {
+    values = JSON.parse(localStorage.getItem(storageKey) || '[]');
+  } catch {}
+  if (!Array.isArray(values)) values = [];
+  if (values.includes(eventKey)) return false;
+  localStorage.setItem(storageKey, JSON.stringify([...values.slice(-19), eventKey]));
+  return true;
+}
+
+
+function storefrontSupportsCartBanner() {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  return path === '/' || path === '/index.html' || path === '/carrito' || path === '/checkout' || path.startsWith('/producto/');
+}
+
+
+function reservationCardHtml(actionText) {
+  return `
+    <section class="reservation-deadline-card" data-reservation-card aria-label="Reserva del carrito">
+      <span>Tus artículos están reservados</span>
+      <strong data-reservation-remaining></strong>
+      <p>${actionText} antes de <b data-reservation-deadline></b>.</p>
+    </section>
+  `;
+}
+
+
+function installCartReservationBanner() {
+  if (!storefrontSupportsCartBanner()) return null;
+  let banner = document.getElementById('cart-reservation-banner');
+  if (banner) return banner;
+  const header = document.querySelector('.site-header');
+  if (!header?.parentElement) return null;
+  banner = document.createElement('aside');
+  banner.id = 'cart-reservation-banner';
+  banner.className = 'cart-reservation-banner';
+  banner.setAttribute('aria-label', 'Reserva activa del carrito');
+  banner.innerHTML = `
+    <div>
+      <span>Tus artículos están reservados</span>
+      <strong data-reservation-remaining></strong>
+      <p>Completá tu compra antes de <b data-reservation-deadline></b>.</p>
+      <a href="/carrito">Ir al carrito</a>
+    </div>
+  `;
+  header.insertAdjacentElement('afterend', banner);
+  return banner;
+}
+
+
+function clearCartReservationUi() {
+  clearInterval(startCartReservationCountdown.timer);
+  document.getElementById('cart-reservation-banner')?.remove();
+}
+
+
+function refreshCartReservationUi() {
+  const cart = getStaticCart();
+  if (!cart.expiresAt || !cart.ids.length) {
+    clearCartReservationUi();
+    return;
+  }
+  installCartReservationBanner();
+  updateCartReservationDisplays(cart.expiresAt);
+}
+
+
+function updateCartReservationDisplays(expiresAt) {
+  const remainingText = formatReservationRemaining(Number(expiresAt) - Date.now());
+  const deadlineText = formatReservationDeadline(expiresAt);
+  document.querySelectorAll('[data-reservation-remaining]').forEach((node) => {
+    node.textContent = remainingText;
+  });
+  document.querySelectorAll('[data-reservation-deadline]').forEach((node) => {
+    node.textContent = deadlineText;
+  });
+}
+
+
+function formatReservationRemaining(milliseconds) {
+  const totalMinutes = Math.max(0, Math.ceil(Number(milliseconds) / 60000));
+  if (totalMinutes < 1) return 'Menos de 1 min restante';
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (hours) parts.push(`${hours} h`);
+  if (minutes) parts.push(`${minutes} min`);
+  return `${parts.join(' ')} ${totalMinutes === 1 ? 'restante' : 'restantes'}`;
+}
+
+
+function zonedDateKey(value) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: RESERVATION_TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(Number(value)));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+
+function formatReservationDeadline(value, nowValue = Date.now()) {
+  const expiration = Number(value);
+  const time = new Intl.DateTimeFormat('es-PY', {
+    timeZone: RESERVATION_TIME_ZONE,
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(new Date(expiration));
+  const todayKey = zonedDateKey(nowValue);
+  const expirationKey = zonedDateKey(expiration);
+  const tomorrow = new Date(Number(nowValue) + 24 * 60 * 60 * 1000);
+  if (expirationKey === todayKey) return `hoy a las ${time}`;
+  if (expirationKey === zonedDateKey(tomorrow)) return `mañana a las ${time}`;
+  const date = new Intl.DateTimeFormat('es-PY', {
+    timeZone: RESERVATION_TIME_ZONE,
+    day: 'numeric', month: 'long',
+  }).format(new Date(expiration));
+  return `el ${date} a las ${time}`;
+}
+
+
+async function synchronizeExpiredCart(expectedExpiration) {
+  if (Number(getStaticCart().expiresAt) !== Number(expectedExpiration)) return;
+  await syncStaticCartFromServer();
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/carrito') await renderCartPage();
+  if (path === '/checkout' && typeof renderCheckoutPage === 'function') await renderCheckoutPage();
+}
+
+
+function startCartReservationCountdown(expiresAt) {
+  clearInterval(startCartReservationCountdown.timer);
+  const expectedExpiration = Number(expiresAt);
+  const update = () => {
+    if (Number(getStaticCart().expiresAt) !== expectedExpiration) {
+      clearInterval(startCartReservationCountdown.timer);
+      return;
+    }
+    const remaining = expectedExpiration - Date.now();
+    if (remaining <= 0) {
+      clearInterval(startCartReservationCountdown.timer);
+      void synchronizeExpiredCart(expectedExpiration);
+      return;
+    }
+    refreshCartReservationUi();
+    if (remaining <= 15 * 60 * 1000) showApproachingExpirationDialog(expectedExpiration);
+  };
+  update();
+  startCartReservationCountdown.timer = setInterval(update, 1000);
+}
+
+
 function showCartNotice(message) {
   let notice = document.getElementById('cart-notice');
   if (!notice) {
@@ -1866,6 +2093,7 @@ function saveStaticCart(cart) {
   );
 
   updateStaticCartCount();
+  if (!cart?.expiresAt || !cart?.ids?.length) clearCartReservationUi();
 }
 
 
@@ -1883,6 +2111,7 @@ async function addStaticCartItem(productId, analytics = null) {
     });
     if (!result.ok) throw new Error(result.error || 'No se pudo reservar el artículo.');
     setStaticCartFromLease(result.lease);
+    showAddToCartSuccessDialog(result.lease, returnFocusTo);
     return true;
   } catch (error) {
     showAddToCartErrorDialog(
