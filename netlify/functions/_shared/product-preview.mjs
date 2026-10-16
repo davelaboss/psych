@@ -22,6 +22,17 @@ function removeCanonical(html) {
   );
 }
 
+export function selectPreviewProduct(products, slug) {
+  const wanted = String(slug || '').trim();
+
+  if (!wanted) {
+    return null;
+  }
+
+  return (Array.isArray(products) ? products : [])
+    .find(product => product?.slug === wanted) || null;
+}
+
 export function buildProductPreviewMetadata(product, origin) {
   const images = Array.isArray(product?.images) ? product.images : [];
   const primaryImage = images.find(Boolean) || '';
