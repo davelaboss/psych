@@ -11,9 +11,13 @@ const instrumentedController = controller.replace(
   /\}\)\(\);\s*$/,
   `globalThis.__catalogHistory = {
     CATALOG_HISTORY_KEY,
+    PAGE_SCROLL_HISTORY_KEY,
     catalogSnapshotFromValues,
+    pageScrollSnapshot,
     readCatalogHistoryState,
+    readPageScrollHistoryState,
     replaceCatalogHistoryState,
+    replacePageScrollHistoryState,
     restoreCatalogState,
     restoredRenderCount,
   };\n})();`,
@@ -169,6 +173,52 @@ test('a genuinely fresh homepage entry has no unrelated catalog state', () => {
   assert.equal(historyHelpers.readCatalogHistoryState(history.state), null);
 });
 
+test('product and cart scroll positions belong to their own history entries', () => {
+  const history = new MemoryHistory();
+  history.entries[0].url = '/producto/item-350';
+  const productScroll = historyHelpers.pageScrollSnapshot('/producto/item-350', 1081);
+  historyHelpers.replacePageScrollHistoryState(
+    history,
+    '/producto/item-350',
+    productScroll,
+  );
+  history.push('/carrito');
+
+  const productEntry = history.back();
+  assert.deepEqual(
+    plain(historyHelpers.readPageScrollHistoryState(productEntry.state, productEntry.url)),
+    plain(productScroll),
+  );
+
+  history.forward();
+  const cartScroll = historyHelpers.pageScrollSnapshot('/carrito', 640);
+  historyHelpers.replacePageScrollHistoryState(history, '/carrito', cartScroll);
+  history.push('/producto/item-351');
+  const cartEntry = history.back();
+  assert.deepEqual(
+    plain(historyHelpers.readPageScrollHistoryState(cartEntry.state, cartEntry.url)),
+    plain(cartScroll),
+  );
+});
+
+test('product-to-product Back keeps Product A scroll and rejects another path state', () => {
+  const history = new MemoryHistory();
+  history.entries[0].url = '/producto/item-350';
+  const saved = historyHelpers.pageScrollSnapshot('/producto/item-350', 1081);
+  historyHelpers.replacePageScrollHistoryState(history, '/producto/item-350', saved);
+  history.push('/producto/item-351');
+
+  const productA = history.back();
+  assert.deepEqual(
+    plain(historyHelpers.readPageScrollHistoryState(productA.state, productA.url)),
+    plain(saved),
+  );
+  assert.equal(
+    historyHelpers.readPageScrollHistoryState(productA.state, '/producto/item-999'),
+    null,
+  );
+});
+
 test('catalog state is saved continuously and legacy global scroll storage is absent', () => {
   assert.match(controller, /historyObject\.replaceState/);
   assert.match(controller, /window\.addEventListener\('scroll', scheduleScrollSave, \{ passive: true \}\)/);
@@ -177,6 +227,9 @@ test('catalog state is saved continuously and legacy global scroll storage is ab
   assert.match(controller, /if \(state\.restoringCatalog\) return/);
   assert.match(controller, /path === '\/carrito' \|\| path\.startsWith\('\/producto\/'\)/);
   assert.match(controller, /window\.history\.scrollRestoration = isStorefrontFlow \? 'manual' : 'auto'/);
+  assert.match(controller, /PAGE_SCROLL_HISTORY_KEY = 'mudanzaPageScrollState'/);
+  assert.match(controller, /restorePageHistoryScroll\(savedPageScroll\)/);
+  assert.match(controller, /window\.addEventListener\('pagehide', flushPageScroll\)/);
   assert.match(staticStorefront, /window\.persistCatalogHistoryState\?\.\(\)/);
   assert.match(sourceStorefront, /window\.history\.replaceState/);
   assert.match(sourceProductCard, /persistCatalogHistoryState\?\.\(\)/);

@@ -13,12 +13,18 @@
     restoringCatalog: false,
     historyTrackingInstalled: false,
     scrollSaveTimer: null,
+    pageScrollPath: '',
+    restoringPage: false,
+    pageScrollTrackingInstalled: false,
+    pageScrollSaveTimer: null,
   };
 
   const INITIAL_RENDER_COUNT = 48;
   const RENDER_BATCH_SIZE = 48;
   const CATALOG_HISTORY_KEY = 'mudanzaCatalogState';
   const CATALOG_HISTORY_VERSION = 1;
+  const PAGE_SCROLL_HISTORY_KEY = 'mudanzaPageScrollState';
+  const PAGE_SCROLL_HISTORY_VERSION = 1;
   const SCROLL_SAVE_DELAY_MS = 150;
   const CORE_CATEGORIES = [
     'Cocina',
@@ -39,6 +45,9 @@
   async function boot() {
     const path = cleanPath();
     configureBrowserScrollRestoration(path);
+    const savedPageScroll = isPageScrollRoute(path)
+      ? initializePageScrollRestoration(path)
+      : null;
     installStyles();
 
     if (path.startsWith('/producto/')) {
@@ -69,13 +78,15 @@
         }
 
         enhanceDetailPhotoAction();
+        restorePageHistoryScroll(savedPageScroll);
         return;
       }
 
       if (path === '/carrito') {
         if (typeof window.renderCartPage === 'function') {
-          window.renderCartPage();
+          await window.renderCartPage();
         }
+        restorePageHistoryScroll(savedPageScroll);
         return;
       }
 
@@ -84,6 +95,7 @@
       buildCatalog();
     } catch (error) {
       console.error('Catálogo unificado:', error);
+      if (savedPageScroll) restorePageHistoryScroll(savedPageScroll);
     }
   }
 
@@ -661,6 +673,123 @@
     if (!('scrollRestoration' in window.history)) return;
     const isStorefrontFlow = path === '/' || path === '/index.html' || path === '/carrito' || path.startsWith('/producto/');
     window.history.scrollRestoration = isStorefrontFlow ? 'manual' : 'auto';
+  }
+
+  function isPageScrollRoute(path) {
+    return path === '/carrito' || path.startsWith('/producto/');
+  }
+
+  function pageScrollSnapshot(path, scrollY) {
+    return {
+      version: PAGE_SCROLL_HISTORY_VERSION,
+      path: String(path || ''),
+      scrollY: Math.max(0, Number(scrollY) || 0),
+    };
+  }
+
+  function readPageScrollHistoryState(entryState, path) {
+    const saved = entryState?.[PAGE_SCROLL_HISTORY_KEY];
+    if (
+      !saved ||
+      saved.version !== PAGE_SCROLL_HISTORY_VERSION ||
+      saved.path !== path
+    ) return null;
+    return pageScrollSnapshot(saved.path, saved.scrollY);
+  }
+
+  function replacePageScrollHistoryState(historyObject, url, snapshot) {
+    if (!snapshot || typeof historyObject?.replaceState !== 'function') return;
+    const currentState = historyObject.state && typeof historyObject.state === 'object'
+      ? historyObject.state
+      : {};
+    historyObject.replaceState({
+      ...currentState,
+      [PAGE_SCROLL_HISTORY_KEY]: snapshot,
+    }, '', url);
+  }
+
+  function persistPageScrollHistoryState() {
+    if (
+      state.restoringPage ||
+      !state.pageScrollPath ||
+      cleanPath() !== state.pageScrollPath
+    ) return;
+    replacePageScrollHistoryState(
+      window.history,
+      window.location.href,
+      pageScrollSnapshot(state.pageScrollPath, window.scrollY),
+    );
+  }
+
+  function restorePageHistoryScroll(snapshot) {
+    if (!snapshot) {
+      state.restoringPage = false;
+      persistPageScrollHistoryState();
+      return;
+    }
+
+    const targetScroll = snapshot.scrollY;
+    let frames = 0;
+    const restoreWhenReady = () => {
+      frames += 1;
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      if (maxScroll < targetScroll && frames < 120) {
+        window.requestAnimationFrame(restoreWhenReady);
+        return;
+      }
+
+      window.scrollTo({ top: Math.min(targetScroll, maxScroll), left: 0, behavior: 'auto' });
+      window.requestAnimationFrame(() => {
+        state.restoringPage = false;
+        persistPageScrollHistoryState();
+      });
+    };
+    window.requestAnimationFrame(restoreWhenReady);
+  }
+
+  function installPageScrollHistoryTracking() {
+    if (state.pageScrollTrackingInstalled) return;
+    state.pageScrollTrackingInstalled = true;
+
+    const scheduleScrollSave = () => {
+      if (state.restoringPage) return;
+      clearTimeout(state.pageScrollSaveTimer);
+      state.pageScrollSaveTimer = window.setTimeout(() => {
+        state.pageScrollSaveTimer = null;
+        persistPageScrollHistoryState();
+      }, SCROLL_SAVE_DELAY_MS);
+    };
+    const flushPageScroll = () => {
+      clearTimeout(state.pageScrollSaveTimer);
+      state.pageScrollSaveTimer = null;
+      persistPageScrollHistoryState();
+    };
+
+    window.addEventListener('scroll', scheduleScrollSave, { passive: true });
+    window.addEventListener('pagehide', flushPageScroll);
+    window.addEventListener('pageshow', (event) => {
+      if (!event.persisted || !state.pageScrollPath) return;
+      const saved = readPageScrollHistoryState(window.history.state, state.pageScrollPath);
+      if (!saved) return;
+      state.restoringPage = true;
+      restorePageHistoryScroll(saved);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushPageScroll();
+    });
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest?.('a[href]');
+      if (!link || link.target === '_blank' || link.hasAttribute('download')) return;
+      flushPageScroll();
+    }, true);
+  }
+
+  function initializePageScrollRestoration(path) {
+    state.pageScrollPath = path;
+    const saved = readPageScrollHistoryState(window.history.state, path);
+    state.restoringPage = Boolean(saved);
+    installPageScrollHistoryTracking();
+    return saved;
   }
 
   function restoredRenderCount(savedCount, resultCount) {
