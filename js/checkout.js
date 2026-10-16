@@ -350,7 +350,7 @@ async function renderCheckoutPage() {
               value="true"
               required
             >
-            <span>Entiendo que la mayoría de los artículos son usados y que todas las ventas son finales. Revisaré los artículos al retirarlos y entiendo que, una vez retirados del domicilio, no se aceptan devoluciones, cambios ni reembolsos.</span>
+            <span>Entiendo que la mayoría de los artículos son usados, que todas las ventas son finales y que no se realizan entregas. Me corresponde retirar la compra en el domicilio del vendedor según la coordinación establecida. Revisaré los artículos al retirarlos y entiendo que, una vez retirados del domicilio, no se aceptan devoluciones, cambios ni reembolsos.</span>
           </label>
 
           <label>

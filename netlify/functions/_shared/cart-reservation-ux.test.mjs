@@ -68,6 +68,8 @@ test('checkout removes premature order-hold copy and duplicate policy while reta
   assert.doesNotMatch(checkout, /Tu pedido quedará reservado por 2 horas/);
   assert.doesNotMatch(checkoutForm, /<section class="final-sale-policy"/);
   assert.match(checkoutForm, /name="finalSaleAcknowledged"[\s\S]*?required/);
+  assert.match(checkoutForm, /no se realizan entregas/i);
+  assert.match(checkoutForm, /Me corresponde retirar la compra en el domicilio del vendedor/i);
   assert.match(checkoutForm, /Nombre y apellido[\s\S]*?final-sale-acknowledgment[\s\S]*?WhatsApp[\s\S]*?Email[\s\S]*?Crear pedido y ver datos/);
 });
 
@@ -78,9 +80,39 @@ test('checkout order transition clears the cart and therefore its persistent res
   assert.match(site, /if \(!cart\?\.expiresAt \|\| !cart\?\.ids\?\.length\) clearCartReservationUi\(\)/);
 });
 
+test('CART card styles outrank checkout injected rules without redesigning the ORDER card', () => {
+  const cartCard = site.match(/function reservationCardHtml\(actionText\)[\s\S]*?\n}/)?.[0] || '';
+  const orderCard = checkout.match(/<section class="reservation-deadline-card" role="status">[\s\S]*?RESERVA DEL PEDIDO[\s\S]*?<\/section>/)?.[0] || '';
+  const injectedStrongRule = checkout.match(/\.reservation-deadline-card > strong \{[\s\S]*?\}/)?.[0] || '';
+
+  assert.match(cartCard, /class="reservation-deadline-card" data-reservation-card/);
+  assert.match(styles, /\.reservation-deadline-card\[data-reservation-card\]\{[^}]*border:3px solid[^}]*background:#fff7d7/);
+  assert.match(styles, /\.reservation-deadline-card\[data-reservation-card\]>strong\{font-size:clamp\(30px,4vw,43px\)!important/);
+  assert.match(styles, /@media\(max-width:620px\)[\s\S]*?\.reservation-deadline-card\[data-reservation-card\]>strong\{font-size:31px!important\}/);
+  assert.match(injectedStrongRule, /font-size: 1\.3rem/);
+  assert.ok(
+    '.reservation-deadline-card[data-reservation-card]>strong'.split(/(?=[.\[])/).length >
+      '.reservation-deadline-card>strong'.split(/(?=[.\[])/).length,
+    'the CART countdown selector must be more specific than the later checkout rule'
+  );
+  assert.match(orderCard, /class="reservation-deadline-card" role="status"/);
+  assert.doesNotMatch(orderCard, /data-reservation-card/);
+  assert.doesNotMatch(styles, /(?:^|})\.reservation-deadline-card\{/);
+});
+
+test('continuously ticking CART countdown is semantic but not a live region', () => {
+  const cartCard = site.match(/function reservationCardHtml\(actionText\)[\s\S]*?\n}/)?.[0] || '';
+  const updater = site.match(/function updateCartReservationDisplays\(expiresAt\)[\s\S]*?\n}/)?.[0] || '';
+
+  assert.match(cartCard, /<section[^>]*aria-label="Reserva del carrito"/);
+  assert.doesNotMatch(cartCard, /role="status"|aria-live=/);
+  assert.match(updater, /node\.textContent = remainingText/);
+  assert.match(updater, /node\.textContent = deadlineText/);
+});
+
 test('reservation hierarchy is prominent, accessible, and mobile-safe around 390px', () => {
   assert.match(styles, /\.cart-reservation-banner\{[^}]*background:#f6c84c[^}]*border-bottom:3px solid/);
-  assert.match(styles, /\.reservation-deadline-card\{[^}]*border:3px solid[^}]*background:#fff7d7/);
+  assert.match(styles, /\.reservation-deadline-card\[data-reservation-card\]\{[^}]*border:3px solid[^}]*background:#fff7d7/);
   assert.match(styles, /\.reservation-modal-backdrop\{[^}]*position:fixed[^}]*z-index:12500/);
   assert.match(styles, /@media\(max-width:620px\)[\s\S]*?\.cart-reservation-banner>div\{grid-template-columns:1fr auto/);
   assert.match(styles, /\.cart-reservation-banner>div\{width:min\(1180px,100%\)/);

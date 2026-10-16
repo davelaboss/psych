@@ -1924,7 +1924,7 @@ function storefrontSupportsCartBanner() {
 
 function reservationCardHtml(actionText) {
   return `
-    <section class="reservation-deadline-card" data-reservation-card role="status">
+    <section class="reservation-deadline-card" data-reservation-card aria-label="Reserva del carrito">
       <span>Tus artículos están reservados</span>
       <strong data-reservation-remaining></strong>
       <p>${actionText} antes de <b data-reservation-deadline></b>.</p>
