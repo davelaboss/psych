@@ -1,0 +1,1 @@
+import{r as e}from"./navigation-errors-D5t2cIt1.js";import"./navigation.react-server-BvmIL6hm.js";var t=`force-dynamic`,n={robots:{index:!1,follow:!1}};function r(){e(`/admin`)}export{r as default,t as dynamic,n as metadata};

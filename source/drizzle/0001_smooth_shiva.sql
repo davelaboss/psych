@@ -1,0 +1,1 @@
+ALTER TABLE `orders` ADD `balance_confirmed_at` integer;

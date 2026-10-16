@@ -1,0 +1,784 @@
+import {
+  adminAuthorized,
+  jsonResponse,
+  listProductOverrides,
+  loadBaseCatalog,
+  loadCatalog,
+} from './_shared/commerce.mjs';
+
+import {
+  PHASE2_BATCH_ID,
+  PHASE2_BATCH_ITEMS,
+  PHASE2_BATCH_NAME,
+} from '../../source/lib/phase2-batch.ts';
+
+import {
+  VOLUME2_BATCH_ID,
+  VOLUME2_BATCH_ITEMS,
+  VOLUME2_BATCH_NAME,
+} from '../../source/lib/volume2-batch.ts';
+
+import {
+  SALE_READINESS_SUPPLEMENTAL_BATCH_ID,
+  SALE_READINESS_SUPPLEMENTAL_BATCH_NAME,
+  SALE_READINESS_SUPPLEMENTAL_ITEMS,
+} from '../../source/lib/sale-readiness-supplemental.ts';
+
+
+function centralEstimate(low, high) {
+  if (
+    !Number.isFinite(Number(low)) ||
+    !Number.isFinite(Number(high))
+  ) {
+    return null;
+  }
+
+  return Math.round(
+    (Number(low) + Number(high)) / 2
+  );
+}
+
+
+function normalizePhase2(item) {
+  return {
+    id: item.id,
+    itemNumber: item.itemNumber,
+    batchId: PHASE2_BATCH_ID,
+    batchName: PHASE2_BATCH_NAME,
+
+    title: item.title,
+    category: item.category,
+    description: item.description,
+    condition: item.condition,
+    conditionNotes: item.conditionNotes,
+    knownDefects: item.knownDefects,
+
+    includedAccessories:
+      item.includedAccessories || [],
+
+    photoFiles:
+      item.photos || [],
+
+    askingPricePYG:
+      Number(item.asking || 0),
+
+    marketLowPYG:
+      Number(item.marketLow || 0),
+
+    marketHighPYG:
+      Number(item.marketHigh || 0),
+
+    marketEstimatePYG:
+      centralEstimate(
+        item.marketLow,
+        item.marketHigh
+      ),
+
+    recommendedFastSalePricePYG:
+      Number(item.fast || 0),
+
+    adminPriceFloorPYG:
+      Number(item.floor || 0),
+
+    pricingConfidence:
+      item.confidence || null,
+
+    pricingResearch:
+      item.research || null,
+
+    saleMode:
+      item.saleMode,
+
+    pickupAvailableDate:
+      item.pickupDate,
+
+    pickupWindowStart:
+      item.pickupWindowStart,
+
+    pickupWindowEnd:
+      item.pickupWindowEnd,
+
+    quantityTotal: 1,
+
+    requiresVehicle:
+      Boolean(item.requiresVehicle),
+
+    requiresLoadingHelp:
+      Boolean(item.requiresLoadingHelp),
+
+    reviewFlag:
+      item.flag || null,
+
+    sellerConfirmedFields:
+      item.sellerConfirmedFields || [],
+  };
+}
+
+
+function normalizeVolume2(item) {
+  return {
+    id: item.id,
+    itemNumber: item.itemNumber,
+    batchId: VOLUME2_BATCH_ID,
+    batchName: VOLUME2_BATCH_NAME,
+
+    title: item.title,
+    category: item.category,
+    description: item.description,
+    condition: item.condition,
+    conditionNotes: item.conditionNotes,
+    knownDefects: item.knownDefects,
+
+    includedAccessories:
+      item.includedAccessories || [],
+
+    photoFiles:
+      item.photos || [],
+
+    askingPricePYG:
+      Number(item.asking || 0),
+
+    marketLowPYG:
+      Number(item.marketLow || 0),
+
+    marketHighPYG:
+      Number(item.marketHigh || 0),
+
+    marketEstimatePYG:
+      centralEstimate(
+        item.marketLow,
+        item.marketHigh
+      ),
+
+    recommendedFastSalePricePYG:
+      Number(item.fast || 0),
+
+    adminPriceFloorPYG:
+      Number(item.floor || 0),
+
+    pricingConfidence:
+      item.confidence || null,
+
+    pricingResearch:
+      item.research || null,
+
+    saleMode:
+      item.saleMode,
+
+    pickupAvailableDate:
+      item.pickupDate,
+
+    pickupWindowStart:
+      item.pickupWindowStart,
+
+    pickupWindowEnd:
+      item.pickupWindowEnd,
+
+    quantityTotal:
+      Number(item.quantityTotal || 1),
+
+    quantityRemaining:
+      (item.status || 'AVAILABLE') === 'AVAILABLE'
+        ? Number(item.quantityTotal || 1)
+        : 0,
+
+    quantitySold:
+      (item.status === 'SOLD' || item.status === 'PICKED_UP')
+        ? Number(item.quantityTotal || 1)
+        : 0,
+
+    status:
+      item.status || 'AVAILABLE',
+
+    needsReview:
+      Boolean(item.needsReview),
+
+    requiresVehicle:
+      Boolean(item.requiresVehicle),
+
+    requiresLoadingHelp:
+      Boolean(item.requiresLoadingHelp),
+
+    reviewFlag:
+      item.flag || null,
+
+    quantityStructure:
+      item.quantityStructure || null,
+
+    measurements:
+      item.measurements || null,
+
+    notIncludedVisible:
+      item.notIncludedVisible || null,
+
+    functionality:
+      item.functionality || null,
+
+    sellerConfirmedFields: [],
+  };
+}
+
+
+function normalizeSupplemental(item) {
+  return {
+    ...normalizeVolume2(item),
+    batchId:
+      SALE_READINESS_SUPPLEMENTAL_BATCH_ID,
+    batchName:
+      SALE_READINESS_SUPPLEMENTAL_BATCH_NAME,
+  };
+}
+
+
+function normalizeLiveOnly(product) {
+  return {
+    id: product.id,
+    itemNumber:
+      product.itemNumber ?? null,
+
+    batchId: 'live-only',
+    batchName:
+      'Catálogo público actual',
+
+    title: product.title,
+    category: product.category,
+    description:
+      product.description || '',
+
+    condition:
+      product.condition || '',
+
+    conditionNotes:
+      product.conditionNotes || '',
+
+    knownDefects:
+      product.knownDefects || '',
+
+    includedAccessories:
+      product.includedAccessories || [],
+
+    photoFiles: [],
+
+    askingPricePYG:
+      Number(
+        product.askingPricePYG || 0
+      ),
+
+    marketLowPYG: null,
+    marketHighPYG: null,
+    marketEstimatePYG: null,
+    recommendedFastSalePricePYG: null,
+    adminPriceFloorPYG: null,
+    pricingConfidence: null,
+    pricingResearch: null,
+
+    saleMode:
+      product.saleMode,
+
+    pickupAvailableDate:
+      product.pickupAvailableDate || null,
+
+    pickupWindowStart:
+      product.pickupWindowStart || null,
+
+    pickupWindowEnd:
+      product.pickupWindowEnd || null,
+
+    quantityTotal:
+      Number(
+        product.quantityTotal || 1
+      ),
+
+    requiresVehicle:
+      Boolean(product.requiresVehicle),
+
+    requiresLoadingHelp:
+      Boolean(
+        product.requiresLoadingHelp
+      ),
+
+    reviewFlag: null,
+    sellerConfirmedFields:
+      product.sellerConfirmedFields || [],
+  };
+}
+
+
+function liveKey(product) {
+  if (
+    product.itemNumber !== null &&
+    product.itemNumber !== undefined
+  ) {
+    return `item:${Number(
+      product.itemNumber
+    )}`;
+  }
+
+  return `id:${product.id}`;
+}
+
+
+const LIVE_PUBLIC_FIELDS = [
+  'title',
+  'category',
+  'description',
+  'condition',
+  'conditionNotes',
+  'knownDefects',
+  'includedAccessories',
+  'askingPricePYG',
+  'saleMode',
+  'depositPercent',
+  'pickupAvailableDate',
+  'pickupWindowStart',
+  'pickupWindowEnd',
+  'requiresVehicle',
+  'requiresLoadingHelp',
+  'logisticsNotes',
+  'quantityTotal',
+  'quantityRemaining',
+  'quantitySold',
+  'status',
+  'sellerConfirmedFields',
+];
+
+
+const SOURCE_SYNC_FIELDS = [
+  'title',
+  'category',
+  'description',
+  'condition',
+  'conditionNotes',
+  'knownDefects',
+  'includedAccessories',
+  'askingPricePYG',
+  'saleMode',
+  'depositPercent',
+  'pickupAvailableDate',
+  'pickupWindowStart',
+  'pickupWindowEnd',
+  'requiresVehicle',
+  'requiresLoadingHelp',
+  'quantityTotal',
+];
+
+
+function normalizedSyncValue(
+  field,
+  value
+) {
+  if (field === 'images') {
+    return (Array.isArray(value) ? value : [])
+      .map(
+        (image) =>
+          String(image || '')
+            .replace(/\?v=\d+$/, '')
+      );
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  return value ?? null;
+}
+
+
+function sourceMismatchFields(
+  base,
+  live
+) {
+  if (!base || !live) {
+    return [];
+  }
+
+  const fields = [
+    ...SOURCE_SYNC_FIELDS,
+    'images',
+  ];
+
+  return fields.filter(
+    (field) =>
+      JSON.stringify(
+        normalizedSyncValue(
+          field,
+          base[field]
+        )
+      ) !==
+      JSON.stringify(
+        normalizedSyncValue(
+          field,
+          live[field]
+        )
+      )
+  );
+}
+
+
+function applyLivePublicAuthority(
+  legacy,
+  live
+) {
+  if (
+    !live ||
+    Number(legacy.itemNumber || 0) < 1 ||
+    Number(legacy.itemNumber || 0) > 57
+  ) {
+    return legacy;
+  }
+
+  const next = {
+    ...legacy,
+  };
+
+  for (const field of LIVE_PUBLIC_FIELDS) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        live,
+        field
+      )
+    ) {
+      next[field] =
+        structuredClone(
+          live[field]
+        );
+    }
+  }
+
+  if (
+    Array.isArray(live.images)
+  ) {
+    next.images =
+      [...live.images];
+  }
+
+  return next;
+}
+
+
+export default async function handler(request) {
+  if (!adminAuthorized(request)) {
+    return jsonResponse(
+      {
+        error:
+          'Acceso no autorizado.',
+      },
+      401
+    );
+  }
+
+  if (request.method !== 'GET') {
+    return jsonResponse(
+      {
+        error:
+          'Método no permitido.',
+      },
+      405
+    );
+  }
+
+  try {
+    const origin =
+      new URL(request.url).origin;
+
+    const [
+      baseCatalog,
+      liveCatalog,
+    ] =
+      await Promise.all([
+        loadBaseCatalog(origin),
+        loadCatalog(origin),
+      ]);
+
+    const overrides =
+      await listProductOverrides();
+
+    const overrideById =
+      new Map(
+        overrides.map(
+          (override) => [
+            override.productId,
+            override,
+          ]
+        )
+      );
+
+    const liveByKey =
+      new Map();
+
+    for (const product of liveCatalog) {
+      liveByKey.set(
+        liveKey(product),
+        product
+      );
+    }
+
+
+    const baseByKey =
+      new Map();
+
+    for (const product of baseCatalog) {
+      baseByKey.set(
+        liveKey(product),
+        product
+      );
+    }
+
+    const legacyProducts = [
+      ...PHASE2_BATCH_ITEMS.map(
+        normalizePhase2
+      ),
+      ...VOLUME2_BATCH_ITEMS.map(
+        normalizeVolume2
+      ),
+      ...SALE_READINESS_SUPPLEMENTAL_ITEMS.map(
+        normalizeSupplemental
+      ),
+    ].map(
+      (product) => {
+        const override =
+          overrideById.get(
+            product.id
+          );
+
+        if (!override) {
+          return product;
+        }
+
+        return {
+          ...product,
+          ...(override.publicFields || {}),
+          ...(override.internalFields || {}),
+
+          images:
+            Object.prototype.hasOwnProperty.call(
+              override,
+              'images'
+            )
+              ? override.images
+              : undefined,
+        };
+      }
+    );
+
+    const seenLiveKeys =
+      new Set();
+
+    const products =
+      legacyProducts.map(
+        (product) => {
+          const key =
+            liveKey(product);
+
+          const live =
+            liveByKey.get(key) ||
+            liveCatalog.find(
+              (candidate) =>
+                candidate.id ===
+                product.id
+            ) ||
+            null;
+
+          if (live) {
+            seenLiveKeys.add(
+              liveKey(live)
+            );
+          }
+
+          const authoritative =
+            applyLivePublicAuthority(
+              product,
+              live
+            );
+
+          return {
+            ...authoritative,
+
+            published:
+              Boolean(live),
+
+            images:
+              Array.isArray(
+                authoritative.images
+              )
+                ? authoritative.images
+                : live?.images || [],
+
+            live: live
+              ? {
+                  id: live.id,
+                  slug: live.slug,
+                  status: live.status,
+                  title: live.title,
+                  category:
+                    live.category,
+                  askingPricePYG:
+                    live.askingPricePYG,
+                  images:
+                    live.images || [],
+                  quantityTotal:
+                    live.quantityTotal ??
+                    1,
+                  quantityRemaining:
+                    live.quantityRemaining ??
+                    0,
+                  quantitySold:
+                    live.quantitySold ??
+                    0,
+                }
+              : null,
+          };
+        }
+      );
+
+    for (const live of liveCatalog) {
+      const key =
+        liveKey(live);
+
+      if (
+        seenLiveKeys.has(key)
+      ) {
+        continue;
+      }
+
+      products.push({
+        ...normalizeLiveOnly(live),
+        published: true,
+
+        live: {
+          id: live.id,
+          slug: live.slug,
+          status: live.status,
+          title: live.title,
+          category:
+            live.category,
+          askingPricePYG:
+            live.askingPricePYG,
+          images:
+            live.images || [],
+          quantityTotal:
+            live.quantityTotal ??
+            1,
+          quantityRemaining:
+            live.quantityRemaining ??
+            0,
+          quantitySold:
+            live.quantitySold ??
+            0,
+        },
+      });
+    }
+
+    for (const product of products) {
+      const itemNumber =
+        Number(product.itemNumber || 0);
+
+      if (
+        itemNumber < 1 ||
+        itemNumber > 57
+      ) {
+        product.sourceSyncRequired =
+          false;
+
+        product.sourceMismatchFields =
+          [];
+
+        continue;
+      }
+
+      const key =
+        liveKey(product);
+
+      const base =
+        baseByKey.get(key) ||
+        baseCatalog.find(
+          (candidate) =>
+            candidate.id ===
+            product.id
+        ) ||
+        null;
+
+      const live =
+        liveByKey.get(key) ||
+        liveCatalog.find(
+          (candidate) =>
+            candidate.id ===
+            product.id
+        ) ||
+        null;
+
+      const mismatchFields =
+        sourceMismatchFields(
+          base,
+          live
+        );
+
+      product.sourceSyncRequired =
+        mismatchFields.length > 0;
+
+      product.sourceMismatchFields =
+        mismatchFields;
+    }
+
+
+    products.sort(
+      (a, b) =>
+        Number(
+          a.itemNumber || 999999
+        ) -
+        Number(
+          b.itemNumber || 999999
+        )
+    );
+
+    return jsonResponse({
+      ok: true,
+
+      batches: [
+        {
+          id:
+            PHASE2_BATCH_ID,
+
+          name:
+            PHASE2_BATCH_NAME,
+        },
+
+        {
+          id:
+            VOLUME2_BATCH_ID,
+
+          name:
+            VOLUME2_BATCH_NAME,
+        },
+
+        {
+          id:
+            SALE_READINESS_SUPPLEMENTAL_BATCH_ID,
+
+          name:
+            SALE_READINESS_SUPPLEMENTAL_BATCH_NAME,
+        },
+
+        {
+          id:
+            'live-only',
+
+          name:
+            'Catálogo público actual',
+        },
+      ],
+
+      products,
+    });
+  } catch (error) {
+    return jsonResponse(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'No se pudo recuperar el inventario anterior.',
+      },
+      500
+    );
+  }
+}

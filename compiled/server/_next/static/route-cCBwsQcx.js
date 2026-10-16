@@ -1,0 +1,1 @@
+import{n as e}from"./server-ZKGoXLHE.js";import{l as t}from"./database-BjUZ_K5o.js";async function n(n){try{let r=await n.json(),i=await t(r.orderId??``,r.token??``);return e.json({order:i})}catch(t){return e.json({error:t instanceof Error?t.message:`No se pudo confirmar.`},{status:400})}}export{n as POST};

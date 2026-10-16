@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title description">
+  <title id="title">Foto pendiente</title>
+  <desc id="description">Marcador temporal para un artículo que todavía necesita una fotografía real.</desc>
+  <rect width="1200" height="900" fill="#eef3ef"/>
+  <rect x="260" y="180" width="680" height="480" rx="28" fill="#ffffff" stroke="#315b4a" stroke-width="18"/>
+  <circle cx="470" cy="350" r="70" fill="#b9cfc3"/>
+  <path d="M320 590l190-170 130 115 105-90 135 145z" fill="#7fa893"/>
+  <text x="600" y="760" text-anchor="middle" font-family="Arial, sans-serif" font-size="58" font-weight="700" fill="#214738">FOTO PENDIENTE</text>
+</svg>

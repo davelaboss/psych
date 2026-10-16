@@ -1,0 +1,1 @@
+var e={siteName:`Venta de Mudanza`,pickupArea:`[PUBLIC_PICKUP_AREA]`,whatsappNumber:`[WHATSAPP_NUMBER]`,defaultDepositPercent:25,holdMinutes:15,movingDateCopy:`diciembre de 2026`};function t(t){let n=e.whatsappNumber.replace(/\D/g,``);return`${n?`https://wa.me/${n}`:`https://wa.me/`}?text=${encodeURIComponent(t)}`}export{t as n,e as t};
