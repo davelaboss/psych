@@ -573,6 +573,23 @@ function setupProductDiscoveryKeyboard(discovery) {
 }
 
 
+function buildWhatsAppProductShareHref(product) {
+  const productUrl = new URL(
+    '/producto/' + encodeURIComponent(product.slug),
+    'https://thelabossieres.com'
+  ).toString();
+  const message =
+    'Mirá este artículo de la venta de mudanza: ' +
+    product.title +
+    ' · ' +
+    formatPYG(product.askingPricePYG) +
+    '.\n' +
+    productUrl;
+
+  return 'https://wa.me/?text=' + encodeURIComponent(message);
+}
+
+
 function renderProductDetail(product) {
   const main = document.querySelector('main');
 
@@ -865,17 +882,31 @@ function renderProductDetail(product) {
 
               <a
                 class="text-action"
-                href="https://wa.me/595972588347?text=${encodeURIComponent(
-                  'Mirá este artículo de la venta de mudanza: ' +
-                  product.title +
-                  ' · ' +
-                  formatPYG(product.askingPricePYG) +
-                  '.'
-                )}"
+                href="${buildWhatsAppProductShareHref(product)}"
                 target="_blank"
                 rel="noreferrer"
               >
-                Compartir por WhatsApp
+                <span style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <circle cx="18" cy="5" r="3"></circle>
+                    <circle cx="6" cy="12" r="3"></circle>
+                    <circle cx="18" cy="19" r="3"></circle>
+                    <path d="m8.59 13.51 6.83 3.98"></path>
+                    <path d="m15.41 6.51-6.82 3.98"></path>
+                  </svg>
+                  <span>Compartir por WhatsApp</span>
+                </span>
               </a>
             </div>
           </div>
