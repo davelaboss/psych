@@ -770,20 +770,27 @@ function displayOrder(
     document.querySelector('main');
 
   if (order.status === 'CANCELLED') {
+    const cancellationMessage = order.cancelledBy === 'CUSTOMER'
+      ? 'Cancelaste este pedido. Los artículos fueron liberados y ya no están reservados para vos.'
+      : order.cancelledBy === 'ADMIN'
+        ? 'Este pedido fue cancelado por el vendedor. Los artículos fueron liberados y ya no están reservados para este pedido.'
+        : 'Este pedido fue cancelado. Los artículos ya no están reservados para este pedido.';
     main.innerHTML = `
       <section class="order-shell">
         <div class="page-heading">
           <span class="section-kicker">MI PEDIDO</span>
-          <h1>Pedido cancelado</h1>
+          <h1>Pedido cancelado.</h1>
           <p>${escapeHtml(order.id)}</p>
         </div>
-        <section class="checkout-card" role="status">
-          <p>Este pedido fue cancelado por el vendedor. Los artículos fueron liberados y ya no están reservados para este pedido.</p>
-          <p>No realices una transferencia ni subas un comprobante para este pedido. Si ya transferiste, contactá al vendedor.</p>
+        <section class="checkout-card cancelled-order-card" role="status">
+          <p>${escapeHtml(cancellationMessage)}</p>
+          <p><strong>No realices una transferencia.</strong> Si ya transferiste, contactanos por WhatsApp.</p>
           <h2>Artículos del pedido cancelado</h2>
           <ul>${order.items.map(item => `<li><strong>${orderItemLabel(item)}</strong><br><span>Cantidad: ${item.quantity}</span></li>`).join('')}</ul>
-          <a class="secondary-action" href="/">Volver al catálogo</a>
-          <a class="secondary-action" href="https://wa.me/595972588347?text=${encodeURIComponent(`Hola, quisiera consultar por mi pedido cancelado ${order.id}.`)}" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>
+          <div class="order-lower-actions">
+            <a class="primary-action" href="/">Volver al catálogo</a>
+            <a class="secondary-action" href="https://wa.me/595972588347?text=${encodeURIComponent(`Hola, quisiera consultar por mi pedido cancelado ${order.id}.`)}" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>
+          </div>
         </section>
       </section>
     `;
@@ -911,6 +918,15 @@ function displayOrder(
   const awaitingFinalPayment = order.status === 'DEPOSIT_CONFIRMED' && remainingBalance > 0;
   const receiptReceived = ['RECEIPT_RECEIVED', 'FINAL_RECEIPT_RECEIVED'].includes(order.status);
   const reservationExpired = order.status === 'RESERVATION_EXPIRED' || order.reservationState === 'EXPIRED';
+  const customerCancellationEligible = awaitingInitialPayment && !order.receipt &&
+    paidAmount === 0 && netReceived === 0 && payments.length === 0;
+  const paymentActivityStarted = Boolean(order.receipt) || paidAmount > 0 || netReceived > 0 ||
+    ['RECEIPT_RECEIVED', 'VERIFYING_PAYMENT', 'FINAL_RECEIPT_RECEIVED',
+      'DEPOSIT_CONFIRMED', 'PAYMENT_CONFIRMED', 'PAID_IN_FULL',
+      'READY_TO_SCHEDULE', 'PICKUP_SCHEDULED', 'PICKED_UP'].includes(order.status);
+  const whatsappUrl = `https://wa.me/595972588347?text=${encodeURIComponent(
+    `Hola, quisiera consultar por mi pedido ${order.id}.`
+  )}`;
 
   if (reservationExpired) {
     main.innerHTML = `
@@ -977,13 +993,6 @@ function displayOrder(
         </strong>
       </div>
 
-      <section class="checkout-card final-sale-policy" aria-labelledby="order-final-sale-title">
-        <h2 id="order-final-sale-title">Todas las ventas son finales.</h2>
-        <p>La mayoría de los artículos son usados y se venden en el estado en que se encuentran, según las fotos y la descripción publicada. Al retirar tu compra, por favor revisá el artículo antes de llevártelo. Una vez que el artículo sale de nuestro domicilio, no aceptamos cambios, devoluciones ni reembolsos.</p>
-        <p>${NO_DELIVERY_NOTICE}</p>
-        ${order.items.some((item) => item.saleMode === 'DELAYED') ? `<p>${DELAYED_PICKUP_NOTICE}</p>` : ''}
-      </section>
-
       ${awaitingInitialPayment && order.holdExpiresAt ? `
         <section class="reservation-deadline-card" role="status">
           <span>RESERVA DEL PEDIDO</span>
@@ -994,19 +1003,8 @@ function displayOrder(
       ` : ''}
 
       <div class="checkout-grid">
-
-        <section
-          class="checkout-card"
-        >
-          <h2>
-            Artículos
-          </h2>
-
-          ${items}
-        </section>
-
         <aside
-          class="cart-summary"
+          class="cart-summary order-payment-section"
         >
           <span class="section-kicker">
             PAGO
@@ -1046,6 +1044,16 @@ function displayOrder(
           }
         </aside>
 
+        <section
+          class="checkout-card order-items-section"
+        >
+          <h2>
+            Artículos
+          </h2>
+
+          ${items}
+        </section>
+
       </div>
 
       <section class="checkout-card" id="pickup-scheduler" aria-live="polite">
@@ -1053,16 +1061,45 @@ function displayOrder(
         <p>Cargando horarios de retiro…</p>
       </section>
 
-      <a
-        class="secondary-action"
-        target="_blank"
-        rel="noreferrer"
-        href="https://wa.me/595972588347?text=${encodeURIComponent(
-          `Hola, quisiera consultar por mi pedido ${order.id}.`
-        )}"
-      >
-        Consultar por WhatsApp
-      </a>
+      <div class="order-lower-actions">
+        <a
+          class="secondary-action"
+          target="_blank"
+          rel="noreferrer"
+          href="${whatsappUrl}"
+        >
+          Consultar por WhatsApp
+        </a>
+        ${customerCancellationEligible ? `
+          <button class="destructive-secondary-action" id="cancel-order-trigger" type="button">
+            Cancelar pedido
+          </button>
+        ` : ''}
+      </div>
+
+      ${paymentActivityStarted ? `
+        <p class="payment-started-cancellation-help">
+          ¿Necesitás cancelar? <a href="${whatsappUrl}" target="_blank" rel="noreferrer">Contactanos por WhatsApp.</a>
+        </p>
+      ` : ''}
+
+      <div class="pickup-policy-reminder order-policy-reminder">
+        <strong>Recordatorio: Revisá los artículos al retirarlos. Una vez retirados, la venta es final. Retiro únicamente.</strong>
+        ${order.items.some((item) => item.saleMode === 'DELAYED') ? `<span>${DELAYED_PICKUP_NOTICE}</span>` : ''}
+      </div>
+
+      ${customerCancellationEligible ? `
+        <dialog class="cancel-order-dialog" id="cancel-order-dialog" aria-labelledby="cancel-order-title" aria-describedby="cancel-order-description cancel-order-transfer-warning">
+          <h2 id="cancel-order-title">¿Cancelar este pedido?</h2>
+          <p id="cancel-order-description">Los artículos se liberarán inmediatamente y podrán ser comprados por otra persona.</p>
+          <p id="cancel-order-transfer-warning"><strong>Si ya realizaste una transferencia, no canceles el pedido desde aquí. Contactanos por WhatsApp.</strong></p>
+          <p class="form-error" id="cancel-order-error" role="alert" hidden></p>
+          <div class="cancel-order-dialog-actions">
+            <button class="primary-action" id="keep-order-button" type="button" autofocus>No, mantener pedido</button>
+            <button class="destructive-action" id="confirm-cancel-order" type="button">Sí, cancelar pedido</button>
+          </div>
+        </dialog>
+      ` : ''}
     </section>
   `;
 
@@ -1081,6 +1118,49 @@ function displayOrder(
       access
     );
   }
+
+  if (customerCancellationEligible) {
+    setupCustomerCancellation(order, access);
+  }
+}
+
+function setupCustomerCancellation(order, access) {
+  const trigger = document.getElementById('cancel-order-trigger');
+  const dialog = document.getElementById('cancel-order-dialog');
+  const keepOrder = document.getElementById('keep-order-button');
+  const confirmCancellation = document.getElementById('confirm-cancel-order');
+  const errorBox = document.getElementById('cancel-order-error');
+  if (!trigger || !dialog || !keepOrder || !confirmCancellation || !errorBox) return;
+
+  trigger.addEventListener('click', () => {
+    errorBox.hidden = true;
+    dialog.showModal();
+  });
+  keepOrder.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => trigger.focus());
+  confirmCancellation.addEventListener('click', async () => {
+    confirmCancellation.disabled = true;
+    confirmCancellation.textContent = 'Cancelando pedido…';
+    errorBox.hidden = true;
+    try {
+      const response = await fetch('/api/orders/cancel', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, access }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo cancelar el pedido.');
+      dialog.close();
+      displayOrder(result.order, access);
+    } catch (error) {
+      errorBox.textContent = error instanceof Error
+        ? error.message
+        : 'No se pudo cancelar el pedido.';
+      errorBox.hidden = false;
+      confirmCancellation.disabled = false;
+      confirmCancellation.textContent = 'Sí, cancelar pedido';
+    }
+  });
 }
 
 async function setupPickupScheduler(order, access) {
@@ -1092,11 +1172,6 @@ async function setupPickupScheduler(order, access) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los horarios.');
     target.innerHTML = `<h2>Retiro</h2>
-      <div class="pickup-policy-reminder">
-        <strong>Antes de retirarte con los artículos, revisalos y asegurate de estar conforme. Una vez retirados del domicilio, la venta es final.</strong>
-        <span>${NO_DELIVERY_NOTICE}</span>
-        ${order.items.some((item) => item.saleMode === 'DELAYED') ? `<span>${DELAYED_PICKUP_NOTICE}</span>` : ''}
-      </div>
       <div class="pickup-fulfillment-list">
         ${(data.fulfillments || []).map((part, index) => {
           const appointment = part.appointment?.status === 'SCHEDULED' ? part.appointment : null;
@@ -1588,6 +1663,21 @@ function injectCheckoutStyles() {
       align-items: start;
     }
 
+    .order-shell > .checkout-grid {
+      grid-template-areas: "items payment";
+    }
+
+    .order-items-section {
+      grid-area: items;
+      min-width: 0;
+    }
+
+    .order-payment-section {
+      grid-area: payment;
+      min-width: 0;
+      align-self: start;
+    }
+
     .checkout-card,
     .order-status-card {
       background: var(--paper);
@@ -1601,7 +1691,6 @@ function injectCheckoutStyles() {
       gap: 18px;
     }
 
-    .final-sale-policy,
     .pickup-policy-reminder {
       display: grid;
       gap: 9px;
@@ -1609,11 +1698,6 @@ function injectCheckoutStyles() {
       border-radius: 12px;
       background: #fff8f4;
       padding: 18px;
-    }
-
-    .final-sale-policy h2,
-    .final-sale-policy p {
-      margin: 0;
     }
 
     .final-sale-acknowledgment {
@@ -1637,6 +1721,94 @@ function injectCheckoutStyles() {
 
     .pickup-policy-reminder span {
       display: block;
+    }
+
+    .order-policy-reminder {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-width: 1px;
+      font-size: .92rem;
+    }
+
+    .order-lower-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .order-lower-actions .primary-action,
+    .order-lower-actions .secondary-action,
+    .order-lower-actions button {
+      width: auto;
+    }
+
+    .destructive-secondary-action,
+    .destructive-action {
+      min-height: 44px;
+      padding: 11px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+    }
+
+    .destructive-secondary-action {
+      border: 1px solid #9c2f24;
+      background: transparent;
+      color: #8a2a20;
+    }
+
+    .destructive-action {
+      border: 1px solid #9c2f24;
+      background: #9c2f24;
+      color: white;
+    }
+
+    .destructive-action:disabled {
+      cursor: wait;
+      opacity: .65;
+    }
+
+    .payment-started-cancellation-help {
+      margin: 14px 0 0;
+      color: var(--muted);
+    }
+
+    .payment-started-cancellation-help a {
+      font-weight: 700;
+    }
+
+    .cancel-order-dialog {
+      width: min(520px, calc(100% - 32px));
+      margin: auto;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper);
+      color: inherit;
+      box-shadow: 0 18px 60px rgba(19, 36, 27, .28);
+    }
+
+    .cancel-order-dialog::backdrop {
+      background: rgba(19, 36, 27, .58);
+    }
+
+    .cancel-order-dialog h2 {
+      margin-top: 0;
+    }
+
+    .cancel-order-dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .cancelled-order-card {
+      margin-top: 24px;
     }
 
     .order-fulfillment-part,
@@ -1880,9 +2052,33 @@ function injectCheckoutStyles() {
         grid-template-columns: 1fr;
       }
 
+      .order-shell > .checkout-grid {
+        grid-template-areas:
+          "payment"
+          "items";
+      }
+
       .order-status-card {
         align-items: flex-start;
         flex-direction: column;
+      }
+
+      .order-lower-actions,
+      .cancel-order-dialog-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .order-lower-actions .primary-action,
+      .order-lower-actions .secondary-action,
+      .order-lower-actions button,
+      .cancel-order-dialog-actions button {
+        width: 100%;
+        text-align: center;
+      }
+
+      .cancel-order-dialog {
+        padding: 20px;
       }
     }
   `;
