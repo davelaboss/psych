@@ -1,5 +1,8 @@
-import { loadCatalog } from './_shared/commerce.mjs';
-import { injectProductPreviewMetadata } from './_shared/product-preview.mjs';
+import { loadPublicCatalog } from './_shared/commerce.mjs';
+import {
+  injectProductPreviewMetadata,
+  selectPreviewProduct,
+} from './_shared/product-preview.mjs';
 
 function htmlResponse(body, status = 200) {
   return new Response(body, {
@@ -40,13 +43,11 @@ export default async function handler(request) {
 
   if (slug) {
     try {
-      const products = await loadCatalog(origin);
-      const product = products.find(candidate =>
-        candidate?.slug === slug &&
-        !['UNLISTED', 'NEEDS_REVIEW'].includes(
-          String(candidate?.status || '').toUpperCase()
-        )
+      const { products } = await loadPublicCatalog(
+        origin,
+        { requestedSlug: slug }
       );
+      const product = selectPreviewProduct(products, slug);
 
       if (product) {
         html = injectProductPreviewMetadata(shell, product, origin);
