@@ -16,7 +16,7 @@ export const LOW_INTEREST_MINIMUM_HOURS = 24;
 const PUBLIC_EVENT_TYPES = new Set(ANALYTICS_EVENT_TYPES.filter((type) => type !== 'ADD_TO_CART'));
 const EVENT_TYPES = new Set(ANALYTICS_EVENT_TYPES);
 const CAMPAIGN_SOURCES = new Set(['story', 'jw-group', 'direct']);
-const FILTER_KEYS = new Set(['availability', 'condition', 'maxPrice', 'sort']);
+const FILTER_KEYS = new Set(['availability', 'condition', 'maxPrice', 'sort', 'showSold']);
 const CATEGORIES = new Set([
   'Muebles',
   'Oficina',
@@ -29,12 +29,18 @@ const CATEGORIES = new Set([
   'Cocina',
   'Herramientas',
   'Manualidades',
+  'Accesorios',
+  'Juegos',
+  'Otros',
+  'Salud',
+  'Salud y cuidado personal',
 ]);
 const FILTER_VALUES = Object.freeze({
   availability: new Set(['IMMEDIATE', 'DELAYED', 'REDUCED']),
   condition: new Set(['EXCELLENT', 'VERY_GOOD', 'GOOD', 'DETAILS']),
   maxPrice: new Set(['500000', '1000000', '2000000', '3000000']),
-  sort: new Set(['price-asc', 'price-desc', 'newest', 'reduced']),
+  sort: new Set(['price-asc', 'price-desc', 'newest']),
+  showSold: new Set(['true']),
 });
 const PAYMENTS_REQUIRING_ATTENTION = new Set([
   'AWAITING_INITIAL_PAYMENT',

@@ -852,3 +852,44 @@ body :where(p, span, small, label, button, input, select, textarea, a, li, dt, d
   .review-fields > div { grid-column: 1 / -1; }
   .heading-actions { flex-wrap: wrap; }
 }
+
+/* Homepage catalog discovery: the deployed controller mirrors this source styling. */
+.search-panel { display: block; margin: 25px 0 14px; }
+.search-panel .catalog-search-label { display: block; max-width: 760px; min-width: 0; }
+.search-panel .catalog-search-label > span { display: block; margin: 0 0 8px; color: var(--ink); font-family: Georgia, serif; font-size: clamp(22px, 3vw, 30px); font-weight: 600; letter-spacing: -.02em; text-transform: none; }
+.search-panel .catalog-search-label input { width: 100%; height: 54px; padding: 0 16px; border: 2px solid var(--forest); border-radius: 9px; background: #fff; color: var(--ink); font-size: 16px; outline: none; }
+.search-panel .catalog-search-label input:focus { box-shadow: 0 0 0 3px rgb(35 81 62 / 14%); }
+.search-panel .catalog-search-label small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+.catalog-discovery { margin-bottom: 20px; }
+.category-prompt { margin: 20px 0 9px; font-family: Georgia, serif; font-size: 20px; font-weight: 600; }
+.catalog-discovery .category-row { display: flex; flex-wrap: wrap; gap: 8px; overflow: visible; padding: 0; }
+.catalog-discovery .category-row button, .availability-row button { min-height: 44px; padding: 9px 15px; border: 1px solid #c9c3b7; border-radius: 999px; background: #fff; color: var(--forest); font-size: 13px; font-weight: 750; }
+.catalog-discovery .category-row button.active, .availability-row button.active { border-color: var(--forest); background: var(--forest); color: #fff; }
+.catalog-discovery .more-categories-toggle { border-style: dashed; background: #f8f5ee; }
+.more-categories-panel { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.more-categories-panel > p { margin: 0 0 10px; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.availability-choices { margin: 20px 0 0; padding: 0; border: 0; }
+.availability-choices legend { margin-bottom: 9px; font-size: 13px; font-weight: 800; }
+.availability-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.catalog-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.catalog-toolbar > strong { color: var(--forest); font-size: 15px; }
+.more-filters { position: relative; margin-left: auto; }
+.more-filters summary { display: flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 15px; border: 1px solid var(--forest); border-radius: 8px; background: #fff; color: var(--forest); font-size: 13px; font-weight: 800; cursor: pointer; list-style: none; }
+.more-filters summary::-webkit-details-marker { display: none; }
+.more-filters summary span { display: grid; place-items: center; min-width: 22px; height: 22px; border-radius: 999px; background: var(--clay); color: #fff; font-size: 11px; }
+.advanced-filter-grid { position: absolute; right: 0; z-index: 20; display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 12px; width: min(620px, calc(100vw - 40px)); margin-top: 8px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 18px 40px rgb(35 51 44 / 18%); }
+.advanced-filter-grid label > span { display: block; margin: 0 0 5px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.advanced-filter-grid select { width: 100%; min-height: 44px; padding: 0 32px 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.advanced-filter-grid .show-sold-option { display: flex; align-items: center; gap: 9px; min-height: 44px; }
+.advanced-filter-grid .show-sold-option > span { margin: 0; color: var(--ink); font-size: 13px; text-transform: none; }
+.show-sold-option input { width: 20px; height: 20px; }
+.catalog-load-controls { display: grid; justify-items: center; min-height: 20px; margin-top: 22px; }
+.catalog-load-controls button { min-height: 48px; padding: 0 20px; border: 2px solid var(--forest); border-radius: 8px; background: #fff; color: var(--forest); font-size: 14px; font-weight: 850; }
+
+@media (max-width: 620px) {
+  .catalog-toolbar { align-items: flex-start; flex-direction: column; }
+  .more-filters { width: 100%; margin-left: 0; }
+  .more-filters summary { justify-content: center; width: 100%; }
+  .advanced-filter-grid { position: static; grid-template-columns: 1fr; width: 100%; box-shadow: none; }
+  .catalog-discovery .category-row button, .availability-row button { min-height: 46px; padding-inline: 14px; }
+}
