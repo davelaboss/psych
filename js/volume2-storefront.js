@@ -10,6 +10,7 @@
     renderedCount: 0,
     loadObserver: null,
     catalogReady: false,
+    restoringCatalog: false,
     historyTrackingInstalled: false,
     scrollSaveTimer: null,
   };
@@ -168,6 +169,7 @@
     state.catalogReady = true;
 
     if (savedState) {
+      state.restoringCatalog = true;
       restoreCatalogState(savedState, {
         restoreControls: restoreCatalogControls,
         applyFilters: (renderedCount) => applyFilters(renderedCount, false),
@@ -644,16 +646,21 @@
       }
 
       window.requestAnimationFrame(() => {
-        window.scrollTo({ top: targetScroll, left: 0, behavior: 'auto' });
-        persistCatalogHistoryState();
-        onRestored();
+        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        window.scrollTo({ top: Math.min(targetScroll, maxScroll), left: 0, behavior: 'auto' });
+        window.requestAnimationFrame(() => {
+          state.restoringCatalog = false;
+          persistCatalogHistoryState();
+          onRestored();
+        });
       });
     });
   }
 
   function configureBrowserScrollRestoration(path) {
     if (!('scrollRestoration' in window.history)) return;
-    window.history.scrollRestoration = path === '/' || path === '/index.html' ? 'manual' : 'auto';
+    const isStorefrontFlow = path === '/' || path === '/index.html' || path === '/carrito' || path.startsWith('/producto/');
+    window.history.scrollRestoration = isStorefrontFlow ? 'manual' : 'auto';
   }
 
   function restoredRenderCount(savedCount, resultCount) {
@@ -718,6 +725,7 @@
   }
 
   function persistCatalogHistoryState() {
+    if (state.restoringCatalog) return;
     const snapshot = captureCatalogHistoryState();
     if (!snapshot) return;
     replaceCatalogHistoryState(window.history, window.location.href, snapshot);
@@ -749,6 +757,7 @@
     state.historyTrackingInstalled = true;
 
     const scheduleScrollSave = () => {
+      if (state.restoringCatalog) return;
       clearTimeout(state.scrollSaveTimer);
       state.scrollSaveTimer = window.setTimeout(() => {
         state.scrollSaveTimer = null;
@@ -768,6 +777,7 @@
       const savedState = readCatalogHistoryState(window.history.state);
       if (!savedState) return;
       state.loadObserver?.disconnect();
+      state.restoringCatalog = true;
       restoreCatalogScroll(savedState.scrollY, installContinuousLoading);
     });
     document.addEventListener('visibilitychange', () => {

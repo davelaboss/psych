@@ -174,6 +174,9 @@ test('catalog state is saved continuously and legacy global scroll storage is ab
   assert.match(controller, /window\.addEventListener\('scroll', scheduleScrollSave, \{ passive: true \}\)/);
   assert.match(controller, /window\.addEventListener\('pagehide', flushCatalogState\)/);
   assert.match(controller, /SCROLL_SAVE_DELAY_MS = 150/);
+  assert.match(controller, /if \(state\.restoringCatalog\) return/);
+  assert.match(controller, /path === '\/carrito' \|\| path\.startsWith\('\/producto\/'\)/);
+  assert.match(controller, /window\.history\.scrollRestoration = isStorefrontFlow \? 'manual' : 'auto'/);
   assert.match(staticStorefront, /window\.persistCatalogHistoryState\?\.\(\)/);
   assert.match(sourceStorefront, /window\.history\.replaceState/);
   assert.match(sourceProductCard, /persistCatalogHistoryState\?\.\(\)/);
