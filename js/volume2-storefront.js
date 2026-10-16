@@ -9,10 +9,16 @@
     deliveredProduct: null,
     renderedCount: 0,
     loadObserver: null,
+    catalogReady: false,
+    historyTrackingInstalled: false,
+    scrollSaveTimer: null,
   };
 
   const INITIAL_RENDER_COUNT = 48;
   const RENDER_BATCH_SIZE = 48;
+  const CATALOG_HISTORY_KEY = 'mudanzaCatalogState';
+  const CATALOG_HISTORY_VERSION = 1;
+  const SCROLL_SAVE_DELAY_MS = 150;
   const CORE_CATEGORIES = [
     'Cocina',
     'Hogar',
@@ -30,8 +36,9 @@
   }
 
   async function boot() {
-    installStyles();
     const path = cleanPath();
+    configureBrowserScrollRestoration(path);
+    installStyles();
 
     if (path.startsWith('/producto/')) {
       enhanceDetailPhotoAction();
@@ -153,12 +160,25 @@
     const panel = document.querySelector('.search-panel');
     if (!grid || !panel) return;
 
+    const savedState = readCatalogHistoryState(window.history.state);
     grid.innerHTML = '';
     prepareControls(panel);
     installCatalogEvents(grid);
-    applyFilters();
-    installContinuousLoading();
-    restoreCatalogScroll();
+    installCatalogHistoryTracking();
+    state.catalogReady = true;
+
+    if (savedState) {
+      restoreCatalogState(savedState, {
+        restoreControls: restoreCatalogControls,
+        applyFilters: (renderedCount) => applyFilters(renderedCount, false),
+        restoreScroll: restoreCatalogScroll,
+        resumeLoading: installContinuousLoading,
+      });
+    } else {
+      applyFilters();
+      installContinuousLoading();
+      persistCatalogHistoryState();
+    }
 
     const heading = document.querySelector('.catalog-heading > p');
     if (heading) {
@@ -357,7 +377,7 @@
       c.moreCategoriesPanel.hidden = expanded;
     });
 
-    c.loadMore?.addEventListener('click', appendNextBatch);
+    c.loadMore?.addEventListener('click', () => appendNextBatch());
     c.emptyReset?.addEventListener('click', resetCatalogFilters);
 
     c.reset?.addEventListener('click', resetCatalogFilters);
@@ -473,18 +493,18 @@
 
     const cardLink = event.target.closest('[data-product-card-link]');
     if (cardLink) {
-      sessionStorage.setItem('mudanza-catalog-scroll', String(window.scrollY));
+      persistCatalogHistoryState();
       window.salePulseRememberProductDiscovery?.(product, catalogDiscoveryContext(product));
       return;
     }
 
     event.preventDefault();
-    sessionStorage.setItem('mudanza-catalog-scroll', String(window.scrollY));
+    persistCatalogHistoryState();
     window.salePulseRememberProductDiscovery?.(product, catalogDiscoveryContext(product));
     window.location.assign(`/producto/${encodeURIComponent(product.slug)}`);
   }
 
-  function applyFilters() {
+  function applyFilters(requestedRenderCount = INITIAL_RENDER_COUNT, shouldPersist = true) {
     const c = state.controls;
     const query = normalize(c.search?.value || '');
     const category = normalize(selectedCategory());
@@ -507,7 +527,7 @@
     if (grid) {
       grid.innerHTML = '';
       state.renderedCount = 0;
-      appendNextBatch(INITIAL_RENDER_COUNT);
+      appendNextBatch(restoredRenderCount(requestedRenderCount, state.filtered.length), false);
     }
 
     if (c.counter) {
@@ -518,6 +538,7 @@
     }
     syncControlState();
     syncLoadControls();
+    if (shouldPersist) persistCatalogHistoryState();
   }
 
   function filterProducts(products, criteria) {
@@ -571,7 +592,7 @@
     }
   }
 
-  function appendNextBatch(requestedCount = RENDER_BATCH_SIZE) {
+  function appendNextBatch(requestedCount = RENDER_BATCH_SIZE, shouldPersist = true) {
     const grid = document.querySelector('.product-grid');
     if (!grid || state.renderedCount >= state.filtered.length) {
       syncLoadControls();
@@ -585,6 +606,7 @@
     grid.appendChild(fragment);
     state.renderedCount = end;
     syncLoadControls();
+    if (shouldPersist) persistCatalogHistoryState();
   }
 
   function syncLoadControls() {
@@ -610,21 +632,155 @@
     state.loadObserver.observe(sentinel);
   }
 
-  function restoreCatalogScroll() {
-    const savedScroll = Number(sessionStorage.getItem('mudanza-catalog-scroll'));
-    if (!Number.isFinite(savedScroll) || savedScroll <= 0) return;
-    sessionStorage.removeItem('mudanza-catalog-scroll');
+  function restoreCatalogScroll(savedScroll, onRestored = () => {}) {
+    const targetScroll = Math.max(0, Number(savedScroll) || 0);
 
-    function restoreWhenTallEnough() {
-      if (document.documentElement.scrollHeight < savedScroll + window.innerHeight && state.renderedCount < state.filtered.length) {
-        appendNextBatch();
-        window.requestAnimationFrame(restoreWhenTallEnough);
-        return;
+    window.requestAnimationFrame(() => {
+      while (
+        document.documentElement.scrollHeight < targetScroll + window.innerHeight &&
+        state.renderedCount < state.filtered.length
+      ) {
+        appendNextBatch(RENDER_BATCH_SIZE, false);
       }
-      window.requestAnimationFrame(() => window.scrollTo({ top: savedScroll }));
-    }
-    window.requestAnimationFrame(restoreWhenTallEnough);
+
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: targetScroll, left: 0, behavior: 'auto' });
+        persistCatalogHistoryState();
+        onRestored();
+      });
+    });
   }
+
+  function configureBrowserScrollRestoration(path) {
+    if (!('scrollRestoration' in window.history)) return;
+    window.history.scrollRestoration = path === '/' || path === '/index.html' ? 'manual' : 'auto';
+  }
+
+  function restoredRenderCount(savedCount, resultCount) {
+    const requested = Number.isFinite(Number(savedCount))
+      ? Math.floor(Number(savedCount))
+      : INITIAL_RENDER_COUNT;
+    return Math.min(resultCount, Math.max(INITIAL_RENDER_COUNT, requested));
+  }
+
+  function catalogSnapshotFromValues(values) {
+    return {
+      version: CATALOG_HISTORY_VERSION,
+      search: String(values.search || ''),
+      category: String(values.category || ''),
+      availability: ['ALL', 'IMMEDIATE', 'DELAYED'].includes(values.availability)
+        ? values.availability
+        : 'ALL',
+      condition: ['ALL', 'EXCELLENT', 'VERY_GOOD', 'GOOD', 'DETAILS'].includes(values.condition)
+        ? values.condition
+        : 'ALL',
+      maxPrice: String(values.maxPrice || ''),
+      sort: ['catalog', 'newest', 'price-asc', 'price-desc'].includes(values.sort)
+        ? values.sort
+        : 'catalog',
+      showSold: values.showSold === true,
+      renderedCount: Math.max(0, Math.floor(Number(values.renderedCount) || 0)),
+      scrollY: Math.max(0, Number(values.scrollY) || 0),
+    };
+  }
+
+  function captureCatalogHistoryState() {
+    if (!state.catalogReady) return null;
+    const c = state.controls;
+    return catalogSnapshotFromValues({
+      search: c.search?.value,
+      category: selectedCategory(),
+      availability: c.availability,
+      condition: c.condition?.value,
+      maxPrice: c.price?.value,
+      sort: c.sort?.value,
+      showSold: c.showSold?.checked,
+      renderedCount: state.renderedCount,
+      scrollY: window.scrollY,
+    });
+  }
+
+  function readCatalogHistoryState(entryState) {
+    const saved = entryState?.[CATALOG_HISTORY_KEY];
+    if (!saved || saved.version !== CATALOG_HISTORY_VERSION) return null;
+    return catalogSnapshotFromValues(saved);
+  }
+
+  function replaceCatalogHistoryState(historyObject, url, snapshot) {
+    if (!snapshot || typeof historyObject?.replaceState !== 'function') return;
+    const currentState = historyObject.state && typeof historyObject.state === 'object'
+      ? historyObject.state
+      : {};
+    historyObject.replaceState({
+      ...currentState,
+      [CATALOG_HISTORY_KEY]: snapshot,
+    }, '', url);
+  }
+
+  function persistCatalogHistoryState() {
+    const snapshot = captureCatalogHistoryState();
+    if (!snapshot) return;
+    replaceCatalogHistoryState(window.history, window.location.href, snapshot);
+  }
+
+  function restoreCatalogControls(snapshot) {
+    const c = state.controls;
+    if (c.search) c.search.value = snapshot.search;
+    setCategory(snapshot.category);
+    c.availability = snapshot.availability;
+    if (c.condition) c.condition.value = snapshot.condition;
+    if (c.condition?.value !== snapshot.condition) c.condition.value = 'ALL';
+    if (c.price) c.price.value = snapshot.maxPrice;
+    if (c.price?.value !== snapshot.maxPrice) c.price.value = '';
+    if (c.sort) c.sort.value = snapshot.sort;
+    if (c.sort?.value !== snapshot.sort) c.sort.value = 'catalog';
+    if (c.showSold) c.showSold.checked = snapshot.showSold;
+    syncControlState();
+  }
+
+  function restoreCatalogState(snapshot, actions) {
+    actions.restoreControls(snapshot);
+    actions.applyFilters(snapshot.renderedCount);
+    actions.restoreScroll(snapshot.scrollY, actions.resumeLoading);
+  }
+
+  function installCatalogHistoryTracking() {
+    if (state.historyTrackingInstalled) return;
+    state.historyTrackingInstalled = true;
+
+    const scheduleScrollSave = () => {
+      clearTimeout(state.scrollSaveTimer);
+      state.scrollSaveTimer = window.setTimeout(() => {
+        state.scrollSaveTimer = null;
+        persistCatalogHistoryState();
+      }, SCROLL_SAVE_DELAY_MS);
+    };
+    const flushCatalogState = () => {
+      clearTimeout(state.scrollSaveTimer);
+      state.scrollSaveTimer = null;
+      persistCatalogHistoryState();
+    };
+
+    window.addEventListener('scroll', scheduleScrollSave, { passive: true });
+    window.addEventListener('pagehide', flushCatalogState);
+    window.addEventListener('pageshow', (event) => {
+      if (!event.persisted || !state.catalogReady) return;
+      const savedState = readCatalogHistoryState(window.history.state);
+      if (!savedState) return;
+      state.loadObserver?.disconnect();
+      restoreCatalogScroll(savedState.scrollY, installContinuousLoading);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushCatalogState();
+    });
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest?.('a[href]');
+      if (!link || link.target === '_blank' || link.hasAttribute('download')) return;
+      flushCatalogState();
+    }, true);
+  }
+
+  window.persistCatalogHistoryState = persistCatalogHistoryState;
 
   function renderCard(product) {
     const article = document.createElement('article');

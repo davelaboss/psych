@@ -121,8 +121,8 @@ test('progressive loading is automatic, append-only, and has an accessible fallb
   assert.match(controller, /rootMargin: '900px 0px'/);
   assert.match(controller, /Cargar más artículos/);
   assert.doesNotMatch(controller, /Mostrar más/);
-  assert.match(controller, /document\.documentElement\.scrollHeight < savedScroll/);
-  assert.match(controller, /window\.scrollTo\(\{ top: savedScroll \}\)/);
+  assert.match(controller, /document\.documentElement\.scrollHeight < targetScroll/);
+  assert.match(controller, /window\.scrollTo\(\{ top: targetScroll, left: 0, behavior: 'auto' \}\)/);
 });
 
 test('advanced controls are secondary, counted, and reset only appears while filtered', () => {
