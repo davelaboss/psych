@@ -1,5 +1,6 @@
 import { loadPublicCatalog } from './_shared/commerce.mjs';
 import {
+  deriveProductPreviewSlug,
   injectProductPreviewMetadata,
   selectPreviewProduct,
 } from './_shared/product-preview.mjs';
@@ -24,7 +25,8 @@ export default async function handler(request) {
 
   const requestUrl = new URL(request.url);
   const origin = requestUrl.origin;
-  const slug = String(requestUrl.searchParams.get('slug') || '').trim();
+  const slug = deriveProductPreviewSlug(requestUrl);
+  const metadataOrigin = String(process.env.URL || origin).trim();
 
   const shellResponse = await fetch(
     new URL('/', origin),
@@ -50,7 +52,7 @@ export default async function handler(request) {
       const product = selectPreviewProduct(products, slug);
 
       if (product) {
-        html = injectProductPreviewMetadata(shell, product, origin);
+        html = injectProductPreviewMetadata(shell, product, metadataOrigin);
       }
     } catch (error) {
       console.error(

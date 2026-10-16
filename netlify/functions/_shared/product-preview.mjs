@@ -33,6 +33,29 @@ export function selectPreviewProduct(products, slug) {
     .find(product => product?.slug === wanted) || null;
 }
 
+export function deriveProductPreviewSlug(requestUrl) {
+  const url = requestUrl instanceof URL
+    ? requestUrl
+    : new URL(String(requestUrl));
+  const productPrefix = '/producto/';
+
+  if (url.pathname.startsWith(productPrefix)) {
+    const encodedSlug = url.pathname
+      .slice(productPrefix.length)
+      .replace(/\/+$/, '');
+
+    if (encodedSlug) {
+      try {
+        return decodeURIComponent(encodedSlug).trim();
+      } catch {
+        // Fall through to the direct-function query fallback.
+      }
+    }
+  }
+
+  return String(url.searchParams.get('slug') || '').trim();
+}
+
 export function buildProductPreviewMetadata(product, origin) {
   const images = Array.isArray(product?.images) ? product.images : [];
   const primaryImage = images.find(Boolean) || '';

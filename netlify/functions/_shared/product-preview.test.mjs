@@ -6,6 +6,7 @@ import {
 } from './commerce.mjs';
 import {
   buildProductPreviewMetadata,
+  deriveProductPreviewSlug,
   injectProductPreviewMetadata,
   selectPreviewProduct,
 } from './product-preview.mjs';
@@ -109,6 +110,31 @@ test('product preview replaces the generic social image without adding special m
   );
 });
 
+test('product preview derives the slug from the public product pathname', () => {
+  assert.equal(
+    deriveProductPreviewSlug(
+      'https://deploy-preview.example/producto/ups-apc-easy-ups-srv2ki-de-2000-va-2-kva-1-6-kw-item-313'
+    ),
+    item313.slug
+  );
+  assert.equal(
+    deriveProductPreviewSlug(
+      'https://deploy-preview.example/producto/art%C3%ADculo-de-prueba-item-1/'
+    ),
+    'artículo-de-prueba-item-1'
+  );
+});
+
+test('product preview retains the query fallback for direct function requests', () => {
+  assert.equal(
+    deriveProductPreviewSlug(
+      'https://deploy-preview.example/.netlify/functions/product-page?slug=' +
+        item313.slug
+    ),
+    item313.slug
+  );
+});
+
 test('normal public product is eligible for product preview metadata', () => {
   const visible = product();
   const projected = projectPublicCatalog([visible], [], visible.slug);
@@ -163,8 +189,9 @@ test('product routes are rewritten through the social-preview shell', async () =
 
   assert.match(
     redirects,
-    /^\/producto\/\*\s+\/\.netlify\/functions\/product-page\?slug=:splat\s+200$/m
+    /^\/producto\/\*\s+\/\.netlify\/functions\/product-page\s+200$/m
   );
+  assert.doesNotMatch(redirects, /product-page\?slug=:splat/);
   assert.doesNotMatch(
     redirects,
     /^\/producto\/\*\s+\/index\.html\s+200$/m
