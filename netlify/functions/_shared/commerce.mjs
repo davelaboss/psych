@@ -561,6 +561,7 @@ export {
   claimCartLease, updateCartLease, releaseCartLease, getCartLeaseStatus,
   transitionCartLeaseToOrder, getCartCheckoutAttempt, recordOrderReceipt,
   commitInventoryHold, confirmOrderPayment, updateProductCapacity, cancelOrder,
+  customerCancelOrder,
   refreshOrderReservation,
 } from './inventory-database.mjs';
 import {
@@ -617,6 +618,7 @@ export function publicOrder(order) {
     updatedAt: order.updatedAt,
 
     status: order.status,
+    cancelledBy: order.cancelledBy || null,
 
     buyer: {
       name: order.buyer.name,

@@ -516,25 +516,68 @@ export async function commitInventoryHold(orderId) {
   void orderId;
   throw fail('La confirmación requiere el identificador y el importe verificado del pago.');
 }
-export async function cancelOrder(orderId) {
+
+function customerCancellationHasPaymentActivity(order) {
+  return Boolean(
+    order.receipt ||
+    order.initialPaymentConfirmedAt ||
+    order.finalPaymentConfirmedAt ||
+    (Array.isArray(order.payments) && order.payments.length) ||
+    (Array.isArray(order.paymentAdjustments) && order.paymentAdjustments.length) ||
+    Number(order.paidAmountPYG || 0) > 0 ||
+    Number(order.confirmedPaidPYG || 0) > 0 ||
+    Number(order.netReceivedPYG || 0) > 0
+  );
+}
+
+export function customerCancellationAllowed(order, inventoryCommitted = false) {
+  return Boolean(
+    order &&
+    order.status === 'AWAITING_INITIAL_PAYMENT' &&
+    !inventoryCommitted &&
+    !customerCancellationHasPaymentActivity(order)
+  );
+}
+
+async function cancelOrderAsActor(orderId, actor) {
   return inventoryTransaction(async client => {
     const locked = await orderLock(client, orderId);
     if (!locked) throw Object.assign(new Error('Pedido no encontrado en el inventario de pedidos.'), { status: 404 });
-    const { row } = locked;
-    if (row.committed_at || row.order_snapshot.initialPaymentConfirmedAt ||
-        !['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT', 'CANCELLED'].includes(row.order_snapshot.status)) {
+    const { row, rows } = locked;
+    const current = row.order_snapshot;
+    if (current.status === 'CANCELLED') return current;
+    const customerInventoryCommitted = Boolean(
+      row.committed_at || rows.some(item => item.phase === 'COMMITTED')
+    );
+    const adminAllowed = !row.committed_at && !current.initialPaymentConfirmedAt &&
+      ['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT'].includes(current.status);
+    const allowed = actor === 'CUSTOMER'
+      ? customerCancellationAllowed(current, customerInventoryCommitted)
+      : adminAllowed;
+    if (!allowed) {
+      if (actor === 'CUSTOMER') {
+        throw fail('Este pedido ya no puede cancelarse desde aquí porque el pago o la verificación ya comenzó. Contactanos por WhatsApp.');
+      }
       throw fail('No se puede cancelar un pedido después de confirmar el pago.');
     }
-    if (row.order_snapshot.status === 'CANCELLED') return row.order_snapshot;
     const timestamp = await now(client);
-    const snapshot = { ...row.order_snapshot, status: 'CANCELLED', cancelledAt: timestamp,
-      cancelledBy: 'ADMIN', inventoryReleasedAt: timestamp, holdExpiresAt: null, updatedAt: timestamp };
+    const snapshot = { ...current, status: 'CANCELLED', cancelledAt: timestamp,
+      cancelledBy: actor, inventoryReleasedAt: timestamp, holdExpiresAt: null,
+      ...(actor === 'CUSTOMER' ? { reservationState: null } : {}), updatedAt: timestamp };
     await client.query("DELETE FROM inventory_reservations WHERE order_id=$1 AND phase='ORDER'", [orderId]);
     await cancelOrderReservationEvents(client, orderId);
     await client.query('UPDATE checkout_attempts SET order_snapshot=$2,expires_at=$3,projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1',
       [orderId, JSON.stringify(snapshot), new Date(timestamp)]);
     return snapshot;
   });
+}
+
+export async function cancelOrder(orderId) {
+  return cancelOrderAsActor(orderId, 'ADMIN');
+}
+
+export async function customerCancelOrder(orderId) {
+  return cancelOrderAsActor(orderId, 'CUSTOMER');
 }
 
 export async function listOrderSnapshots() {
