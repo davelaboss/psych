@@ -7,10 +7,25 @@ import { ProductCard } from './product-card';
 import { PUBLIC_CONFIG, whatsappHref } from '@/lib/config';
 
 type Availability = 'ALL' | 'IMMEDIATE' | 'DELAYED';
-const FILTER_KEY = 'mudanza-catalog-filters';
-const SCROLL_KEY = 'mudanza-catalog-scroll';
 const INITIAL_RENDER_COUNT = 48;
+const HISTORY_KEY = 'mudanzaCatalogState';
+const HISTORY_VERSION = 1;
 const CORE_CATEGORIES = ['Cocina', 'Hogar', 'Oficina', 'Electrodomésticos', 'Jardín', 'Muebles', 'Herramientas'];
+
+type CatalogHistorySnapshot = {
+  version: number;
+  search: string;
+  category: string;
+  availability: Availability;
+  condition: string;
+  maxPrice: string;
+  sort: string;
+  showSold: boolean;
+  renderedCount: number;
+  scrollY: number;
+};
+
+type CatalogWindow = Window & { persistCatalogHistoryState?: () => void };
 
 export function Storefront({ products }: { products: PublicProduct[] }) {
   const [query, setQuery] = useState('');
@@ -24,38 +39,83 @@ export function Storefront({ products }: { products: PublicProduct[] }) {
   const [visibleCount, setVisibleCount] = useState(INITIAL_RENDER_COUNT);
   const [restored, setRestored] = useState(false);
   const loadSentinel = useRef<HTMLDivElement>(null);
+  const pendingScroll = useRef<number | null>(null);
+  const restoredInitialFilters = useRef(false);
 
   useEffect(() => {
-    try {
-      const saved = window.sessionStorage.getItem(FILTER_KEY);
-      if (saved) {
-        const value = JSON.parse(saved) as Partial<{ query: string; category: string; availability: Availability; condition: string; maxPrice: string; sort: string; showSold: boolean }>;
-        if (typeof value.query === 'string') setQuery(value.query);
-        if (typeof value.category === 'string') setCategory(value.category);
-        if (value.availability) setAvailability(value.availability);
-        if (typeof value.condition === 'string') setCondition(value.condition);
-        if (typeof value.maxPrice === 'string') setMaxPrice(value.maxPrice);
-        if (typeof value.sort === 'string') setSort(value.sort);
-        if (typeof value.showSold === 'boolean') setShowSold(value.showSold);
+    const previousScrollRestoration = 'scrollRestoration' in window.history
+      ? window.history.scrollRestoration
+      : null;
+    if (previousScrollRestoration !== null) window.history.scrollRestoration = 'manual';
+    const value = window.history.state?.[HISTORY_KEY] as Partial<CatalogHistorySnapshot> | undefined;
+    if (value?.version === HISTORY_VERSION) {
+      if (typeof value.search === 'string') setQuery(value.search);
+      if (typeof value.category === 'string') setCategory(value.category || 'Todas');
+      if (value.availability && ['ALL', 'IMMEDIATE', 'DELAYED'].includes(value.availability)) setAvailability(value.availability);
+      if (typeof value.condition === 'string') setCondition(value.condition === 'ALL' ? 'Todas' : value.condition);
+      if (typeof value.maxPrice === 'string') setMaxPrice(value.maxPrice);
+      if (typeof value.sort === 'string') setSort(value.sort);
+      if (typeof value.showSold === 'boolean') setShowSold(value.showSold);
+      if (Number.isFinite(Number(value.renderedCount))) {
+        setVisibleCount(Math.max(INITIAL_RENDER_COUNT, Math.floor(Number(value.renderedCount))));
       }
-    } catch {
-      window.sessionStorage.removeItem(FILTER_KEY);
+      pendingScroll.current = Math.max(0, Number(value.scrollY) || 0);
     }
     setRestored(true);
+    return () => {
+      if (previousScrollRestoration !== null) window.history.scrollRestoration = previousScrollRestoration;
+    };
   }, []);
 
   useEffect(() => {
     if (!restored) return;
-    window.sessionStorage.setItem(FILTER_KEY, JSON.stringify({ query, category, availability, condition, maxPrice, sort, showSold }));
-  }, [restored, query, category, availability, condition, maxPrice, sort, showSold]);
+    let scrollTimer: number | undefined;
+    const save = () => {
+      window.clearTimeout(scrollTimer);
+      const currentState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
+      window.history.replaceState({
+        ...currentState,
+        [HISTORY_KEY]: {
+          version: HISTORY_VERSION,
+          search: query,
+          category: category === 'Todas' ? '' : category,
+          availability,
+          condition: condition === 'Todas' ? 'ALL' : condition,
+          maxPrice,
+          sort,
+          showSold,
+          renderedCount: visibleCount,
+          scrollY: Math.max(0, window.scrollY),
+        } satisfies CatalogHistorySnapshot,
+      }, '', window.location.href);
+    };
+    const scheduleSave = () => {
+      window.clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(save, 150);
+    };
+    const catalogWindow = window as CatalogWindow;
+    catalogWindow.persistCatalogHistoryState = save;
+    if (pendingScroll.current === null) save();
+    window.addEventListener('scroll', scheduleSave, { passive: true });
+    window.addEventListener('pagehide', save);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.removeEventListener('scroll', scheduleSave);
+      window.removeEventListener('pagehide', save);
+      if (catalogWindow.persistCatalogHistoryState === save) delete catalogWindow.persistCatalogHistoryState;
+    };
+  }, [restored, query, category, availability, condition, maxPrice, sort, showSold, visibleCount]);
 
   useEffect(() => {
-    if (!restored) return;
-    const savedScroll = Number(window.sessionStorage.getItem(SCROLL_KEY));
-    if (Number.isFinite(savedScroll) && savedScroll > 0) {
-      window.sessionStorage.removeItem(SCROLL_KEY);
-      window.requestAnimationFrame(() => window.scrollTo({ top: savedScroll }));
-    }
+    if (!restored || pendingScroll.current === null) return;
+    const targetScroll = pendingScroll.current;
+    pendingScroll.current = null;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: targetScroll, left: 0, behavior: 'auto' });
+        (window as CatalogWindow).persistCatalogHistoryState?.();
+      });
+    });
   }, [restored]);
 
   function resetFilters() {
@@ -95,9 +155,17 @@ export function Storefront({ products }: { products: PublicProduct[] }) {
     });
   }, [products, query, category, availability, condition, maxPrice, sort, showSold]);
 
-  useEffect(() => setVisibleCount(INITIAL_RENDER_COUNT), [query, category, availability, condition, maxPrice, sort, showSold]);
+  useEffect(() => {
+    if (!restored) return;
+    if (!restoredInitialFilters.current) {
+      restoredInitialFilters.current = true;
+      return;
+    }
+    setVisibleCount(INITIAL_RENDER_COUNT);
+  }, [restored, query, category, availability, condition, maxPrice, sort, showSold]);
 
   useEffect(() => {
+    if (!restored) return;
     const sentinel = loadSentinel.current;
     if (!sentinel || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver((entries) => {
@@ -107,7 +175,7 @@ export function Storefront({ products }: { products: PublicProduct[] }) {
     }, { rootMargin: '900px 0px' });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [filtered.length]);
+  }, [restored, filtered.length]);
 
   const advancedFilterCount = Number(condition !== 'Todas') + Number(Boolean(maxPrice)) + Number(sort !== 'catalog') + Number(showSold);
   const hasFilters = Boolean(query || category !== 'Todas' || availability !== 'ALL' || advancedFilterCount);

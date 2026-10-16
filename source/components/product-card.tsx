@@ -14,7 +14,7 @@ export function ProductCard({ product, compact = false }: { product: PublicProdu
   const reduced = product.originalPricePYG && product.originalPricePYG > product.askingPricePYG;
   const conditionText = publicConditionText(product.condition);
   const rememberCatalogPosition = () => {
-    sessionStorage.setItem('mudanza-catalog-scroll', String(window.scrollY));
+    (window as Window & { persistCatalogHistoryState?: () => void }).persistCatalogHistoryState?.();
   };
 
   return (

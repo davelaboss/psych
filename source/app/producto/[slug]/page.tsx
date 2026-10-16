@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ProductActions } from '@/components/product-actions';
 import { ProductImageGallery } from '@/components/image-lightbox';
+import { HistoryScrollRestoration } from '@/components/history-scroll-restoration';
 import { getPublicProductBySlug } from '@/lib/database';
 import { dueNowForProduct, formatItemNumber, formatPickupWindow, formatPYG, itemTitle, publicConditionText, publicStatusLabel } from '@/lib/types';
 
@@ -34,6 +35,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const conditionText = publicConditionText(product.condition);
 
   return <main className="product-page">
+    <HistoryScrollRestoration />
     <nav className="breadcrumbs" aria-label="Migas de pan"><a href="/#articulos">← Volver al catálogo</a><span>/</span><span>{product.category}</span><span>/</span><span>{product.title}</span></nav>
     <aside className="mobile-product-policy" aria-label="Aviso importante sobre la venta"><strong>Importante</strong><ul><li>La mayoría de los artículos son usados.</li><li>Todas las ventas son finales.</li></ul></aside>
     <section className="product-detail">

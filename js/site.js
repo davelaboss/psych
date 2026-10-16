@@ -1503,7 +1503,7 @@ function enhanceCatalogCardNavigation(card, productLink, product) {
   cardLink.dataset.productCardLink = '';
   cardLink.setAttribute('aria-label', `Ver detalles de ${product.title}`);
   cardLink.addEventListener('click', function () {
-    sessionStorage.setItem('mudanza-catalog-scroll', String(window.scrollY));
+    window.persistCatalogHistoryState?.();
   });
   card.insertBefore(cardLink, card.firstChild);
 }
