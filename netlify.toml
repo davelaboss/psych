@@ -1,8 +1,0 @@
-[build]
-  publish = "."
-  functions = "netlify/functions"
-
-[dev]
-  framework = "#static"
-  publish = "."
-  port = 8888
