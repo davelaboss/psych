@@ -46,6 +46,9 @@
 
   async function boot() {
     const path = cleanPath();
+
+    if (!isCatalogRoute(path)) return;
+
     configureBrowserScrollRestoration(path);
     const savedPageScroll = isPageScrollRoute(path)
       ? initializePageScrollRestoration(path)
@@ -84,19 +87,10 @@
         return;
       }
 
-      if (path === '/carrito') {
-        if (typeof window.renderCartPage === 'function') {
-          await window.renderCartPage();
-        }
-        restorePageHistoryScroll(savedPageScroll);
-        return;
-      }
-
-      if (path !== '/' && path !== '/index.html') return;
-
       buildCatalog();
     } catch (error) {
       console.error('Catálogo unificado:', error);
+      if (path === '/' || path === '/index.html') renderCatalogError();
       if (savedPageScroll) restorePageHistoryScroll(savedPageScroll);
     }
   }
@@ -105,25 +99,32 @@
     return window.location.pathname.replace(/\/+$/, '') || '/';
   }
 
+  function isCatalogRoute(path) {
+    return path === '/' || path === '/index.html' || path.startsWith('/producto/');
+  }
+
   async function fetchCatalog(requestedSlug = '') {
-    const url = new URL('/.netlify/functions/volume2-catalog', window.location.origin);
-    if (requestedSlug) url.searchParams.set('slug', requestedSlug);
-    const response = await fetch(url, {
-      cache: 'no-store',
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'No se pudo cargar el catálogo.');
+    if (typeof window.loadAuthoritativeCatalog !== 'function') {
+      throw new Error('No se pudo iniciar la carga del catálogo.');
     }
 
-    return {
-      products: Array.isArray(data.products) ? data.products : [],
-      deliveredProduct: data.deliveredProduct && typeof data.deliveredProduct === 'object'
-        ? data.deliveredProduct
-        : null,
-    };
+    return window.loadAuthoritativeCatalog(requestedSlug);
+  }
+
+  function renderCatalogError() {
+    const catalog = document.querySelector('.catalog');
+    if (!catalog) return;
+
+    catalog.innerHTML = `
+      <div class="empty-cart catalog-error" role="alert">
+        <span>CATÁLOGO</span>
+        <h2>No se pudieron cargar los artículos.</h2>
+        <p>No mostramos información desactualizada. Intentá nuevamente en unos minutos.</p>
+        <button class="primary-action" type="button" data-catalog-retry>Volver a intentar</button>
+      </div>
+    `;
+    catalog.querySelector('[data-catalog-retry]')?.addEventListener('click', () => window.location.reload());
+    document.documentElement.classList.remove('catalog-route-pending');
   }
 
 
@@ -203,6 +204,7 @@
     }
 
     installStyles();
+    document.documentElement.classList.remove('catalog-route-pending');
   }
 
   function prepareControls(panel) {
