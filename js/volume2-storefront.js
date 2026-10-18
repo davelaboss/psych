@@ -954,7 +954,7 @@
     article.innerHTML = `
       <a class="product-card-link" href="${detailUrl}" data-product-card-link aria-label="Ver detalles de ${escapeAttr(product.title)}"></a>
       <div class="product-photo" aria-hidden="true">
-        ${image ? `<img src="${escapeAttr(withLeadingSlash(image))}" alt="" loading="lazy">` : ''}
+        ${image ? `<img src="${escapeAttr(window.imageDelivery.resolve(image))}" data-original-src="${escapeAttr(window.imageDelivery.original(image))}" alt="" loading="lazy" decoding="async">` : ''}
         ${!available ? '<span class="sold-ribbon">VENDIDO</span>' : ''}
       </div>
       <div class="product-copy">
@@ -1061,6 +1061,7 @@
           ]
             .map(
               (img) =>
+                img.getAttribute('data-original-src') ||
                 img.getAttribute('src') ||
                 img.currentSrc ||
                 ''
@@ -1085,6 +1086,7 @@
 
         const clickedSrc =
           withLeadingSlash(
+            clickedImage?.getAttribute('data-original-src') ||
             clickedImage?.getAttribute(
               'src'
             ) ||
@@ -1300,9 +1302,11 @@
                 aria-label="Ver foto ${thumbIndex + 1}"
               >
                 <img
-                  src="${escapeAttr(src)}"
+                  src="${escapeAttr(window.imageDelivery.resolve(src))}"
+                  data-original-src="${escapeAttr(window.imageDelivery.original(src))}"
                   alt=""
                   draggable="false"
+                  decoding="async"
                 >
               </button>
             `

@@ -34,11 +34,13 @@ const renderRelatedProductCard = Function(
   'escapeHtml',
   'stripLeadingSlash',
   'formatPYG',
+  'window',
   `${cardSource}; return renderRelatedProductCard;`
 )(
   value => String(value),
   value => String(value).replace(/^\/+/, ''),
-  value => `Gs. ${Number(value).toLocaleString('es-PY')}`
+  value => `Gs. ${Number(value).toLocaleString('es-PY')}`,
+  { imageDelivery: { resolve: value => '/' + value.replace(/^\/+/, ''), original: value => '/' + value.replace(/^\/+/, '') } }
 );
 
 const product = (itemNumber, overrides = {}) => ({
