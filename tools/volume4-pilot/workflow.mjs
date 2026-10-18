@@ -172,7 +172,7 @@ async function exists(file) {
   try { await access(file); return true; } catch { return false; }
 }
 
-export async function optimizeGroups(groups, { intakeDir, outputDir, publicPrefix = '/images/volume-4-pilot' }) {
+export async function optimizeGroups(groups, { intakeDir, outputDir, publicPrefix = '/images/volume-4-pilot', filePrefix = 'v4' }) {
   const intakeFiles = (await readdir(intakeDir, { withFileTypes: true })).filter(entry => entry.isFile());
   const intakeByName = new Map(intakeFiles.map(entry => [entry.name.toLowerCase(), entry.name]));
   const referenced = groups.flatMap(group => [...(group.photos || []), ...(group.referencePhotos || [])].map(photo => ({ group, photo })));
@@ -193,7 +193,7 @@ export async function optimizeGroups(groups, { intakeDir, outputDir, publicPrefi
     for (let index = 0; index < group.photos.length; index += 1) {
       const originalName = intakeByName.get(group.photos[index].toLowerCase());
       const input = path.join(intakeDir, originalName);
-      const outputName = `v4-g${String(group.groupId).padStart(3, '0').toLowerCase()}-${String(index + 1).padStart(2, '0')}.webp`;
+      const outputName = `${filePrefix}-g${String(group.groupId).padStart(3, '0').toLowerCase()}-${String(index + 1).padStart(2, '0')}.webp`;
       const output = path.join(outputDir, outputName);
       if (await exists(output)) throw new Error(`Refusing to overwrite optimized image: ${outputName}`);
 

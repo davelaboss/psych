@@ -1,0 +1,25 @@
+{
+  "groups": [
+    {
+      "photos": ["frente.jpg", "detalle.jpg"],
+      "groupingJustification": "El propietario confirma que ambas fotos muestran el mismo producto físico.",
+      "sellerConfirmed": true,
+      "product": {
+        "title": "Estante de madera",
+        "category": "Muebles",
+        "description": "Estante de madera con tres niveles.",
+        "asking": 150,
+        "condition": "Buen estado",
+        "functionality": "No aplica",
+        "knownDefects": "Ninguno conocido.",
+        "measurements": "80 alto × 45 ancho × 40 prof",
+        "quantityTotal": 1,
+        "saleStructure": "individual",
+        "saleMode": "IMMEDIATE",
+        "includedAccessories": [],
+        "notIncludedVisible": "Libros mostrados en la foto."
+      },
+      "questions": []
+    }
+  ]
+}
