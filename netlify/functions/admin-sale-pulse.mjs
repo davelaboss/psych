@@ -3,7 +3,7 @@ import {
   jsonResponse,
   loadCatalog,
 } from './_shared/commerce.mjs';
-import { database } from './_shared/inventory-database.mjs';
+import { database, readPurchasableInventory } from './_shared/inventory-database.mjs';
 import { deriveOrderFulfillmentParts } from './_shared/order-fulfillments.mjs';
 import {
   ANALYTICS_RETENTION_DAYS,
@@ -62,7 +62,7 @@ export async function loadSalePulseSnapshot(origin, dependencies = {}) {
   await query(`DELETE FROM sale_analytics_events
     WHERE occurred_at < clock_timestamp() - $1::interval`, [`${ANALYTICS_RETENTION_DAYS} days`]);
 
-  const [trackingResult, eventResult, orderResult, appointmentResult, fulfillmentResult, products] = await Promise.all([
+  const [trackingResult, eventResult, orderResult, appointmentResult, fulfillmentResult, products, purchasableInventory] = await Promise.all([
     query('SELECT min(occurred_at) AS tracking_started_at FROM sale_analytics_events'),
     query(`SELECT occurred_at,event_type,anonymous_session_hash,product_id,campaign_source,
         category,filter_context,result_position,result_count
@@ -80,12 +80,14 @@ export async function loadSalePulseSnapshot(origin, dependencies = {}) {
       WHERE batch.merged_into_batch_id IS NULL
       GROUP BY membership.order_id,batch.timing_key`),
     loadProducts(origin),
+    readPurchasableInventory({ query }),
   ]);
 
   const orderRows = orderResult.rows || [];
   return buildSalePulseSnapshot({
     events: (eventResult.rows || []).map(eventRow),
     products,
+    purchasableInventory,
     orders: orderRows.filter((row) => row.committed_at).map((row) => ({
       committedAt: row.committed_at,
       items: Array.isArray(row.order_snapshot?.items) ? row.order_snapshot.items : [],

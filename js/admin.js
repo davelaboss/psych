@@ -1115,6 +1115,23 @@ function renderOverviewTab() {
     });
 
   target
+    .querySelector('[data-copy-sale-pulse-packet]')
+    ?.addEventListener('click', async (event) => {
+      const packet = ADMIN_STATE.salePulse?.marketingPacket;
+      if (!packet) return;
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(packet, null, 2));
+        button.textContent = 'PAQUETE COPIADO';
+      } catch {
+        button.textContent = 'NO SE PUDO COPIAR';
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+  target
     .querySelectorAll('[data-go-tab]')
     .forEach((button) => {
       button.addEventListener('click', () => {
@@ -1381,6 +1398,18 @@ function renderSalePulsePanel() {
         </section>
       </div>
 
+      ${pulse.marketingPacket ? `
+        <section class="sale-pulse-sources">
+          <h3>Disponibilidad actual para marketing</h3>
+          <div>
+            <span>Comercializables <strong>${Number(pulse.marketingPacket.marketabilitySummary?.marketable || 0)}</strong></span>
+            <span>Reserva temporal <strong>${Number(pulse.marketingPacket.marketabilitySummary?.temporarilyReserved || 0)}</strong></span>
+            <span>Pago o confirmación pendiente <strong>${Number(pulse.marketingPacket.marketabilitySummary?.pendingPaymentOrConfirmation || 0)}</strong></span>
+            <span>Vendidos / no comercializables <strong>${Number(pulse.marketingPacket.marketabilitySummary?.sold || 0) + Number(pulse.marketingPacket.marketabilitySummary?.notMarketable || 0)}</strong></span>
+          </div>
+          <p class="sale-pulse-empty">Consulta pasiva del inventario y reservas. Actualizar antes de preparar una campaña; la disponibilidad puede cambiar.</p>
+        </section>` : ''}
+
       <section class="sale-pulse-sources">
         <h3>Origen de tráfico · 7 días</h3>
         <div>
@@ -1402,6 +1431,7 @@ function renderSalePulsePanel() {
       <div class="sale-pulse-copy">
         <p>${adminEscape(pulse.tracking?.historyWarning || '')}</p>
         <button class="primary-action" type="button" data-copy-sale-pulse>COPIAR INFORME PARA MARKETING</button>
+        <button class="secondary-action" type="button" data-copy-sale-pulse-packet ${pulse.marketingPacket ? '' : 'disabled'}>COPIAR PAQUETE PARA MARKETING</button>
       </div>
     </section>`;
 }
@@ -7396,7 +7426,7 @@ function injectSalePulseStyles() {
     .sale-pulse-list span { color: #655f56; font-size: .8rem; font-weight: 800; text-transform: uppercase; }
     .sale-pulse-list small { margin-top: 2px; color: #655f56; }
     .sale-pulse-empty { margin: 0; color: #655f56; }
-    .sale-pulse-copy { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 4px; }
+    .sale-pulse-copy { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px; padding-top: 4px; }
     .sale-pulse-copy p { margin: 0; max-width: 720px; color: #655f56; }
     .admin-overview-actions { display: grid; gap: 14px; margin-top: 24px; }
     .admin-overview-actions .admin-section-heading-v2 { margin-bottom: 0; }

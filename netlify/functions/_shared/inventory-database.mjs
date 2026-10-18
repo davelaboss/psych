@@ -594,18 +594,27 @@ export async function readCommittedInventory() {
   return new Map(rows.map(row => [row.product_id, row]));
 }
 
-export async function readPurchasableInventory() {
-  const rows = (await database().pool.query(`
+export async function readPurchasableInventory({ query = (sql) => database().pool.query(sql) } = {}) {
+  // Passive projection: classify the same active holds used by purchasable inventory.
+  // Aggregate once so quantities and their explanation share one database snapshot.
+  const rows = (await query(`
     SELECT inventory.product_id,inventory.capacity,inventory.committed_quantity,
-      GREATEST(0,inventory.capacity-inventory.committed_quantity-COALESCE((
-        SELECT sum(reservation.quantity)
+      COALESCE(holds.cart_held_quantity,0) AS cart_held_quantity,
+      COALESCE(holds.order_held_quantity,0) AS order_held_quantity,
+      holds.next_release_at,
+      GREATEST(0,inventory.capacity-inventory.committed_quantity
+        -COALESCE(holds.cart_held_quantity,0)-COALESCE(holds.order_held_quantity,0)) AS purchasable_quantity
+    FROM operational_inventory inventory
+    LEFT JOIN LATERAL (
+        SELECT sum(reservation.quantity) FILTER (WHERE reservation.phase='CART') AS cart_held_quantity,
+          sum(reservation.quantity) FILTER (WHERE reservation.phase='ORDER') AS order_held_quantity,
+          min(reservation.expires_at) AS next_release_at
         FROM inventory_reservations reservation
         WHERE reservation.product_id=inventory.product_id
           AND ((reservation.phase='CART' AND reservation.expires_at>clock_timestamp())
             OR (reservation.phase='ORDER' AND
               (reservation.expires_at IS NULL OR reservation.expires_at>clock_timestamp())))
-      ),0)) AS purchasable_quantity
-    FROM operational_inventory inventory
+    ) holds ON true
   `)).rows;
   return new Map(rows.map(row => [row.product_id, row]));
 }

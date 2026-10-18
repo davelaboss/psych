@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { PGlite } from '@electric-sql/pglite';
+import { loadBaseCatalog, loadCatalog } from './commerce.mjs';
 import { createAnalyticsEventHandler } from '../analytics-event.mjs';
-import { createAdminSalePulseHandler } from '../admin-sale-pulse.mjs';
+import { createAdminSalePulseHandler, loadSalePulseSnapshot } from '../admin-sale-pulse.mjs';
+import { readPurchasableInventory } from './inventory-database.mjs';
 import { createCartReservationHandler } from '../cart-reservation.mjs';
 import {
   buildSalePulseSnapshot,
@@ -29,6 +32,18 @@ function product(number, overrides = {}) {
     ...overrides,
   };
 }
+
+function inventoryRow(number, overrides = {}) {
+  return {
+    product_id: `product-${number}`, capacity: 1, committed_quantity: 0,
+    purchasable_quantity: 1, cart_held_quantity: 0, order_held_quantity: 0,
+    next_release_at: null, ...overrides,
+  };
+}
+
+const availableInventory = (...numbers) => new Map(numbers.map((number) => [
+  `product-${number}`, inventoryRow(number),
+]));
 
 function event(eventType, hours, overrides = {}) {
   return {
@@ -377,6 +392,7 @@ test('product signals rank deterministically without AI scoring', () => {
     generatedAt: now,
     trackingStartedAt: hoursAgo(48),
     products: [product(3), product(2), product(1)],
+    purchasableInventory: availableInventory(1, 2, 3),
     events,
     orders: [],
   });
@@ -399,6 +415,275 @@ test('short tracking age prevents new inventory from being mislabeled low intere
   assert.equal(snapshot.tracking.lowInterestReady, false);
   assert.deepEqual(snapshot.productSignals.lowNoInterest, []);
   assert.match(snapshot.tracking.lowInterestGuard, /24 horas/);
+});
+
+for (const [label, productOverrides, rowOverrides, expected, purchasable] of [
+  ['unique available without holds', {}, {}, 'MARKETABLE', 1],
+  ['final unit CART hold', {}, { cart_held_quantity: 1, purchasable_quantity: 0 }, 'TEMPORARILY_RESERVED', 0],
+  ['final unit ORDER hold', {}, { order_held_quantity: 1, purchasable_quantity: 0 }, 'PENDING_PAYMENT_OR_CONFIRMATION', 0],
+  ['protected ORDER without expiry', {}, { order_held_quantity: 1, purchasable_quantity: 0, next_release_at: null }, 'PENDING_PAYMENT_OR_CONFIRMATION', 0],
+  ['committed final unit with stale catalog', {}, { committed_quantity: 1, purchasable_quantity: 0 }, 'SOLD', 0],
+  ['catalog SOLD', { status: 'SOLD' }, {}, 'SOLD', 1],
+  ['catalog PICKED_UP', { status: 'PICKED_UP' }, {}, 'SOLD', 1],
+  ['three units with one CART held', { quantityRemaining: 3 }, { capacity: 3, cart_held_quantity: 1, purchasable_quantity: 2 }, 'MARKETABLE', 2],
+  ['all three units CART held', { quantityRemaining: 3 }, { capacity: 3, cart_held_quantity: 3, purchasable_quantity: 0 }, 'TEMPORARILY_RESERVED', 0],
+  ['mixed CART and ORDER leaving one unit', { quantityRemaining: 3 }, { capacity: 3, cart_held_quantity: 1, order_held_quantity: 1, purchasable_quantity: 1 }, 'MARKETABLE', 1],
+  ['mixed holds exhausting stock prioritize ORDER', { quantityRemaining: 3 }, { capacity: 3, cart_held_quantity: 2, order_held_quantity: 1, purchasable_quantity: 0 }, 'PENDING_PAYMENT_OR_CONFIRMATION', 0],
+]) {
+  test(`marketability: ${label}`, () => {
+    const snapshot = buildSalePulseSnapshot({
+      generatedAt: now, trackingStartedAt: hoursAgo(48),
+      products: [product(1, productOverrides)],
+      purchasableInventory: new Map([['product-1', inventoryRow(1, rowOverrides)]]),
+      events: [event('PRODUCT_VIEW', 2, { productId: 'product-1' }), event('ADD_TO_CART', 1, { productId: 'product-1' })],
+    });
+    const packet = snapshot.marketingPacket;
+    assert.equal(packet.products[0].marketabilityStatus, expected);
+    assert.equal(packet.products[0].purchasableQuantity, purchasable);
+    assert.equal(packet.marketableProducts.length, expected === 'MARKETABLE' ? 1 : 0);
+    for (const items of Object.values(snapshot.productSignals)) {
+      if (expected !== 'MARKETABLE') assert.equal(items.length, 0);
+    }
+    assert.equal(snapshot.last24Hours.productViews, 1);
+    assert.equal(snapshot.last24Hours.addToCart, 1);
+  });
+}
+
+test('internal public-projection exclusions never enter packet records or recommendations', () => {
+  const snapshot = buildSalePulseSnapshot({
+    products: [product(1, { status: 'NEEDS_REVIEW' }), product(2, { status: 'UNLISTED' })],
+    purchasableInventory: availableInventory(1, 2),
+  });
+  assert.deepEqual(snapshot.marketingPacket.products, []);
+  assert.deepEqual(snapshot.marketingPacket.marketableProducts, []);
+  assert.equal(snapshot.marketingPacket.marketabilitySummary.notMarketable, 2);
+});
+
+test('missing inventory fails closed; catalog quantity caps marketing stock', () => {
+  const missing = buildSalePulseSnapshot({ products: [product(1)] }).marketingPacket;
+  assert.equal(missing.products[0].marketabilityReason, 'INVENTORY_NOT_VERIFIED');
+  assert.equal(missing.products[0].purchasableQuantity, 0);
+  assert.deepEqual(missing.marketableProducts, []);
+  const capped = buildSalePulseSnapshot({
+    products: [product(1)],
+    purchasableInventory: new Map([['product-1', inventoryRow(1, { capacity: 3, purchasable_quantity: 3 })]]),
+  }).marketingPacket;
+  assert.equal(capped.products[0].purchasableQuantity, 1);
+});
+
+test('holds filter every recommendation without changing inventory, 24h/7d or traffic facts', () => {
+  const input = {
+    generatedAt: now, trackingStartedAt: hoursAgo(48),
+    products: [product(1), product(2), product(3)],
+    events: [
+      event('PRODUCT_VIEW', 2, { productId: 'product-1', campaignSource: 'story' }),
+      event('ADD_TO_CART', 1, { productId: 'product-1', campaignSource: 'story' }),
+      event('PRODUCT_VIEW', 30, { productId: 'product-2', campaignSource: 'jw-group' }),
+      event('CATALOG_VISIT', 1),
+    ],
+    orders: [{ committedAt: hoursAgo(1), items: [{ productId: 'other', quantity: 2 }] }],
+  };
+  const unheld = buildSalePulseSnapshot({ ...input, purchasableInventory: availableInventory(1, 2, 3) });
+  const held = buildSalePulseSnapshot({
+    ...input, purchasableInventory: new Map([1, 2, 3].map((number) => [
+      `product-${number}`, inventoryRow(number, { cart_held_quantity: 1, purchasable_quantity: 0 }),
+    ])),
+  });
+  for (const key of ['inventory', 'last24Hours', 'last7Days', 'sources']) assert.deepEqual(held[key], unheld[key]);
+  for (const items of Object.values(unheld.productSignals)) assert.ok(items.length > 0);
+  for (const items of Object.values(held.productSignals)) assert.deepEqual(items, []);
+  assert.equal(held.marketingPacket.products[0].views, 1);
+  assert.equal(held.marketingPacket.products[0].cartAdds, 1);
+});
+
+test('packet allowlist exports authoritative public facts and signal membership without PII or identifiers', () => {
+  const privateFields = {
+    buyer: { name: 'PRIVATE-BUYER', phone: 'PRIVATE-PHONE', email: 'PRIVATE-EMAIL' },
+    orderId: 'PRIVATE-ORDER', checkoutId: 'PRIVATE-CHECKOUT', session_id: 'PRIVATE-SESSION',
+    cartCookie: 'PRIVATE-COOKIE', accessToken: 'PRIVATE-TOKEN', receiptUrl: 'PRIVATE-RECEIPT',
+    bankInformation: 'PRIVATE-BANK', sellerNotes: 'PRIVATE-SELLER-NOTES', customerNotes: 'PRIVATE-CUSTOMER-NOTES',
+  };
+  const packet = buildSalePulseSnapshot({
+    generatedAt: now, trackingStartedAt: hoursAgo(48),
+    products: [product(1, {
+      ...privateFields, title: 'Título actual', slug: 'titulo-actual', category: 'Hogar',
+      askingPricePYG: 175000, saleMode: 'IMMEDIATE', images: ['/images/example-cover.webp', '/images/example-second.webp'],
+    })],
+    purchasableInventory: new Map([['product-1', inventoryRow(1, privateFields)]]),
+    events: [event('PRODUCT_VIEW', 1, { ...privateFields, productId: 'product-1' })],
+    orders: [{ ...privateFields, committedAt: hoursAgo(1), items: [{ productId: 'other', quantity: 1 }] }],
+  }).marketingPacket;
+  const serialized = JSON.stringify(packet);
+  assert.doesNotMatch(serialized, /PRIVATE-|buyer|phone|email|orderId|checkoutId|session|cookie|token|receipt|bank|sellerNotes|customerNotes/i);
+  const record = packet.marketableProducts[0];
+  assert.deepEqual(Object.keys(record).sort(), [
+    'productId', 'itemNumber', 'title', 'views', 'cartAdds', 'slug', 'productUrl', 'category',
+    'askingPricePYG', 'saleMode', 'mainImage', 'quantityRemaining', 'purchasableQuantity',
+    'cartHeldQuantity', 'orderHeldQuantity', 'nextReleaseAt', 'marketabilityStatus', 'marketabilityReason', 'signals',
+  ].sort());
+  assert.equal(record.title, 'Título actual');
+  assert.equal(record.askingPricePYG, 175000);
+  assert.equal(record.mainImage, '/images/example-cover.webp');
+  assert.equal(record.productUrl, '/producto/titulo-actual');
+  assert.equal(record.views, 1);
+  assert.equal(record.signals.hotUnsold, true);
+  assert.deepEqual(packet.signalLists.hotUnsold, ['product-1']);
+  assert.deepEqual(JSON.parse(serialized).marketableProducts[0], record);
+});
+
+for (const [label, images] of [
+  ['empty images', []], ['missing images', undefined], ['null images', null], ['invalid cover', [null, '/images/second.webp']],
+]) {
+  test(`packet mainImage safely returns null for ${label}`, () => {
+    const packet = buildSalePulseSnapshot({
+      products: [product(1, { images })], purchasableInventory: availableInventory(1),
+    }).marketingPacket;
+    assert.equal(packet.marketableProducts[0].mainImage, null);
+  });
+}
+
+test('packet mainImage uses only the first authoritative image and leaves image order unchanged', () => {
+  const images = ['/images/example-cover.webp', '/images/example-second.webp', '/images/example-third.webp'];
+  const source = product(1, { images, mainImage: '/stale-synthetic-cover.jpg' });
+  const before = structuredClone(source);
+  const record = buildSalePulseSnapshot({
+    products: [source], purchasableInventory: availableInventory(1),
+  }).marketingPacket.marketableProducts[0];
+  assert.equal(record.mainImage, images[0]);
+  assert.notEqual(record.mainImage, images[1]);
+  assert.deepEqual(source, before);
+});
+
+test('packet cover follows current authoritative catalog adapter overrides without synthetic mainImage input', async () => {
+  const base = await loadBaseCatalog('https://example.com');
+  const source = base.find((item) => item.status === 'AVAILABLE' && item.quantityRemaining > 0 && item.images?.length);
+  assert.ok(source, 'committed production catalog includes a public product with images');
+  const originalImages = structuredClone(source.images);
+  const overrideImages = ['/images/current-override-cover.webp', '/images/current-override-second.webp'];
+  const authoritative = await loadCatalog('https://example.com', {
+    loadBaseCatalog: async () => [source],
+    listProductOverrides: async () => [{
+      productId: source.id, images: overrideImages,
+      publicFields: { title: 'Título actualizado', askingPricePYG: 189000 },
+    }],
+    readCommittedInventory: async () => new Map(),
+  });
+  assert.equal(Object.hasOwn(authoritative[0], 'mainImage'), false);
+  const packet = buildSalePulseSnapshot({
+    products: authoritative,
+    purchasableInventory: new Map([[source.id, {
+      ...inventoryRow(1), product_id: source.id,
+      capacity: source.quantityRemaining, purchasable_quantity: source.quantityRemaining,
+    }]]),
+  }).marketingPacket;
+  assert.deepEqual(authoritative[0].images, overrideImages);
+  assert.equal(packet.marketableProducts[0].mainImage, authoritative[0].images[0]);
+  assert.equal(packet.marketableProducts[0].title, 'Título actualizado');
+  assert.equal(packet.marketableProducts[0].askingPricePYG, 189000);
+  assert.deepEqual(source.images, originalImages);
+});
+
+test('purchasable inventory uses one passive aggregate with existing CART/ORDER expiry semantics', async () => {
+  const queries = [];
+  const row = inventoryRow(1, { cart_held_quantity: '1', order_held_quantity: '1', capacity: 3 });
+  const result = await readPurchasableInventory({ query: async (sql) => {
+    queries.push(sql);
+    return { rows: [row] };
+  } });
+  assert.equal(result.get('product-1'), row);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0], /^\s*SELECT/);
+  assert.match(queries[0], /phase='CART' AND reservation.expires_at>clock_timestamp\(\)/);
+  assert.match(queries[0], /phase='ORDER' AND\s*\(reservation.expires_at IS NULL OR reservation.expires_at>clock_timestamp\(\)\)/);
+  assert.match(queries[0], /capacity-inventory.committed_quantity\s*-COALESCE\(holds.cart_held_quantity,0\)-COALESCE\(holds.order_held_quantity,0\)/);
+  assert.doesNotMatch(queries[0], /\b(?:INSERT|UPDATE|DELETE|FOR UPDATE)\b|session_id|order_id|checkout_attempts/);
+});
+
+test('Sale Pulse load performs passive reads only, apart from existing analytics retention', async () => {
+  const queries = [];
+  const reservations = [inventoryRow(1, { cart_held_quantity: 1, purchasable_quantity: 0 })];
+  const before = structuredClone(reservations);
+  const snapshot = await loadSalePulseSnapshot('https://example.com', {
+    loadProducts: async () => [product(1)],
+    query: async (sql) => {
+      queries.push(sql);
+      if (sql.includes('FROM operational_inventory inventory')) return { rows: reservations };
+      return { rows: [] };
+    },
+  });
+  assert.equal(snapshot.marketingPacket.products[0].marketabilityStatus, 'TEMPORARILY_RESERVED');
+  assert.deepEqual(reservations, before);
+  assert.equal(queries.filter((sql) => /^\s*DELETE FROM sale_analytics_events/.test(sql)).length, 1);
+  for (const sql of queries) {
+    assert.ok(/^\s*SELECT\b|^\s*DELETE FROM sale_analytics_events\b/.test(sql));
+    assert.doesNotMatch(sql, /\b(?:INSERT|UPDATE)\b|DELETE FROM inventory_reservations|FOR UPDATE/);
+  }
+  const source = await readFile(new URL('../admin-sale-pulse.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /claimCartLease|updateCartLease|createCheckout|releaseCart|extendReservation/);
+});
+
+test('inventory read failure cannot fall back to marketing a held product', async () => {
+  await assert.rejects(loadSalePulseSnapshot('https://example.com', {
+    loadProducts: async () => [product(1)],
+    query: async (sql) => {
+      if (sql.includes('FROM operational_inventory inventory')) throw new Error('inventory unavailable');
+      return { rows: [] };
+    },
+  }), /inventory unavailable/);
+});
+
+test('real PostgreSQL aggregate respects reservation expiry, phases and quantities without writes', async (t) => {
+  // Isolated in-memory fixtures only. No production database or customer cart.
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(`
+    CREATE TABLE operational_inventory (product_id text PRIMARY KEY, capacity integer, committed_quantity integer);
+    CREATE TABLE inventory_reservations (product_id text, quantity integer, phase text, expires_at timestamptz, session_id text);
+  `);
+  for (const fixture of [
+    { label: 'no holds', capacity: 1, holds: [], purchasable: 1, cart: 0, order: 0, status: 'MARKETABLE' },
+    { label: 'active CART', capacity: 1, holds: [['CART', 1, 'future']], purchasable: 0, cart: 1, order: 0, status: 'TEMPORARILY_RESERVED' },
+    { label: 'expired CART', capacity: 1, holds: [['CART', 1, 'past']], purchasable: 1, cart: 0, order: 0, status: 'MARKETABLE' },
+    { label: 'CART with no expiry is not active', capacity: 1, holds: [['CART', 1, null]], purchasable: 1, cart: 0, order: 0, status: 'MARKETABLE' },
+    { label: 'active ORDER', capacity: 1, holds: [['ORDER', 1, 'future']], purchasable: 0, cart: 0, order: 1, status: 'PENDING_PAYMENT_OR_CONFIRMATION' },
+    { label: 'protected ORDER without expiry', capacity: 1, holds: [['ORDER', 1, null]], purchasable: 0, cart: 0, order: 1, status: 'PENDING_PAYMENT_OR_CONFIRMATION' },
+    { label: 'expired ORDER', capacity: 1, holds: [['ORDER', 1, 'past']], purchasable: 1, cart: 0, order: 0, status: 'MARKETABLE' },
+    { label: 'committed unit is subtracted once', capacity: 1, committed: 1, holds: [['COMMITTED', 1, null]], purchasable: 0, cart: 0, order: 0, status: 'SOLD' },
+    { label: 'three units one CART held', capacity: 3, holds: [['CART', 1, 'future']], purchasable: 2, cart: 1, order: 0, status: 'MARKETABLE' },
+    { label: 'three units all CART held', capacity: 3, holds: [['CART', 3, 'future']], purchasable: 0, cart: 3, order: 0, status: 'TEMPORARILY_RESERVED' },
+    { label: 'mixed CART and protected ORDER', capacity: 3, holds: [['CART', 1, 'future'], ['ORDER', 1, null]], purchasable: 1, cart: 1, order: 1, status: 'MARKETABLE' },
+    { label: 'mixed holds consume final units', capacity: 3, holds: [['CART', 1, 'future'], ['ORDER', 2, null]], purchasable: 0, cart: 1, order: 2, status: 'PENDING_PAYMENT_OR_CONFIRMATION' },
+  ]) {
+    await t.test(fixture.label, async () => {
+      await db.exec('DELETE FROM operational_inventory; DELETE FROM inventory_reservations');
+      await db.query('INSERT INTO operational_inventory VALUES ($1,$2,$3)', ['product-1', fixture.capacity, fixture.committed || 0]);
+      for (const [phase, units, expiry] of fixture.holds) {
+        const expiresAt = expiry == null ? null : new Date(Date.now() + (expiry === 'past' ? -3600000 : 3600000)).toISOString();
+        await db.query('INSERT INTO inventory_reservations VALUES ($1,$2,$3,$4,$5)', ['product-1', units, phase, expiresAt, 'PRIVATE-SESSION']);
+      }
+      const before = (await db.query('SELECT * FROM inventory_reservations')).rows;
+      let reads = 0;
+      const inventory = await readPurchasableInventory({ query: async (sql) => {
+        assert.match(sql, /^\s*SELECT/);
+        assert.doesNotMatch(sql, /\b(?:INSERT|UPDATE|DELETE)\b/);
+        reads += 1;
+        return db.query(sql);
+      } });
+      assert.equal(reads, 1);
+      const row = inventory.get('product-1');
+      assert.equal(Number(row.purchasable_quantity), fixture.purchasable);
+      assert.equal(Number(row.cart_held_quantity), fixture.cart);
+      assert.equal(Number(row.order_held_quantity), fixture.order);
+      const packet = buildSalePulseSnapshot({
+        products: [product(1, { quantityRemaining: fixture.capacity - (fixture.committed || 0) })],
+        purchasableInventory: inventory,
+      }).marketingPacket;
+      assert.equal(packet.products[0].marketabilityStatus, fixture.status);
+      assert.equal(packet.products[0].purchasableQuantity, fixture.purchasable);
+      assert.doesNotMatch(JSON.stringify(packet), /PRIVATE-SESSION|session_id/);
+      assert.deepEqual((await db.query('SELECT * FROM inventory_reservations')).rows, before);
+    });
+  }
 });
 
 test('marketing brief contains factual metrics and no customer PII fields', () => {

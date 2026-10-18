@@ -23,7 +23,7 @@ function pulse(overrides = {}) {
   };
 }
 
-function overviewScenario({ stats = {}, orders = [], salePulse = pulse() } = {}) {
+function overviewScenario({ stats = {}, orders = [], salePulse = pulse(), writeClipboard = async () => {} } = {}) {
   const listeners = [];
   const target = {
     innerHTML: '',
@@ -59,7 +59,7 @@ function overviewScenario({ stats = {}, orders = [], salePulse = pulse() } = {})
       getElementById(id) { return id === 'admin-tab-content' ? target : null; },
     },
     Intl,
-    navigator: { clipboard: { writeText: async () => {} } },
+    navigator: { clipboard: { writeText: writeClipboard } },
     setTimeout,
     window: { addEventListener() {}, location: { pathname: '/admin' } },
   };
@@ -146,4 +146,41 @@ test('pickup exceptions are compact and Sale Pulse controls remain available', (
     selector === '[data-refresh-sale-pulse]' && type === 'click'));
   assert.ok(listeners.some(({ selector, type }) =>
     selector === '[data-copy-sale-pulse]' && type === 'click'));
+});
+
+test('Resumen displays marketability counts and copies readable packet JSON independently of the report', async () => {
+  const packet = {
+    generatedAt: '2026-10-18T15:00:00Z',
+    marketabilitySummary: { marketable: 10, temporarilyReserved: 2, pendingPaymentOrConfirmation: 3, sold: 4, notMarketable: 5 },
+    marketableProducts: [{ productId: 'product-1', title: 'Mesa' }],
+  };
+  const copied = [];
+  const { html, listeners } = overviewScenario({
+    salePulse: pulse({ marketingPacket: packet }),
+    writeClipboard: async (text) => copied.push(text),
+  });
+  assert.match(html, /Disponibilidad actual para marketing/);
+  assert.match(html, /Comercializables <strong>10/);
+  assert.match(html, /Reserva temporal <strong>2/);
+  assert.match(html, /Pago o confirmación pendiente <strong>3/);
+  assert.match(html, /Vendidos \/ no comercializables <strong>9/);
+  const button = { disabled: false, textContent: '' };
+  await listeners.find(({ selector }) => selector === '[data-copy-sale-pulse-packet]').listener({ currentTarget: button });
+  assert.deepEqual(JSON.parse(copied[0]), packet);
+  assert.match(copied[0], /\n  "generatedAt"/);
+  assert.equal(button.textContent, 'PAQUETE COPIADO');
+  assert.equal(button.disabled, false);
+  await listeners.find(({ selector }) => selector === '[data-copy-sale-pulse]').listener({ currentTarget: button });
+  assert.equal(copied[1], 'Informe diario');
+});
+
+test('packet clipboard failure gives feedback and permits retry', async () => {
+  const { listeners } = overviewScenario({
+    salePulse: pulse({ marketingPacket: { marketabilitySummary: {} } }),
+    writeClipboard: async () => { throw new Error('clipboard unavailable'); },
+  });
+  const button = { disabled: false, textContent: '' };
+  await listeners.find(({ selector }) => selector === '[data-copy-sale-pulse-packet]').listener({ currentTarget: button });
+  assert.equal(button.textContent, 'NO SE PUDO COPIAR');
+  assert.equal(button.disabled, false);
 });
