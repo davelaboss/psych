@@ -47,12 +47,19 @@
   async function boot() {
     const path = cleanPath();
 
-    if (!isCatalogRoute(path)) return;
-
     configureBrowserScrollRestoration(path);
     const savedPageScroll = isPageScrollRoute(path)
       ? initializePageScrollRestoration(path)
       : null;
+
+    if (path === '/carrito') {
+      window.addEventListener('storefront:cart-rendered', () => {
+        restorePageHistoryScroll(savedPageScroll);
+      }, { once: true });
+    }
+
+    if (!isCatalogRoute(path)) return;
+
     installStyles();
 
     if (path.startsWith('/producto/')) {

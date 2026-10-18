@@ -119,7 +119,12 @@ function renderCartLoadError(title, message) {
       <a class="primary-action" href="/carrito">Volver a intentar</a>
     </section>
   `;
+  completeCartRoute();
+}
+
+function completeCartRoute() {
   document.documentElement.classList.remove('cart-route-pending');
+  window.dispatchEvent(new CustomEvent('storefront:cart-rendered'));
 }
 
 if (document.readyState === 'loading') {
@@ -1174,7 +1179,7 @@ function renderCartPage() {
     `;
 
     updateStaticCartCount();
-    document.documentElement.classList.remove('cart-route-pending');
+    completeCartRoute();
     return;
   }
 
@@ -1319,7 +1324,7 @@ function renderCartPage() {
   setupCartPageEvents(hasUnavailable);
   startCartCountdown(cart);
   updateStaticCartCount();
-  document.documentElement.classList.remove('cart-route-pending');
+  completeCartRoute();
 }
 
 

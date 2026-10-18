@@ -204,6 +204,90 @@ test('product and cart scroll positions belong to their own history entries', ()
   );
 });
 
+test('cart boot initializes page history without entering catalog loading and restores after cart render', async () => {
+  const documentListeners = new Map();
+  const windowListeners = new Map();
+  const animationFrames = [];
+  let catalogLoads = 0;
+  let scrollY = 0;
+  const historyState = {
+    mudanzaPageScrollState: {
+      version: 1,
+      path: '/carrito',
+      scrollY: 640,
+    },
+  };
+  const browserHistory = {
+    state: historyState,
+    scrollRestoration: 'auto',
+    replaceState(state) {
+      this.state = state;
+    },
+  };
+  const browserWindow = {
+    history: browserHistory,
+    innerHeight: 800,
+    location: {
+      href: 'https://example.test/carrito',
+      pathname: '/carrito',
+    },
+    get scrollY() {
+      return scrollY;
+    },
+    addEventListener(type, listener) {
+      windowListeners.set(type, listener);
+    },
+    loadAuthoritativeCatalog() {
+      catalogLoads += 1;
+      return Promise.resolve({ products: [], deliveredProduct: null });
+    },
+    requestAnimationFrame(callback) {
+      animationFrames.push(callback);
+    },
+    scrollTo({ top }) {
+      scrollY = top;
+    },
+    setTimeout,
+  };
+  const bootContext = {
+    clearTimeout,
+    console,
+    document: {
+      documentElement: { scrollHeight: 2400 },
+      readyState: 'loading',
+      addEventListener(type, listener) {
+        documentListeners.set(type, listener);
+      },
+    },
+    setTimeout,
+    window: browserWindow,
+  };
+
+  runInNewContext(controller, bootContext);
+  await documentListeners.get('DOMContentLoaded')();
+
+  assert.equal(browserHistory.scrollRestoration, 'manual');
+  assert.ok(windowListeners.has('scroll'), 'cart boot installs page scroll tracking');
+  assert.ok(windowListeners.has('pagehide'), 'cart boot installs pagehide persistence');
+  assert.ok(windowListeners.has('storefront:cart-rendered'), 'cart boot waits for authoritative cart render');
+  assert.equal(catalogLoads, 0, 'catalog controller must not load catalog on cart');
+  assert.equal(animationFrames.length, 0, 'saved scroll waits for the cart render');
+
+  windowListeners.get('storefront:cart-rendered')();
+  assert.equal(animationFrames.length, 1);
+  while (animationFrames.length) animationFrames.shift()();
+  assert.equal(scrollY, 640);
+});
+
+test('the cart render owner signals history restoration for every terminal render state', () => {
+  const completion = staticStorefront.match(/function completeCartRoute\(\)[\s\S]*?\n}/)?.[0] || '';
+  const completionCalls = staticStorefront.match(/completeCartRoute\(\);/g) || [];
+
+  assert.match(completion, /classList\.remove\('cart-route-pending'\)/);
+  assert.match(completion, /dispatchEvent\(new CustomEvent\('storefront:cart-rendered'\)\)/);
+  assert.equal(completionCalls.length, 3, 'error, empty, and populated cart renders all signal completion');
+});
+
 test('product-to-product Back keeps Product A scroll and rejects another path state', () => {
   const history = new MemoryHistory();
   history.entries[0].url = '/producto/item-350';
