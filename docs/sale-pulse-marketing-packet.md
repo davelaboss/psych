@@ -19,8 +19,18 @@ COMMITTED reservations are not subtracted twice.
 The authoritative catalog supplies current title, price, image, category, slug,
 sale mode and remaining units. Catalog remaining stock caps purchasable stock;
 the current inventory read also caps remaining stock if commitments changed
-between reads. Missing inventory rows fail closed as `INVENTORY_NOT_VERIFIED`.
-Inventory read errors fail the request rather than returning a stale packet.
+between reads. Operational inventory is initialized lazily by the reservation
+path. After a successful inventory read, Sale Pulse completes its own in-memory
+map for missing AVAILABLE products with a positive safe integer catalog
+`quantityRemaining`: capacity and purchasable quantity equal that current value,
+committed/CART/ORDER quantities are zero, and next release is null. The reservation
+foreign key requires an operational row for every CART, ORDER or COMMITTED row,
+so a missing operational row cannot have a reservation. Existing database rows
+remain authoritative and are never replaced or mutated. This projection never
+seeds or writes back inventory and is not used by checkout or carts.
+Invalid/missing catalog quantities receive no fallback. Without a successful
+inventory read, missing inventory still fails closed as `INVENTORY_NOT_VERIFIED`;
+inventory read errors fail the request rather than returning a stale packet.
 Existing public projection rules exclude internal NEEDS_REVIEW and UNLISTED
 products from packet records and candidates. Delivered zero-stock products are
 never marketable.
@@ -90,6 +100,11 @@ committed, partial quantity and mixed-hold cases and compare reservations before
 and after the read. Additional tests cover every signal exclusion, unchanged
 traffic/windows, public-projection exclusions, privacy allowlists, authorization,
 read failure, report copy and formatted JSON copy/retry.
+Completeness tests also execute the actual inventory migration, prove its foreign
+key rejects all three reservation phases without operational inventory, and
+compare inventory/reservation/session/checkout tables before and after fallback.
+They cover untouched stock, invalid quantities, catalog overrides, existing hold
+authority, and fallback participation in all five signal lists.
 
 Browser checks should use controlled fixtures where possible. Never manipulate
 live buyer reservations or use Add to Cart to validate availability.

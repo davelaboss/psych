@@ -259,6 +259,32 @@ function lowInterestSort(a, b) {
 
 const quantity = (value) => Math.max(0, Number(value) || 0);
 
+export function completeMarketingInventory(products, purchasableInventory) {
+  // Call only after a successful operational read; an absent/failed read is unsafe.
+  if (!(purchasableInventory instanceof Map)) {
+    throw new TypeError('Sale Pulse requires a successful inventory read.');
+  }
+  const inventory = new Map(purchasableInventory);
+  for (const product of products) {
+    const remaining = product.quantityRemaining;
+    if (inventory.has(product.id) ||
+        String(product.status || '').trim().toUpperCase() !== 'AVAILABLE' ||
+        !Number.isSafeInteger(remaining) || remaining <= 0) continue;
+    // Inventory is initialized lazily. The reservation FK prevents holds without
+    // an operational row, so untouched catalog stock is safe to project in memory.
+    inventory.set(product.id, {
+      product_id: product.id,
+      capacity: remaining,
+      committed_quantity: 0,
+      cart_held_quantity: 0,
+      order_held_quantity: 0,
+      next_release_at: null,
+      purchasable_quantity: remaining,
+    });
+  }
+  return inventory;
+}
+
 function marketingProduct(product, inventory, publicIds) {
   const row = inventory.get(product.id);
   const remaining = quantity(product.quantityRemaining);
