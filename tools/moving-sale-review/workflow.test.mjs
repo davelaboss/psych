@@ -12,6 +12,7 @@ import { EDIT_FIELDS, active, applyTiming, approvalErrors, auditRoundTrip, final
 import { allocate, atomicJson, historicalNumbers, readJson, saveState, verifyFiles, validateState } from './storage.mjs';
 import { ingest } from './intake.mjs';
 import { serve } from './server.mjs';
+import { optimizeGroups } from '../volume4-pilot/workflow.mjs';
 import { catalogBatchProducts } from '../../netlify/functions/_shared/volume2-public.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const tmp = prefix => mkdtemp(path.join(os.tmpdir(), prefix));
@@ -357,4 +358,91 @@ for (const [name, groups] of [
   const options = await isolatedIntake(); await writeFile(options.notesPath, JSON.stringify({ groups }));
   await assert.rejects(() => ingest(options));
   await assert.rejects(() => access(options.ledgerPath), { code: 'ENOENT' }); await assert.rejects(() => access(options.outputDir), { code: 'ENOENT' });
+});
+
+async function exclusionCase() {
+  const options = await isolatedIntake();
+  await writeFile(path.join(options.intakeDir, 'excluded.jpg'), await readFile(path.join(options.intakeDir, 'frente.jpg')));
+  const manifest = { groups: [{ photos: ['frente.jpg'], referencePhotos: ['detalle.jpg'], referenceJustifications: { 'detalle.jpg': 'Foto redundante conservada solo como referencia.' }, groupingJustification: 'Un artículo con vista de referencia.', sellerConfirmed: true, groupingConfirmed: true, product: { title: 'Artículo de prueba', description: 'Artículo de prueba.', measurements: '24 cm', functionality: 'Funciona bien' } }], excludedPhotos: [{ filename: 'excluded.jpg', reason: 'Pertenece a un artículo ya publicado.' }] };
+  await writeFile(options.notesPath, JSON.stringify(manifest));
+  return { options, manifest };
+}
+test('documented excluded original is audited without an Item, photo, derivative or real allocation', async () => {
+  const { options } = await exclusionCase();
+  const { state, validation } = await ingest({ ...options, fixture: true });
+  assert.equal(state.items.length, 1);assert.equal(state.items[0].photos.length, 2);
+  assert.deepEqual([validation.inputPhotos, validation.publicCandidatePhotos, validation.referenceOnlyPhotos, validation.excludedPhotos, validation.unassignedPhotos], [3,1,1,1,0]);
+  const excluded=state.sources.find(s=>s.disposition==='excluded');
+  assert.equal(excluded.filename,'excluded.jpg');assert.ok(excluded.originalPath&&excluded.sha256&&excluded.exclusionReason);
+  assert.equal(excluded.optimizedPath,undefined);assert.equal((await readdir(path.join(options.outputDir,'images/volume-5'))).length,2);
+  assert.ok(state.items.every(i=>i.photos.every(p=>p.sourceId!==excluded.sourceId)));
+  assert.throws(()=>reduceState(state,{type:'cover',itemNumber:state.items[0].product.itemNumber,sourceId:excluded.sourceId}),/pública/);
+  const selected=reduceState(state,{type:'cover',itemNumber:state.items[0].product.itemNumber,sourceId:state.items[0].photos[0].sourceId});
+  assert.equal(finalizedProduct(selected.items[0]).photos.length,1);
+  assert.equal(state.items[0].groupingConfirmed,true);assert.equal(state.items[0].questions.length,0);
+  assert.equal(state.items[0].product.measurements,'24 cm');assert.equal(state.items[0].product.functionality,'Funciona bien');
+  assert.deepEqual(new Set(state.items[0].confirmedFields),new Set(['title','description','measurements','functionality']));
+  assert.equal(state.items[0].reviewStatus,'unreviewed');assert.equal(state.publicationAllowed,false);
+  assert.equal(state.items[0].pricing.suggestedAskingPrice,null);
+  await assert.rejects(()=>access(options.ledgerPath),{code:'ENOENT'});
+});
+test('excluded originals are still rehashed and cannot be smuggled into photos or cover',async()=>{
+  const {options}=await exclusionCase();const {state}=await ingest({...options,fixture:true});
+  const excluded=state.sources.find(s=>s.disposition==='excluded');
+  for(const role of ['public','reference']) {const bad=structuredClone(state);bad.items[0].photos.push({sourceId:excluded.sourceId,path:'images/volume-5/v5-invalid.webp',role,justification:'No permitido.'});assert.throws(()=>reconcile(bad),/excluida/);}
+  const bad=structuredClone(state);bad.items[0].coverSourceId=excluded.sourceId;assert.throws(()=>reconcile(bad),/excluida/);
+  await writeFile(excluded.originalPath,'changed');await assert.rejects(()=>verifyFiles(state,options.outputDir),/original cambió/);
+});
+for(const [name,change] of [
+ ['blank exclusion reason',m=>{m.excludedPhotos[0].reason=' ';}],
+ ['undeclared unassigned original',m=>{delete m.excludedPhotos;}],
+ ['assigned and excluded',m=>{m.excludedPhotos.push({filename:'frente.jpg',reason:'No válido.'});}],
+ ['duplicate exclusion',m=>{m.excludedPhotos.push({...m.excludedPhotos[0],filename:'EXCLUDED.JPG'});}],
+ ['missing excluded original',m=>{m.excludedPhotos[0].filename='missing.jpg';}],
+ ['invalid rotation',m=>{m.photoTransforms={'frente.jpg':{rotateDegrees:45}};}],
+ ['string rotation',m=>{m.photoTransforms={'frente.jpg':{rotateDegrees:'-90'}};}],
+ ['unknown transform',m=>{m.photoTransforms={'frente.jpg':{rotateDegrees:-90,crop:true}};}],
+ ['nonexistent transform original',m=>{m.photoTransforms={'missing.jpg':{rotateDegrees:-90}};}],
+ ['excluded transform original',m=>{m.photoTransforms={'excluded.jpg':{rotateDegrees:-90}};}],
+ ['case-duplicate transform',m=>{m.photoTransforms={'frente.jpg':{rotateDegrees:-90},'FRENTE.JPG':{rotateDegrees:90}};}],
+])test(`compatibility preflight rejects ${name} before output or permanent allocation`,async()=>{
+  const {options,manifest}=await exclusionCase();change(manifest);await writeFile(options.notesPath,JSON.stringify(manifest));
+  await assert.rejects(()=>ingest(options));await assert.rejects(()=>access(options.ledgerPath),{code:'ENOENT'});await assert.rejects(()=>access(options.outputDir),{code:'ENOENT'});
+});
+test('unreadable assigned image fails before output or permanent allocation',async()=>{
+  const {options}=await exclusionCase();await writeFile(path.join(options.intakeDir,'frente.jpg'),'not an image');
+  await assert.rejects(()=>ingest(options));await assert.rejects(()=>access(options.ledgerPath),{code:'ENOENT'});await assert.rejects(()=>access(options.outputDir),{code:'ENOENT'});
+});
+test('existing destination fails before real allocation and preserves its contents',async()=>{
+  const {options}=await exclusionCase();await mkdir(options.outputDir);await writeFile(path.join(options.outputDir,'keep.txt'),'keep');
+  await assert.rejects(()=>ingest(options),/salida ya existe/);assert.equal(await readFile(path.join(options.outputDir,'keep.txt'),'utf8'),'keep');await assert.rejects(()=>access(options.ledgerPath),{code:'ENOENT'});
+});
+async function asymmetric(input,orientation=1) {
+ const w=80,h=40,data=Buffer.alloc(w*h*3),colors=[[255,0,0],[0,255,0],[0,0,255],[255,255,0]];
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){const c=colors[(y>=h/2?2:0)+(x>=w/2?1:0)];for(let k=0;k<3;k++)data[(y*w+x)*3+k]=c[k];}
+ await sharp(data,{raw:{width:w,height:h,channels:3}}).jpeg({quality:100}).withMetadata({orientation}).toFile(input);
+}
+async function quadrants(file) {
+ const {data,info}=await sharp(file).removeAlpha().raw().toBuffer({resolveWithObject:true});
+ const colors=[[255,0,0],[0,255,0],[0,0,255],[255,255,0]];
+ return [[.25,.25],[.75,.25],[.25,.75],[.75,.75]].map(([x,y])=>{const p=(Math.floor(y*info.height)*info.width+Math.floor(x*info.width))*info.channels;const distances=colors.map(c=>c.reduce((sum,v,k)=>sum+(data[p+k]-v)**2,0));return distances.indexOf(Math.min(...distances));});
+}
+for(const [name,orientation,degrees,expected] of [
+ ['old caller default',1,undefined,[0,1,2,3]],['counterclockwise',1,-90,[1,3,0,2]],['clockwise',1,90,[2,0,3,1]],['EXIF clockwise then owner counterclockwise',6,-90,[0,1,2,3]],['EXIF alone',6,undefined,[2,0,3,1]],
+])test(`optimizer proves pixel direction: ${name}`,async()=>{
+ const dir=await tmp('volume5-rotation-'),input=path.join(dir,'originals'),outputDir=path.join(dir,'images');await mkdir(input);await asymmetric(path.join(input,'a.jpg'),orientation);
+ const before=await readFile(path.join(input,'a.jpg'));
+ const result=await optimizeGroups([{groupId:'0001',photos:['a.jpg']}],{intakeDir:input,outputDir,...(degrees===undefined?{}:{photoTransforms:{'a.jpg':{rotateDegrees:degrees}}})});
+ const file=path.join(outputDir,result.report[0].optimizedFilename);
+ assert.deepEqual(await quadrants(file),expected);assert.deepEqual(await readFile(path.join(input,'a.jpg')),before);
+ const metadata=await sharp(file).metadata();assert.equal(metadata.format,'webp');assert.equal(metadata.exif,undefined);
+ assert.equal(result.report[0].manualRotationDegrees,degrees||0);
+});
+test('intake forwards owner transform through EXIF normalization and records provenance',async()=>{
+ const {options,manifest}=await exclusionCase();await asymmetric(path.join(options.intakeDir,'frente.jpg'),6);
+ manifest.photoTransforms={'frente.jpg':{rotateDegrees:-90}};await writeFile(options.notesPath,JSON.stringify(manifest));
+ const {state}=await ingest({...options,fixture:true});const source=state.sources.find(s=>s.filename==='frente.jpg');
+ assert.equal(source.manualRotationDegrees,-90);assert.deepEqual(await quadrants(path.join(options.outputDir,source.optimizedPath)),[0,1,2,3]);
+ assert.equal((await readJson(path.join(options.outputDir,'intake-reconciliation.json'))).images.find(r=>r.originalFilename==='frente.jpg').manualRotationDegrees,-90);
+ await assert.rejects(()=>access(options.ledgerPath),{code:'ENOENT'});
 });

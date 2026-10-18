@@ -83,6 +83,7 @@ export async function verifyFiles(state, outputDir) {
   for (const source of state.sources) {
     const original = await readFile(source.originalPath).catch(() => { throw new Error(`Falta archivo original: ${source.filename}`); });
     assert(hash(original) === source.sha256, `El original cambió: ${source.filename}`);
+    if (source.disposition === 'excluded') continue; // The original is still rehashed; no derivative exists.
     assert(path.resolve(outputDir, source.optimizedPath) !== path.resolve(source.originalPath), 'La copia no puede sobrescribir el original.');
     assert(!outputs.has(source.optimizedPath), 'Ruta optimizada duplicada.'); outputs.add(source.optimizedPath);
     const copy = await readFile(path.join(outputDir, source.optimizedPath)).catch(() => { throw new Error(`Falta archivo optimizado: ${source.optimizedPath}`); });
