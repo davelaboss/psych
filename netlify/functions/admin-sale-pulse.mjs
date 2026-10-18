@@ -8,6 +8,7 @@ import { deriveOrderFulfillmentParts } from './_shared/order-fulfillments.mjs';
 import {
   ANALYTICS_RETENTION_DAYS,
   buildSalePulseSnapshot,
+  completeMarketingInventory,
   paymentsRequiringAttention,
 } from './_shared/sale-pulse.mjs';
 
@@ -87,7 +88,7 @@ export async function loadSalePulseSnapshot(origin, dependencies = {}) {
   return buildSalePulseSnapshot({
     events: (eventResult.rows || []).map(eventRow),
     products,
-    purchasableInventory,
+    purchasableInventory: completeMarketingInventory(products, purchasableInventory),
     orders: orderRows.filter((row) => row.committed_at).map((row) => ({
       committedAt: row.committed_at,
       items: Array.isArray(row.order_snapshot?.items) ? row.order_snapshot.items : [],
