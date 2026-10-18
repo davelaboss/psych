@@ -10,3 +10,4 @@ netlify/functions/manifest.json
 node_modules/
 deno.lock
 .volume4-pilot/
+.moving-sale-review/

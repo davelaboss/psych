@@ -1,0 +1,223 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
+import { active, applyTiming, approvalErrors, auditRoundTrip, finalizedProduct, identity, orderedPhotos, pricingResearch, publicErrors, publicPhotos, pyg, reconcile, reduceState, restoreState } from './core.mjs';
+import { allocate, atomicJson, historicalNumbers, readJson, saveState, verifyFiles, validateState } from './storage.mjs';
+import { ingest } from './intake.mjs';
+import { serve } from './server.mjs';
+import { catalogBatchProducts } from '../../netlify/functions/_shared/volume2-public.mjs';
+const root = fileURLToPath(new URL('../../', import.meta.url));
+const tmp = prefix => mkdtemp(path.join(os.tmpdir(), prefix));
+function sample() {
+  const sources = ['a', 'b', 'c', 'd', 'e'].map((id, i) => ({ sourceId: id, filename: `${id}.jpg`, optimizedPath: `images/volume-5/v5-g0001-${i + 1}.webp` }));
+  function item(number, ids) {
+    const product = { itemNumber: number, id: `real-202610-volume5-${number}`, slug: `estante-item-${number}`, title: 'Estante', category: 'Muebles', asking: 100000, description: 'Estante de madera.', condition: 'Buen estado', knownDefects: 'Ninguno conocido.', functionality: 'No aplica', measurements: '80 × 45 × 40 cm', quantityTotal: 1, saleMode: 'IMMEDIATE', saleStructure: 'individual', includedAccessories: ['Soportes'], notIncludedVisible: 'Libros', requiresVehicle: false, requiresLoadingHelp: false, status: 'NEEDS_REVIEW', needsReview: true }; applyTiming(product);
+    return { product, initialProduct: structuredClone(product), photos: ids.map(id => ({ sourceId: id, path: sources.find(s => s.sourceId === id).optimizedPath, role: 'public', justification: '' })), coverSourceId: ids[0], reviewStatus: 'approved', questions: [], groupingConfirmed: true, copyChecked: true, confirmedFields: [], pricing: pricingResearch(), ownerNotes: 'Nota confirmada', pricingDecision: 'Mantener precio', edited: false, retired: false };
+  }
+  return { schemaVersion: 1, volume: 5, mode: 'real', batchId: 'volume5-test', revision: 0, sources, items: [item(510, ['a', 'b', 'c', 'd']), item(511, ['e'])], retiredItemNumbers: [], events: [] };
+}
+function projections(state) {
+  const batch = active(state).map(finalizedProduct);
+  const projection = batch.map(p => { const { photos, asking, ...rest } = structuredClone(p); return { ...rest, images: photos, askingPricePYG: asking }; });
+  return { batch, projection };
+}
+function operate(state, operation, options) { return reduceState(state, { itemNumber: 510, ...operation }, options); }
+
+test('first real allocation is 510 and subsequent reservations never reuse numbers, including failed intake reservations', async () => {
+  const dir = await tmp('volume5-id-'), ledgerPath = path.join(dir, 'ids.json');
+  const context = { used: new Set([508, 509]), ledgerPath, batchId: 'volume5-test', count: 1 };
+  assert.deepEqual(await allocate(context), [510]); assert.deepEqual(await allocate(context), [511]);
+  const ledger = await readJson(ledgerPath); assert.equal(ledger.allocations.length, 2);
+});
+for (const number of [509, 342, 420, 437, 442, 444, 469, 507]) test(`used/retired Item ${number} rejected`, () => {
+  const s = sample(); s.items[0].product.itemNumber = number; assert.throws(() => identity(s), /inválido|retirado/);
+});
+test('history scanner detects identifiers beyond retired allowlist and blocks allocation if history advanced', async () => {
+  const used = historicalNumbers('"itemNumber": 612\nItem 613\nreal-202610-volume5-614\n"615": {');
+  for (const id of [612, 613, 614, 615, 509]) assert.ok(used.has(id));
+  await assert.rejects(allocate({ used, ledgerPath: path.join(await tmp('volume5-history-'), 'ids.json'), count: 1, batchId: 'volume5-test' }), /primer Item real/);
+});
+test('duplicate assignment and unassigned source rejected', () => {
+  const s = sample(); s.items[0].photos.push(s.items[1].photos[0]); assert.throws(() => reconcile(s), /más de una vez/);
+  const missing = sample(); missing.items[0].photos.pop(); assert.throws(() => reconcile(missing), /sin asignar|pérdida/);
+});
+test('duplicate output path and duplicate item/product/slug identifiers rejected', () => {
+  const s = sample(); s.items[0].photos[1].path = s.items[0].photos[0].path; assert.throws(() => reconcile(s), /duplicada/);
+  for (const key of ['itemNumber', 'id', 'slug']) { const s = sample(); s.items[1].product[key] = s.items[0].product[key]; assert.throws(() => reconcile(s)); }
+});
+test('cover at 0 stays; selected later cover moves first and remaining photos preserve relative order once', () => {
+  const s = sample(), item = s.items[0]; assert.deepEqual(orderedPhotos(item).map(p => p.sourceId), ['a', 'b', 'c', 'd']);
+  item.coverSourceId = 'c'; assert.deepEqual(orderedPhotos(item).map(p => p.sourceId), ['c', 'a', 'b', 'd']);
+  assert.equal(new Set(finalizedProduct(item).photos).size, 4); assert.equal(finalizedProduct(item).coverIndex, 0);
+});
+test('reference photos require justification, stay available internally and cannot become cover', () => {
+  const s = sample(); assert.throws(() => operate(s, { type: 'role', sourceId: 'c', role: 'reference' }), /Explique/);
+  const changed = operate(s, { type: 'role', sourceId: 'c', role: 'reference', justification: 'Instrucción explícita del propietario: foto de manual.' });
+  assert.equal(reconcile(changed).referenceOnlyPhotos, 1); assert.equal(finalizedProduct(changed.items[0]).photos.length, 3);
+  assert.equal(changed.items[0].photos.length, 4); assert.throws(() => operate(changed, { type: 'cover', sourceId: 'c' }), /pública/);
+});
+test('removed or reference-only selected cover triggers re-review without replacement', () => {
+  const s = sample(); const changed = operate(s, { type: 'role', sourceId: 'a', role: 'reference', justification: 'Instrucción del propietario.' });
+  assert.equal(changed.items[0].coverSourceId, null); assert.equal(changed.items[0].reviewStatus, 're-review'); assert.throws(() => finalizedProduct(changed.items[0]), /principal/);
+});
+test('transfer moves cover away, preserves all sources and requires a new source cover', () => {
+  const s = operate(sample(), { type: 'transfer', sourceIds: ['a'], targetItemNumber: 511 });
+  assert.equal(s.items[0].coverSourceId, null); assert.equal(s.items[0].reviewStatus, 're-review');
+  assert.equal(s.items[1].coverSourceId, 'e'); assert.equal(reconcile(s).inputPhotos, 5);
+});
+test('merge verifies photos before retirement and preserves target confirmed cover', () => {
+  const original = sample(), s = operate(original, { type: 'merge', targetItemNumber: 511 });
+  assert.equal(original.items[0].retired, false); assert.equal(s.items[0].retired, true); assert.equal(s.items[0].photos.length, 0);
+  assert.deepEqual(s.items[1].photos.map(p => p.sourceId), ['e', 'a', 'b', 'c', 'd']); assert.equal(s.items[1].coverSourceId, 'e');
+  assert.equal(s.events[0].type, 'TRANSFER_VERIFIED_BEFORE_RETIRE'); assert.deepEqual(s.retiredItemNumbers, [510]); assert.equal(reconcile(s).inputPhotos, 5);
+});
+test('split preserves photos exactly and requires both resulting covers', () => {
+  const s = operate(sample(), { type: 'split', sourceIds: ['c', 'd'] }, { newItemNumber: 512 });
+  assert.equal(reconcile(s).inputPhotos, 5); assert.equal(active(s).length, 3);
+  assert.equal(s.items[0].coverSourceId, null); assert.equal(s.items[2].coverSourceId, null);
+  assert.equal(s.items[0].reviewStatus, 're-review'); assert.equal(s.items[2].reviewStatus, 're-review');
+  for (const i of [s.items[0], s.items[2]]) assert.ok(approvalErrors(i).some(e => e.includes('principal')));
+});
+test('invalid transfer, split, merge or reorder leaves source state intact', () => {
+  for (const op of [{ type: 'merge', targetItemNumber: 510 }, { type: 'transfer', targetItemNumber: 511, sourceIds: ['absent'] }, { type: 'order', sourceIds: ['a', 'a'] }, { type: 'split', sourceIds: ['a', 'b', 'c', 'd'] }]) {
+    const s = sample(), before = structuredClone(s); assert.throws(() => operate(s, op, { newItemNumber: 512 })); assert.deepEqual(s, before);
+  }
+});
+test('blank corrections preserve confirmed values; explicit REMOVE required; owner wins over assisted proposals', () => {
+  let s = operate(sample(), { type: 'edit', changes: { title: 'Estante confirmado', asking: 35, measurements: '90 cm', functionality: 'No aplica', includedAccessories: ['Tapa'], quantityTotal: 2, ownerNotes: 'Mantener esta nota' } });
+  const expected = structuredClone(s.items[0]);
+  s = operate(s, { type: 'edit', changes: { title: '', asking: null, measurements: '', functionality: '', includedAccessories: [], quantityTotal: '', ownerNotes: '' } });
+  assert.deepEqual(s.items[0].product, expected.product); assert.equal(s.items[0].ownerNotes, expected.ownerNotes);
+  s = operate(s, { type: 'assist', changes: { title: 'Propuesta anterior', asking: 50, measurements: '1 cm' } });
+  assert.equal(s.items[0].product.title, 'Estante confirmado'); assert.equal(s.items[0].product.asking, 35000); assert.equal(s.items[0].product.measurements, '90 cm');
+  s = operate(s, { type: 'edit', changes: { measurements: 'REMOVE', includedAccessories: 'REMOVE' } });
+  assert.equal(s.items[0].product.measurements, ''); assert.deepEqual(s.items[0].product.includedAccessories, []);
+});
+test('approved materially edited Item becomes re-review and must repeat Spanish check', () => {
+  const s = operate(sample(), { type: 'edit', changes: { title: 'Estante alto' } });
+  assert.equal(s.items[0].reviewStatus, 're-review'); assert.equal(s.items[0].copyChecked, false);
+});
+test('reset preserves owner-confirmed fields, owner notes and photos', () => {
+  let s = operate(sample(), { type: 'edit', changes: { title: 'Estante confirmado', ownerNotes: 'Dato del propietario' } });
+  s = operate(s, { type: 'reset', confirm: 'RESTABLECER' });
+  assert.equal(s.items[0].product.title, 'Estante confirmado'); assert.equal(s.items[0].ownerNotes, 'Dato del propietario'); assert.equal(s.items[0].photos.length, 4);
+});
+test('exported owner state restores all fields safely, with backup and deliberate reapproval', async () => {
+  const old = sample(); const edited = operate(old, { type: 'edit', changes: { title: 'Estante alto', measurements: '90 cm', ownerNotes: 'Detalle privado' } });
+  const restored = restoreState(old, JSON.parse(JSON.stringify(edited))); assert.equal(restored.items[0].product.title, 'Estante alto'); assert.equal(restored.items[0].coverSourceId, 'a'); assert.equal(restored.items[0].reviewStatus, 're-review'); assert.deepEqual(restored.items[0].pricing, edited.items[0].pricing);
+  const dir = await tmp('volume5-state-'); await saveState(dir, old); await saveState(dir, restored, old);
+  assert.equal((await readJson(path.join(dir, 'owner-review-state.json'))).revision, 1); assert.equal((await readdir(path.join(dir, 'backups'))).length, 1);
+  for (const mutate of [s => s.batchId = 'volume5-other', s => s.sources.pop(), s => s.items.pop(), s => s.volume = 4]) { const invalid = sample(); mutate(invalid); assert.throws(() => restoreState(old, invalid)); }
+});
+test('PYG shorthand is accepted without ambiguity', () => {
+  for (const [raw, value] of [[20, 20000], ['35', 35000], [450, 450000], ['Gs. 350.000', 350000], ['40000', 40000]]) assert.equal(pyg(raw), value);
+  assert.equal(pyg(''), null); assert.throws(() => pyg('abc'));
+});
+const evidence = confidence => ({ confidence, rationale: 'Modelo y condición comparados con evidencia local.', sources: ['https://example.com.py/estante'], comparables: [{ itemSpecific: true, localParaguay: true, price: 200000, url: 'https://example.com.py/estante', observedAt: '2026-10-18', comparison: 'Mismo tamaño y material; nuevo frente a usado.', market: 'new' }], suggestedAskingPrice: 125000, fastSalePrice: 100000 });
+test('category-only and LOW confidence never produce numeric suggested or fast-sale prices', () => {
+  const generic = pricingResearch({ category: 'Cocina', suggestedAskingPrice: 50000 }); assert.equal(generic.suggestedAskingPrice, null);
+  const low = pricingResearch(evidence('LOW')); assert.equal(low.suggestedAskingPrice, null); assert.equal(low.fastSalePrice, null);
+});
+for (const confidence of ['MEDIUM', 'HIGH']) test(`${confidence} item-specific local evidence may support numeric suggestions`, () => {
+  const p = pricingResearch(evidence(confidence)); assert.equal(p.suggestedAskingPrice, 125000); assert.deepEqual(p.sources, evidence(confidence).sources);
+});
+test('pricing research cannot overwrite seller asking price and preserves distinct values', () => {
+  const s = operate(sample(), { type: 'research', pricing: { ...evidence('HIGH'), originalPricePaid: 300000, currentRetailPrice: 200000 } });
+  assert.equal(s.items[0].product.asking, 100000); assert.equal(s.items[0].pricing.suggestedAskingPrice, 125000); assert.equal(s.items[0].pricing.originalPricePaid, 300000); assert.equal(s.items[0].pricing.currentRetailPrice, 200000);
+});
+test('assisted drafts cannot set or overwrite seller asking price, even without a confirmation flag', () => {
+  const s = sample(); const existing = operate(s, { type: 'assist', changes: { asking: 50 } }); assert.equal(existing.items[0].product.asking, 100000);
+  s.items[0].product.asking = null; const empty = operate(s, { type: 'assist', changes: { asking: 50 } }); assert.equal(empty.items[0].product.asking, null);
+});
+test('market range requires actual used comparables and matching evidence extrema', () => {
+  assert.throws(() => pricingResearch({ localUsedMarketRange: [40000, 60000] }), /comparables/);
+  const p = evidence('MEDIUM'); p.comparables[0].market = 'used'; p.sources.push('https://example.com.py/otro'); p.comparables.push({ ...p.comparables[0], url: p.sources[1], price: 250000 }); p.localUsedMarketRange = [200000, 250000];
+  assert.deepEqual(pricingResearch(p).localUsedMarketRange, [200000, 250000]); p.localUsedMarketRange = [40000, 60000]; assert.throws(() => pricingResearch(p), /coincidir/);
+});
+test('complete approved public fields, cover and photo order round-trip exactly', () => {
+  const s = sample(); s.items[0].coverSourceId = 'c'; const { batch, projection } = projections(s);
+  assert.equal(batch[0].photos[0], `/${s.items[0].photos[2].path}`); assert.equal(projection[0].images[0], batch[0].photos[0]);
+  assert.ok(auditRoundTrip(s, batch, projection).every(row => row.match === 'YES'));
+});
+for (const field of ['measurements', 'functionality', 'includedAccessories', 'notIncludedVisible', 'title', 'category', 'description', 'asking', 'condition', 'knownDefects', 'quantityTotal', 'saleMode', 'saleStructure', 'requiresVehicle', 'requiresLoadingHelp']) test(`mismatch in ${field} blocks future publication audit`, () => {
+  const s = sample(); const { batch, projection } = projections(s); batch[0][field] = 'Diferente'; assert.throws(() => auditRoundTrip(s, batch, projection), /no coincide/);
+  const pair = projections(s); pair.projection[0][field === 'asking' ? 'askingPricePYG' : field] = 'Diferente'; assert.throws(() => auditRoundTrip(s, pair.batch, pair.projection), /no coincide/);
+});
+test('cover, photo order and photo count mismatch block audit', () => {
+  for (const mutate of [p => p.images.reverse(), p => p.images.pop(), p => p.images.push(p.images[0])]) { const s = sample(), { batch, projection } = projections(s); mutate(projection[0]); assert.throws(() => auditRoundTrip(s, batch, projection), /fotos/); }
+});
+test('incomplete approval, required questions, internal copy and obvious English block approval/audit', () => {
+  const s = sample(); s.items[0].questions.push({ id: 'measure', required: true, resolved: false }); assert.throws(() => operate(s, { type: 'status', status: 'approved' }), /preguntas/);
+  for (const text of ['MEDIR', 'AI reviewer', 'Sold separately', 'good condition']) { const p = structuredClone(sample().items[0].product); p.description = `${text}.`; assert.ok(publicErrors(p).length); }
+  const pending = sample(); pending.items[0].reviewStatus = 'unreviewed'; const pair = projections(pending); assert.throws(() => auditRoundTrip(pending, pair.batch, pair.projection), /aprobación/);
+});
+test('multi-unit style, included/excluded contradiction, quantity and sale modes validated', () => {
+  const p = sample().items[0].product; p.quantityTotal = 2; assert.ok(publicErrors(p).length);
+  p.title = 'Estante (por unidad)'; p.description = 'Hay 2 unidades disponibles; se venden por separado. Precio por unidad.'; assert.deepEqual(publicErrors(p), []);
+  p.notIncludedVisible = 'Soportes'; assert.ok(publicErrors(p).some(e => /contradicen/.test(e)));
+  p.quantityTotal = 0; p.saleMode = 'NOW'; assert.ok(publicErrors(p).some(e => /Cantidad/.test(e))); assert.ok(publicErrors(p).some(e => /retiro/.test(e)));
+});
+test('Volume 5 identity rejects old volume IDs, paths and metadata', () => {
+  for (const mutate of [s => s.volume = 4, s => s.batchId = 'volume3-batch', s => s.items[0].product.id = 'real-202610-volume4-510', s => s.items[0].photos[0].path = 'images/volume-4/v4-1.webp']) { const s = sample(); mutate(s); assert.throws(() => identity(s)); }
+});
+test('DELAYED uses website payment and pickup dates exactly', () => {
+  const s = operate(sample(), { type: 'edit', changes: { saleMode: 'DELAYED' } }); const p = s.items[0].product;
+  assert.equal(p.finalPaymentWindowStart, '2026-12-01'); assert.equal(p.finalPaymentWindowEnd, '2026-12-08'); assert.equal(p.pickupWindowStart, '2026-12-09'); assert.equal(p.pickupWindowEnd, '2026-12-12');
+});
+
+test('private review/research fields cannot leak into finalized products; current public catalog contains no Volume 5', () => {
+  const item = sample().items[0]; item.product.pricingResearch = { privateSellerFloor: 1 }; item.product.ownerNotes = 'Privado';
+  const final = finalizedProduct(item); assert.equal(Object.hasOwn(final, 'pricingResearch'), false); assert.equal(Object.hasOwn(final, 'ownerNotes'), false);
+  assert.ok(catalogBatchProducts().every(p => !/volume5-/.test(p.id)));
+  assert.equal(final.status, 'NEEDS_REVIEW'); assert.equal(final.needsReview, true);
+});
+
+test('placeholder identity and unresolved defects cannot be approved', () => {
+  const item = sample().items[0]; item.product.title = 'Producto por identificar'; item.product.knownDefects = '';
+  assert.ok(approvalErrors(item).some(e => /identificar/.test(e))); assert.ok(approvalErrors(item).some(e => /defectos/.test(e)));
+});
+
+test('fixture intake optimizes without modifying originals, uses no real ID, reconciles, persists and serves independent owner edits', async t => {
+  const dir = await tmp('volume5-integration-'), input = path.join(dir, 'originals'), outputDir = path.join(dir, 'review'); await mkdir(input);
+  const originalPath = path.join(input, 'frente.jpg');
+  await sharp({ create: { width: 1200, height: 800, channels: 3, background: '#884422' } }).jpeg().withMetadata({ orientation: 6 }).toFile(originalPath);
+  const original = await readFile(originalPath);
+  const result = await ingest({ root, intakeDir: input, outputDir, fixture: true, workbook: false }); const state = result.state;
+  assert.match(state.items[0].product.itemNumber, /^fixture-v5-/); assert.equal(state.items[0].product.asking, null); assert.equal(state.items[0].product.functionality, ''); assert.equal(state.items[0].product.knownDefects, '');
+  assert.equal(state.items[0].product.status, 'NEEDS_REVIEW'); assert.equal(state.items[0].product.needsReview, true); assert.equal(result.validation.publicProjection, 0);
+  assert.deepEqual(await readFile(originalPath), original); const metadata = await sharp(path.join(outputDir, state.sources[0].optimizedPath)).metadata(); assert.equal(metadata.width, 800); assert.equal(metadata.height, 1200); assert.equal(metadata.exif, undefined);
+  assert.notEqual(path.join(outputDir, state.sources[0].optimizedPath), originalPath);
+  await assert.rejects(() => ingest({ root, intakeDir: input, outputDir, fixture: true, workbook: false }), /EEXIST/);
+  await assert.rejects(() => ingest({ root, intakeDir: input, outputDir: path.join(input, 'output'), fixture: true, workbook: false }), /originales/);
+  const server = await serve({ root, outputDir, port: 0 }); t.after(() => server.close());
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const session = await (await fetch(`${origin}/api/state`)).json();
+  const response = await fetch(`${origin}/api/action`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-review-token': session.token }, body: JSON.stringify({ revision: 0, operation: { type: 'edit', itemNumber: state.items[0].product.itemNumber, changes: { title: 'Estante confirmado', asking: 35 } } }) });
+  assert.equal(response.status, 200); assert.equal((await response.json()).state.items[0].product.asking, 35000);
+  assert.equal((await readJson(path.join(outputDir, 'owner-review-state.json'))).items[0].product.title, 'Estante confirmado');
+  const exported = await (await fetch(`${origin}/api/export`)).json(); assert.equal(exported.revision, 1);
+  assert.equal((await fetch(`${origin}/owner-review-state.json`)).status, 400);
+  assert.equal((await fetch(`${origin}/api/publish`, { method: 'POST' })).status, 400);
+  const unauthorized = await fetch(`${origin}/api/action`, { method: 'POST', body: '{}' }); assert.equal(unauthorized.status, 400);
+  const stale = await fetch(`${origin}/api/action`, { method: 'POST', headers: { 'x-review-token': session.token }, body: JSON.stringify({ revision: 0, operation: { type: 'status', itemNumber: state.items[0].product.itemNumber, status: 'approved' } }) }); assert.equal(stale.status, 400);
+  assert.throws(() => auditRoundTrip(exported, [], []), /ensayo/);
+  const missing = structuredClone(state); missing.sources[0].originalPath = path.join(input, 'absent.jpg'); await assert.rejects(() => verifyFiles(missing, outputDir), /Falta archivo original/);
+  const missingCopy = structuredClone(state); missingCopy.sources[0].optimizedPath = 'images/volume-5/v5-missing.webp'; missingCopy.items[0].photos[0].path = missingCopy.sources[0].optimizedPath; await assert.rejects(() => verifyFiles(missingCopy, outputDir), /Falta archivo optimizado/);
+  // A separate source avoids Windows image-decoder file-handle caching in this tamper test.
+  const tamperedPath = path.join(dir, 'tampered.jpg'); await writeFile(tamperedPath, 'modified');
+  const tampered = structuredClone(state); tampered.sources[0].originalPath = tamperedPath;
+  await assert.rejects(() => verifyFiles(tampered, outputDir), /original cambió/);
+});
+
+test('previously used global item and product identities rejected in disk validation', async () => {
+  const dir = await tmp('volume5-global-'), input = path.join(dir, 'originals'), outputDir = path.join(dir, 'review'); await mkdir(input);
+  await sharp({ create: { width: 20, height: 20, channels: 3, background: '#888' } }).jpeg().toFile(path.join(input, 'a.jpg'));
+  const { state } = await ingest({ root, intakeDir: input, outputDir, fixture: true, workbook: false });
+  state.mode = 'real'; state.items[0].product.itemNumber = 510; state.items[0].product.id = 'real-202610-volume5-510'; state.items[0].product.slug = 'producto-item-510';
+  await assert.rejects(() => validateState(state, { outputDir, used: new Set([510]), allocated: [510] }), /usado anteriormente/);
+  await assert.rejects(() => validateState(state, { outputDir, used: new Set(), allocated: [510], existing: [{ id: state.items[0].product.id }] }), /global duplicado/);
+});
