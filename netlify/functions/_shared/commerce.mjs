@@ -1,6 +1,7 @@
 import { catalogBatchProducts } from './volume2-public.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
+import { readFile } from 'node:fs/promises';
 import { dispatchSellerNotificationsSafely } from './seller-notifications.mjs';
 
 export const SALES_OPEN_AT =
@@ -120,29 +121,28 @@ export async function saveProductOverride(productId, override) {
 }
 
 
-export async function listProductOverrides() {
-  const store = productOverrideStore();
+export async function listProductOverrides(dependencies = {}) {
+  const store = dependencies.store || productOverrideStore();
   const result = await store.list({
     prefix: 'product:',
   });
 
-  const overrides = [];
+  const blobs = result.blobs || [];
+  const overrides = new Array(blobs.length);
+  let nextIndex = 0;
 
-  for (const blob of result.blobs || []) {
-    const value = await store.get(
-      blob.key,
-      {
+  // Bound network pressure while retaining list order, including duplicate IDs.
+  await Promise.all(Array.from({ length: Math.min(8, blobs.length) }, async () => {
+    while (nextIndex < blobs.length) {
+      const index = nextIndex++;
+      overrides[index] = await store.get(blobs[index].key, {
         type: 'json',
         consistency: 'strong',
-      }
-    );
-
-    if (value) {
-      overrides.push(value);
+      });
     }
-  }
+  }));
 
-  return overrides;
+  return overrides.filter(Boolean);
 }
 
 
@@ -350,22 +350,9 @@ function parseEmbeddedCatalog(html) {
 
 
 export async function loadBaseCatalog(origin) {
-  const response = await fetch(
-    new URL('/', origin),
-    {
-      headers: {
-        accept: 'text/html',
-      },
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      'No se pudo cargar el catálogo.'
-    );
-  }
-
-  const html = await response.text();
+  // Netlify bundles this same committed storefront source via included_files.
+  // Keep the origin argument for existing consumers; no HTTP lookup is needed.
+  const html = await readFile('index.html', 'utf8');
 
   const staticProducts =
     parseEmbeddedCatalog(html);
@@ -397,12 +384,13 @@ export async function loadBaseCatalog(origin) {
 }
 
 
-export async function loadCatalog(origin) {
-  const products =
-    await loadBaseCatalog(origin);
-
-  const overrides =
-    await listProductOverrides();
+export async function loadCatalog(origin, dependencies = {}) {
+  // These reads have no ordering dependency. Dynamic state is fresh per call.
+  const [products, overrides, committedInventory] = await Promise.all([
+    (dependencies.loadBaseCatalog || loadBaseCatalog)(origin),
+    (dependencies.listProductOverrides || listProductOverrides)(),
+    (dependencies.readCommittedInventory || readCommittedInventory)(),
+  ]);
 
   const overrideById =
     new Map(
@@ -413,8 +401,6 @@ export async function loadCatalog(origin) {
         ]
       )
     );
-
-  const committedInventory = await readCommittedInventory();
 
   return products
     .map(
