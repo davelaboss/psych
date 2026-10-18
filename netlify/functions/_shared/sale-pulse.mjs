@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { database } from './inventory-database.mjs';
+import { projectPublicCatalog } from './commerce.mjs';
 
 export const ANALYTICS_EVENT_TYPES = Object.freeze([
   'CATALOG_VISIT',
@@ -256,9 +257,65 @@ function lowInterestSort(a, b) {
     a.productId.localeCompare(b.productId);
 }
 
+const quantity = (value) => Math.max(0, Number(value) || 0);
+
+function marketingProduct(product, inventory, publicIds) {
+  const row = inventory.get(product.id);
+  const remaining = quantity(product.quantityRemaining);
+  const quantityRemaining = row
+    ? Math.min(remaining, Math.max(0, Number(row.capacity) - Number(row.committed_quantity)))
+    : remaining;
+  const cartHeldQuantity = quantity(row?.cart_held_quantity);
+  const orderHeldQuantity = quantity(row?.order_held_quantity);
+  const status = String(product.status || '').trim().toUpperCase();
+  let marketabilityStatus = 'NOT_MARKETABLE';
+  let marketabilityReason = 'NOT_PUBLIC_SALE_CANDIDATE';
+  // Fail closed if inventory is missing; never probe availability by claiming a cart.
+  const purchasableQuantity = row ? Math.min(quantityRemaining, quantity(row.purchasable_quantity)) : 0;
+  if (!publicIds.has(product.id)) {
+    // Internal products never become candidates, regardless of stock.
+  } else if (['SOLD', 'PICKED_UP'].includes(status) || quantityRemaining <= 0) {
+    marketabilityStatus = 'SOLD';
+    marketabilityReason = 'SOLD_OR_UNAVAILABLE';
+  } else if (status !== 'AVAILABLE') {
+    marketabilityReason = 'NOT_AVAILABLE_FOR_PUBLIC_SALE';
+  } else if (!row) {
+    marketabilityReason = 'INVENTORY_NOT_VERIFIED';
+  } else if (purchasableQuantity > 0) {
+    marketabilityStatus = 'MARKETABLE';
+    marketabilityReason = 'PURCHASABLE_UNITS_AVAILABLE';
+  } else if (orderHeldQuantity > 0) {
+    marketabilityStatus = 'PENDING_PAYMENT_OR_CONFIRMATION';
+    marketabilityReason = 'ACTIVE_ORDER_HOLD';
+  } else if (cartHeldQuantity > 0) {
+    marketabilityStatus = 'TEMPORARILY_RESERVED';
+    marketabilityReason = 'ACTIVE_CART_HOLD';
+  } else {
+    marketabilityReason = 'NO_PURCHASABLE_UNITS';
+  }
+  // Explicit allowlist: never spread catalog, reservation or checkout records.
+  return {
+    ...publicProduct(product),
+    slug: String(product.slug || ''),
+    productUrl: product.slug ? `/producto/${encodeURIComponent(product.slug)}` : null,
+    category: String(product.category || ''),
+    askingPricePYG: Number(product.askingPricePYG || 0),
+    saleMode: String(product.saleMode || ''),
+    mainImage: typeof product.mainImage === 'string' ? product.mainImage : null,
+    quantityRemaining,
+    purchasableQuantity,
+    cartHeldQuantity,
+    orderHeldQuantity,
+    nextReleaseAt: milliseconds(row?.next_release_at) == null ? null : new Date(row.next_release_at).toISOString(),
+    marketabilityStatus,
+    marketabilityReason,
+  };
+}
+
 export function buildSalePulseSnapshot({
   events = [],
   products = [],
+  purchasableInventory = new Map(),
   orders = [],
   operationalCounts = {},
   trackingStartedAt = null,
@@ -278,9 +335,12 @@ export function buildSalePulseSnapshot({
   const sale7d = salesWindow(orders, start7d);
   const available = products.filter((product) =>
     String(product.status || '').toUpperCase() === 'AVAILABLE' && Number(product.quantityRemaining || 0) > 0);
+  // Delivery exclusions only remove zero-stock products, already ineligible here.
+  const publicIds = new Set(projectPublicCatalog(products, []).products.map((product) => product.id));
+  const marketingProducts = products.map((product) => marketingProduct(product, purchasableInventory, publicIds));
   const soldProductIds = new Set(orders.flatMap((order) => (Array.isArray(order.items) ? order.items : []))
     .map((item) => String(item?.productId || '')).filter(Boolean));
-  const signalById = new Map(available.map((product) => [product.id, publicProduct(product)]));
+  const signalById = new Map(marketingProducts.map((product) => [product.productId, product]));
 
   for (const event of events) {
     if (milliseconds(event.occurredAt) < start7d || !signalById.has(event.productId)) continue;
@@ -289,7 +349,7 @@ export function buildSalePulseSnapshot({
     if (event.eventType === 'ADD_TO_CART') signal.cartAdds += 1;
   }
 
-  const signals = [...signalById.values()];
+  const signals = [...signalById.values()].filter((product) => product.marketabilityStatus === 'MARKETABLE');
   const hotUnSold = signals.filter((item) => !soldProductIds.has(item.productId) && item.views + item.cartAdds > 0)
     .sort(productSort).slice(0, 5);
   const viewedButNotAdded = signals.filter((item) => item.views > 0 && item.cartAdds === 0)
@@ -333,6 +393,34 @@ export function buildSalePulseSnapshot({
       'Las ventas recientes incluyen pedidos con inventario confirmado y fecha verificable en el sistema actual.',
       'Ventas manuales o históricas sin fecha confiable pueden figurar en el inventario actual, pero no en las ventanas de 24 horas o 7 días.',
     ],
+  };
+  const signalLists = {
+    hotUnsold: hotUnSold, lowNoInterest, attention, viewedButNotAdded, cartInterestWithoutSale,
+  };
+  for (const product of marketingProducts) {
+    product.signals = Object.fromEntries(Object.entries(signalLists)
+      .map(([key, items]) => [key, items.some((item) => item.productId === product.productId)]));
+  }
+  snapshot.marketingPacket = {
+    schemaVersion: 1,
+    generatedAt: snapshot.tracking.generatedAt,
+    productUrlBasePath: '/producto/',
+    signalWindowDays: 7,
+    tracking: snapshot.tracking,
+    inventory: snapshot.inventory,
+    marketabilitySummary: {
+      marketable: signals.length,
+      temporarilyReserved: marketingProducts.filter((product) => product.marketabilityStatus === 'TEMPORARILY_RESERVED').length,
+      pendingPaymentOrConfirmation: marketingProducts.filter((product) => product.marketabilityStatus === 'PENDING_PAYMENT_OR_CONFIRMATION').length,
+      sold: marketingProducts.filter((product) => product.marketabilityStatus === 'SOLD').length,
+      notMarketable: marketingProducts.filter((product) => product.marketabilityStatus === 'NOT_MARKETABLE').length,
+      purchasableUnits: signals.reduce((sum, product) => sum + product.purchasableQuantity, 0),
+    },
+    traffic: { last24Hours: snapshot.last24Hours, last7Days: snapshot.last7Days, sources: snapshot.sources },
+    products: marketingProducts.filter((product) => publicIds.has(product.productId)),
+    marketableProducts: signals,
+    signalLists: Object.fromEntries(Object.entries(signalLists)
+      .map(([key, items]) => [key, items.map((item) => item.productId)])),
   };
   snapshot.marketingBrief = buildMarketingBrief(snapshot);
   return snapshot;
