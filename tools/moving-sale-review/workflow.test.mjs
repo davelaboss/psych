@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, access, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import vm from 'node:vm';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { active, applyTiming, approvalErrors, auditRoundTrip, finalizedProduct, identity, orderedPhotos, pricingResearch, publicErrors, publicPhotos, pyg, reconcile, reduceState, restoreState } from './core.mjs';
+import { EDIT_FIELDS, active, applyTiming, approvalErrors, auditRoundTrip, finalizedProduct, identity, orderedPhotos, pricingResearch, publicErrors, publicPhotos, pyg, reconcile, reduceState, restoreState } from './core.mjs';
 import { allocate, atomicJson, historicalNumbers, readJson, saveState, verifyFiles, validateState } from './storage.mjs';
 import { ingest } from './intake.mjs';
 import { serve } from './server.mjs';
@@ -220,4 +223,138 @@ test('previously used global item and product identities rejected in disk valida
   state.mode = 'real'; state.items[0].product.itemNumber = 510; state.items[0].product.id = 'real-202610-volume5-510'; state.items[0].product.slug = 'producto-item-510';
   await assert.rejects(() => validateState(state, { outputDir, used: new Set([510]), allocated: [510] }), /usado anteriormente/);
   await assert.rejects(() => validateState(state, { outputDir, used: new Set(), allocated: [510], existing: [{ id: state.items[0].product.id }] }), /global duplicado/);
+});
+
+// Exercise the actual UI control and save functions, including their emitted edit
+// request, without adding a browser/runtime dependency to the repository tests.
+const appSource = await readFile(new URL('./app.mjs', import.meta.url), 'utf8');
+function ownerForm(initial) {
+  let state = structuredClone(initial);
+  const controls = new Map(), requests = [];
+  const context = vm.createContext({
+    dirty: false, busy: false, dirtyFields: new Set(), formStartValues: new Map(), pendingQuestions: new Map(), pendingResearch: null, selectedId: 510,
+    item: state.items[0],
+    element(tag) {
+      let value = '';
+      return { name: '', children: [], get value() { return value; }, set value(next) { value = String(next); }, append(child) { this.children.push(child); if (child.name) controls.set(child.name, child); } };
+    },
+    $(id) { assert.equal(id, 'edit'); return { elements: { namedItem: key => controls.get(key) } }; },
+    alert(message) { assert.fail(message); },
+    async action(operation) { requests.push(structuredClone(operation)); state = reduceState(state, operation); context.dirty = false; return true; },
+  });
+  vm.runInContext(appSource.slice(appSource.indexOf('const fields = ['), appSource.indexOf('const labels =')), context);
+  vm.runInContext(appSource.slice(appSource.indexOf('function control('), appSource.indexOf('async function leave(')), context);
+  vm.runInContext('for (const [key, label, kind] of fields) control(key, label, kind, key in item.product ? item.product[key] : item[key]);', context);
+  return { requests, state: () => state, change(key, value) { const control = controls.get(key); control.value = value; control.oninput(); }, save: () => vm.runInContext('save()', context) };
+}
+function unapproved() { const s = sample(); s.items[0].reviewStatus = 'unreviewed'; return s; }
+
+test('UI price-only save submits/confirms only asking and leaves untouched AI fields unconfirmed', async () => {
+  const s = unapproved(); s.items[0].product.asking = null;
+  const form = ownerForm(s); form.change('asking', '50'); await form.save();
+  assert.deepEqual(form.requests[0].changes, { asking: '50' });
+  assert.deepEqual(form.state().items[0].confirmedFields, ['asking']);
+  assert.equal(form.state().items[0].product.asking, 50000);
+  const assisted = operate(form.state(), { type: 'assist', changes: { title: 'Nuevo nombre propuesto' } });
+  assert.equal(assisted.items[0].product.title, 'Nuevo nombre propuesto');
+});
+test('UI title-only save never confirms unrelated prepopulated values', async () => {
+  const form = ownerForm(unapproved()); form.change('title', 'Estante alto'); await form.save();
+  assert.deepEqual(form.requests[0].changes, { title: 'Estante alto' });
+  assert.deepEqual(form.state().items[0].confirmedFields, ['title']);
+});
+test('UI untouched blanks and blank corrections preserve values without confirming other fields', async () => {
+  const s = unapproved(); s.items[0].ownerNotes = ''; s.items[0].product.functionality = '';
+  const form = ownerForm(s); form.change('measurements', ''); form.change('asking', '50'); await form.save();
+  assert.deepEqual(form.requests[0].changes, { asking: '50' });
+  assert.equal(form.state().items[0].product.measurements, s.items[0].product.measurements);
+  assert.equal(form.state().items[0].product.functionality, ''); assert.equal(form.state().items[0].ownerNotes, '');
+  assert.deepEqual(form.state().items[0].confirmedFields, ['asking']);
+});
+test('UI explicit REMOVE is still submitted and removes only the selected field', async () => {
+  const form = ownerForm(unapproved()); form.change('measurements', 'REMOVE'); await form.save();
+  assert.deepEqual(form.requests[0].changes, { measurements: 'REMOVE' });
+  assert.equal(form.state().items[0].product.measurements, ''); assert.deepEqual(form.state().items[0].confirmedFields, ['measurements']);
+});
+test('UI reverting a field to its rendered value sends no edit or confirmation', async () => {
+  const form = ownerForm(unapproved()); form.change('title', 'Otro nombre'); form.change('title', 'Estante'); await form.save();
+  assert.equal(form.requests.length, 0); assert.deepEqual(form.state().items[0].confirmedFields, []);
+});
+test('explicit valid approval confirms all public editable fields and blocks assist replacement', () => {
+  const approved = operate(unapproved(), { type: 'status', status: 'approved' });
+  assert.deepEqual(new Set(approved.items[0].confirmedFields), new Set(EDIT_FIELDS));
+  const changes = Object.fromEntries(EDIT_FIELDS.map(key => [key, 'Propuesta de reemplazo']));
+  const assisted = operate(approved, { type: 'assist', changes });
+  assert.deepEqual(assisted.items[0].product, approved.items[0].product);
+  assert.equal(assisted.items[0].reviewStatus, 'approved');
+});
+test('failed approval confirms nothing', () => {
+  const s = unapproved(); s.items[0].copyChecked = false;
+  assert.throws(() => operate(s, { type: 'status', status: 'approved' }), /redacción/);
+  assert.deepEqual(s.items[0].confirmedFields, []);
+});
+test('owner may edit an approved value, triggering re-review while approved values stay protected', () => {
+  const approved = operate(unapproved(), { type: 'status', status: 'approved' });
+  const edited = operate(approved, { type: 'edit', changes: { title: 'Estante confirmado alto' } });
+  assert.equal(edited.items[0].product.title, 'Estante confirmado alto'); assert.equal(edited.items[0].reviewStatus, 're-review');
+  const assisted = operate(edited, { type: 'assist', changes: { title: 'Reemplazo', condition: 'Otra condición' } });
+  assert.equal(assisted.items[0].product.title, 'Estante confirmado alto'); assert.equal(assisted.items[0].product.condition, approved.items[0].product.condition);
+});
+test('reset cannot destroy any approved public value or a later owner correction', () => {
+  const s = unapproved(); s.items[0].initialProduct.title = 'Borrador inicial'; s.items[0].initialProduct.measurements = '20 cm'; s.items[0].initialProduct.includedAccessories = [];
+  const approved = operate(s, { type: 'status', status: 'approved' });
+  assert.deepEqual(operate(approved, { type: 'reset', confirm: 'RESTABLECER' }).items[0].product, approved.items[0].product);
+  const edited = operate(approved, { type: 'edit', changes: { measurements: '100 cm' } });
+  assert.deepEqual(operate(edited, { type: 'reset', confirm: 'RESTABLECER' }).items[0].product, edited.items[0].product);
+});
+
+const run = promisify(execFile);
+async function isolatedIntake() {
+  const repo = await tmp('volume5-grouping-repo-'), intakeDir = path.join(repo, 'originals'), outputDir = path.join(repo, 'review'), notesPath = path.join(repo, 'notes.json');
+  await mkdir(path.join(repo, 'source/lib'), { recursive: true }); await mkdir(intakeDir);
+  await writeFile(path.join(repo, 'package.json'), '{"type":"module"}');
+  for (const [file, symbol, value] of [
+    ['volume2-batch.ts', 'VOLUME2_BATCH_ITEMS', '[]'], ['sale-readiness-supplemental.ts', 'SALE_READINESS_SUPPLEMENTAL_ITEMS', '[]'],
+    ['volume3-batch.mjs', 'VOLUME3_ITEMS', '[]'], ['volume4-batch.mjs', 'VOLUME4_ITEMS', '[]'], ['volume2-image-map.mjs', 'VOLUME2_IMAGE_MAP', '{}'],
+  ]) await writeFile(path.join(repo, 'source/lib', file), `export const ${symbol} = ${value};\n`);
+  await writeFile(path.join(repo, 'index.html'), JSON.stringify({ products: [] }).replaceAll('"', String.fromCharCode(92, 34)));
+  await run('git', ['init', '--quiet', repo]);
+  await run('git', ['-c', 'user.name=Volume5 Tests', '-c', 'user.email=volume5-test@example.invalid', 'commit', '--quiet', '--allow-empty', '-m', 'Isolated allocation test'], { cwd: repo });
+  const photo = await sharp({ create: { width: 24, height: 16, channels: 3, background: '#884422' } }).jpeg().toBuffer();
+  for (const name of ['frente.jpg', 'detalle.jpg']) await writeFile(path.join(intakeDir, name), photo);
+  await writeFile(notesPath, JSON.stringify({ groups: [{ photos: ['frente.jpg', 'detalle.jpg'], groupingJustification: 'El propietario confirma dos vistas del mismo producto físico.', product: { title: 'Estante de prueba', description: 'Estante de prueba.' } }] }));
+  return { root: repo, intakeDir, outputDir, notesPath, workbook: false, ledgerPath: path.join(repo, '.git/moving-sale-volume5-ids.json') };
+}
+test('ungrouped real intake fails before output/allocation, leaves ledger absent and Item 510 available for a grouped product', async () => {
+  const options = await isolatedIntake();
+  await assert.rejects(() => ingest({ ...options, notesPath: undefined }), /Antes de asignar números permanentes.*--notes/);
+  await assert.rejects(() => access(options.outputDir), { code: 'ENOENT' });
+  await assert.rejects(() => access(options.ledgerPath), { code: 'ENOENT' });
+  const { state } = await ingest(options);
+  assert.equal(state.items.length, 1); assert.equal(state.items[0].product.itemNumber, 510); assert.equal(state.items[0].photos.length, 2);
+  const ledger = await readJson(options.ledgerPath); assert.equal(ledger.allocations.length, 1); assert.deepEqual(ledger.allocations[0].itemNumbers, [510]);
+  assert.equal(state.items[0].product.status, 'NEEDS_REVIEW');
+});
+test('ungrouped real intake leaves an existing immutable ledger byte-for-byte unchanged', async () => {
+  const options = await isolatedIntake();
+  await atomicJson(options.ledgerPath, { volume: 5, allocations: [{ batchId: 'volume5-isolated-reservation', itemNumbers: [510] }] });
+  const before = await readFile(options.ledgerPath), beforeStat = await stat(options.ledgerPath);
+  await assert.rejects(() => ingest({ ...options, notesPath: undefined }), /agrupación/);
+  assert.deepEqual(await readFile(options.ledgerPath), before); assert.equal((await stat(options.ledgerPath)).mtimeMs, beforeStat.mtimeMs);
+  await assert.rejects(() => access(options.outputDir), { code: 'ENOENT' });
+});
+test('fixture intake without a manifest still uses fixture identifiers and never creates the real ledger', async () => {
+  const options = await isolatedIntake();
+  const { state } = await ingest({ ...options, fixture: true, notesPath: undefined });
+  assert.equal(state.items.length, 2); assert.ok(state.items.every(i => /^fixture-v5-/.test(i.product.itemNumber)));
+  await assert.rejects(() => access(options.ledgerPath), { code: 'ENOENT' });
+});
+for (const [name, groups] of [
+  ['empty', []], ['unassigned photo', [{ photos: ['frente.jpg'] }]],
+  ['multiple photos with no grouping justification', [{ photos: ['frente.jpg', 'detalle.jpg'] }]],
+  ['duplicate photo assignment', [{ photos: ['frente.jpg'] }, { photos: ['frente.jpg', 'detalle.jpg'], groupingJustification: 'Mismo producto.' }]],
+]) test(`incomplete grouping manifest (${name}) cannot consume IDs`, async () => {
+  const options = await isolatedIntake(); await writeFile(options.notesPath, JSON.stringify({ groups }));
+  await assert.rejects(() => ingest(options));
+  await assert.rejects(() => access(options.ledgerPath), { code: 'ENOENT' }); await assert.rejects(() => access(options.outputDir), { code: 'ENOENT' });
 });

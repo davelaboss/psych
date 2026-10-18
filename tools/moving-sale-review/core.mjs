@@ -216,7 +216,10 @@ export function reduceState(input, operation, { newItemNumber } = {}) {
     }
     case 'status': {
       assert(Object.hasOwn(STATUS_LABELS, operation.status), 'Estado de revisión inválido.');
-      if (operation.status === 'approved') assert(!approvalErrors(item).length, approvalErrors(item).join('\n'));
+      if (operation.status === 'approved') {
+        assert(!approvalErrors(item).length, approvalErrors(item).join('\n'));
+        item.confirmedFields = [...new Set([...item.confirmedFields, ...EDIT_FIELDS])];
+      }
       item.reviewStatus = operation.status; break;
     }
     default: throw new Error('Operación no permitida.');

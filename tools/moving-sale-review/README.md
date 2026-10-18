@@ -24,18 +24,18 @@ C:\MovingSale\Volume5\originals\
   frente.jpg
   detalle.jpg
   otro-producto.jpg
-C:\MovingSale\Volume5\notes.json   (opcional, fuera de originals)
+C:\MovingSale\Volume5\notes.json   (agrupación explícita obligatoria, fuera de originals)
 ```
 
 ```powershell
 cd C:\Users\davel\Documents\GitHub\psych-volume5-local-review
-npm run review:volume5 -- ingest --photos "C:\MovingSale\Volume5\originals" --output .moving-sale-review/volume5
+npm run review:volume5 -- ingest --photos "C:\MovingSale\Volume5\originals" --notes "C:\MovingSale\Volume5\notes.json" --output .moving-sale-review/volume5
 npm run review:volume5 -- serve --output .moving-sale-review/volume5
 ```
 
-Sin notas, cada foto comienza como un Item provisional separado, con agrupación pendiente; **no se infiere identidad, precio, funcionamiento ni defectos**. Agrupe las fotos relacionadas antes del ingreso si puede confirmar que pertenecen al mismo producto físico. Así evita asignar números a perspectivas que después se fusionarán. Si no está seguro, manténgalas separadas: los números retirados nunca se reutilizan.
+El ingreso real requiere un manifiesto de agrupación explícita con `--notes`. Sin él, se detiene antes de crear la salida o acceder al registro inmutable: **no asigna números ni crea/modifica el registro**. Primero inspeccione las fotos, resuelva agrupaciones inciertas y enumere cada producto físico o juego intencional. Varias perspectivas de un producto deben estar en un solo grupo y consumen un solo número. Aunque cada foto corresponda a un producto distinto, enumere esos grupos explícitamente; no existe una excepción automática. Solo `--fixture` admite una foto por ensayo sin manifiesto y nunca usa números reales. **No se infiere identidad, precio, funcionamiento ni defectos**.
 
-Con notas opcionales:
+Con rutas configurables:
 
 ```powershell
 npm run review:volume5 -- ingest --repo "C:\Users\davel\Documents\GitHub\psych-volume5-local-review" --photos "C:\MovingSale\Volume5\originals" --notes "C:\MovingSale\Volume5\notes.json" --output .moving-sale-review/volume5
@@ -68,6 +68,8 @@ El guardado no usa localStorage. Varias ventanas usan revisiones: una edición d
 Grilla, búsqueda, filtros, indicador de edición, navegación anterior/siguiente, guardado al navegar, advertencia por cambios sin guardar, visor completo, flechas del teclado, selección de foto principal, orden público, fotos de referencia separadas, preguntas, incluidos y NO incluidos, medidas, funcionamiento y logística. Las fotos seleccionadas se pueden separar o transferir; la fusión transfiere y verifica antes de retirar. Los IDs retirados quedan registrados permanentemente. Una separación exige elegir portada en ambos Items; una fusión conserva la portada del destino. No hay acción de borrar fotos: transfiera o marque referencia con motivo documentado.
 
 Antes de aprobar, confirme agrupación, responda preguntas obligatorias, complete los datos pendientes, elija una portada pública y revise la redacción. Cambiar un Item aprobado exige nueva revisión; una edición del texto exige volver a confirmar la revisión del español. `MEDIR` es solo interno y bloquea aprobación y entrega. No hay garantía de corrección gramatical completa por una expresión regular: la aprobación incluye revisión deliberada de redacción, además de las barreras automáticas de idioma y filtración interna.
+
+Guardar una edición solo envía los campos que realmente cambiaron; los valores precargados intactos no se consideran confirmados por guardar otro campo. Vacío sigue significando sin cambios y `REMOVE` sigue siendo la eliminación explícita. **Aprobar borrador**, después de pasar la validación, confirma y protege todos los campos públicos editables del producto aprobado frente a la asistencia y al restablecimiento de propuestas. El propietario conserva la posibilidad de editarlos; una edición posterior exige nueva revisión.
 
 La asistencia propone campos sin sobrescribir los confirmados por el propietario:
 

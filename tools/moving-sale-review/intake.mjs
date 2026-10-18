@@ -5,6 +5,7 @@ import { optimizeGroups, parseGroupedNotes } from '../volume4-pilot/workflow.mjs
 import { applyTiming, pricingResearch, slugify, assert, EDIT_FIELDS } from './core.mjs';
 import { hash, walk, registry, allocate, safeOutput, atomicJson, saveState, copyApp, validateState } from './storage.mjs';
 export async function ingest({ root, intakeDir, notesPath, outputDir, fixture = false, workbook = true }) {
+  assert(fixture || notesPath, 'Antes de asignar números permanentes, prepare o confirme la agrupación de las fotos e indique el manifiesto con --notes.');
   root = path.resolve(root); intakeDir = path.resolve(intakeDir); outputDir = path.resolve(outputDir);
   await safeOutput(root, intakeDir, outputDir);
   const files = await walk(intakeDir);

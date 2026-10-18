@@ -1,6 +1,7 @@
 import { active, publicPhotos, STATUS_LABELS, approvalErrors } from './core.mjs';
 const $ = id => document.getElementById(id);
-let state, token, selectedId, gallery = [], photoIndex = 0, dirty = false, busy = false, formDirty = false;
+let state, token, selectedId, gallery = [], photoIndex = 0, dirty = false, busy = false;
+const dirtyFields = new Set(), formStartValues = new Map();
 const pendingQuestions = new Map();
 let pendingResearch = null;
 const fields = [
@@ -58,7 +59,13 @@ function control(key, label, kind, value) {
     if (!choices.some(([v]) => String(v) === String(value))) choices.unshift([String(value ?? ''), String(value || 'Sin confirmar')]);
     for (const [v, text] of choices) { const option = element('option', text); option.value = v; input.append(option); }
   } else { input = element(kind === 'area' ? 'textarea' : 'input'); if (kind === 'number') input.type = 'number'; }
-  input.name = key; input.value = Array.isArray(value) ? value.join('\n') : value ?? ''; input.oninput = () => { dirty = true; formDirty = true; }; wrapper.append(input); return wrapper;
+  input.name = key; input.value = Array.isArray(value) ? value.join('\n') : value ?? '';
+  formStartValues.set(key, input.value);
+  input.oninput = () => {
+    if (input.value.trim() === formStartValues.get(key).trim()) dirtyFields.delete(key); else dirtyFields.add(key);
+    dirty = dirtyFields.size > 0 || pendingQuestions.size > 0 || pendingResearch !== null;
+  };
+  wrapper.append(input); return wrapper;
 }
 async function save() {
   if (!dirty) return true;
@@ -67,14 +74,16 @@ async function save() {
   try { if (researchEdit !== null) parsedResearch = JSON.parse(researchEdit); } catch { alert('La investigación no contiene JSON válido. Guarde o corrija la evidencia antes de continuar.'); return false; }
   const changes = {};
   for (const [key, , kind] of fields) {
+    if (!dirtyFields.has(key)) continue;
     let value = $('edit').elements.namedItem(key).value.trim();
-    if (!value) continue;
+    if (!value || value === formStartValues.get(key).trim()) continue;
     if (key === 'includedAccessories' && value !== 'REMOVE') value = value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     else if (kind === 'number' && value !== 'REMOVE') value = Number(value);
     else if (['requiresVehicle', 'requiresLoadingHelp'].includes(key)) value = value === 'true';
     changes[key] = value;
   }
-  if (formDirty) { if (!await action({ type: 'edit', itemNumber: selectedId, changes })) return false; formDirty = false; }
+  if (Object.keys(changes).length && !await action({ type: 'edit', itemNumber: selectedId, changes })) return false;
+  dirtyFields.clear();
   for (const [questionId, answer] of questionEdits) {
     if (!await action({ type: 'question', itemNumber: selectedId, questionId, answer })) { dirty = true; return false; }
     pendingQuestions.delete(questionId);
@@ -108,6 +117,7 @@ function renderDetail() {
   const item = current(); if (!item) return;
   $('heading').textContent = `ITEM ${item.product.itemNumber} · ${item.product.title}`; $('status').textContent = STATUS_LABELS[item.reviewStatus]; $('status').className = `badge ${item.reviewStatus}`;
   $('warnings').textContent = approvalErrors(item).join('\n');
+  dirtyFields.clear(); formStartValues.clear();
   $('fields').replaceChildren(...fields.map(([key, label, kind]) => control(key, label, kind, key in item.product ? item.product[key] : item[key])));
   $('photos').replaceChildren(...publicPhotos(item).map(photo => photoCard(photo, item)));
   $('references').replaceChildren(...item.photos.filter(p => p.role === 'reference').map(photo => photoCard(photo, item, true)));
@@ -124,7 +134,7 @@ function renderDetail() {
     const value = item.pricing[key]; const display = key === 'confidence' ? ({ LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta' })[value] : typeof value === 'number' ? money(value) : Array.isArray(value) ? value.map(v => typeof v === 'object' ? JSON.stringify(v) : v).join('\n') : value;
     $('pricing').append(element('dt', label), element('dd', display || (key === 'suggestedAskingPrice' ? 'Falta investigación de precio' : 'Sin datos')));
   }
-  $('research').value = JSON.stringify(item.pricing, null, 2); dirty = false; formDirty = false; pendingQuestions.clear(); pendingResearch = null;
+  $('research').value = JSON.stringify(item.pricing, null, 2); dirty = false; pendingQuestions.clear(); pendingResearch = null;
 }
 async function openItem(id) { if (!await leave()) return; selectedId = id; renderDetail(); $('detail').showModal(); }
 async function navigate(offset) { if (!await leave()) return; const list = active(state), index = list.findIndex(i => i.product.itemNumber === selectedId); selectedId = list[(index + offset + list.length) % list.length].product.itemNumber; renderDetail(); }
