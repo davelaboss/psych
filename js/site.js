@@ -486,7 +486,7 @@ function renderRelatedProductCard(product) {
       <span class="related-product-image">
         ${
           image
-            ? `<img src="/${stripLeadingSlash(image)}" alt="${escapeHtml(product.title)}" loading="lazy">`
+            ? `<img src="${escapeHtml(window.imageDelivery.resolve(image))}" data-original-src="${escapeHtml(window.imageDelivery.original(image))}" alt="${escapeHtml(product.title)}" loading="lazy" decoding="async">`
             : ''
         }
       </span>
@@ -745,8 +745,10 @@ function renderProductDetail(product) {
           aria-label="Ver foto ${index + 1}"
         >
           <img
-            src="/${stripLeadingSlash(image)}"
+            src="${escapeHtml(window.imageDelivery.resolve(image))}"
+            data-original-src="${escapeHtml(window.imageDelivery.original(image))}"
             alt="${escapeHtml(product.title)}"
+            loading="lazy" decoding="async"
           >
         </button>
       `;
@@ -762,8 +764,10 @@ function renderProductDetail(product) {
         aria-label="Abrir foto ${index + 1} de ${images.length}"
       >
         <img
-          src="/${stripLeadingSlash(image)}"
+          src="${escapeHtml(window.imageDelivery.resolve(image))}"
+          data-original-src="${escapeHtml(window.imageDelivery.original(image))}"
           alt="${escapeHtml(product.title)}, foto ${index + 1}"
+          decoding="async"
         >
       </button>
     `)
@@ -1087,8 +1091,10 @@ function renderProductDetail(product) {
                   <button class="main-image" type="button" data-photo-index="0">
                     <img
                       id="main-product-image"
-                      src="/${stripLeadingSlash(images[0])}"
+                      src="${escapeHtml(window.imageDelivery.resolve(images[0], 'medium'))}"
+                      data-original-src="${escapeHtml(window.imageDelivery.original(images[0]))}"
                       alt="${escapeHtml(product.title)}"
+                      decoding="async"
                     >
                   </button>
 
@@ -1367,8 +1373,10 @@ function renderCartItem(product) {
 
       <a href="/producto/${encodeURIComponent(product.slug)}">
         <img
-          src="/${stripLeadingSlash(product.images?.[0] || '')}"
+          src="${escapeHtml(window.imageDelivery.resolve(product.images?.[0] || ''))}"
+          data-original-src="${escapeHtml(window.imageDelivery.original(product.images?.[0] || ''))}"
           alt="${escapeHtml(product.title)}"
+          decoding="async"
         >
       </a>
 
