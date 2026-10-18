@@ -10,27 +10,30 @@ const CHECKOUT_ID_KEY =
   'mudanza-cart-checkout-id';
 
 
-window.addEventListener(
-  'load',
-  function () {
-    installMyOrderLink();
+function bootCheckoutRoutes() {
+  installMyOrderLink();
 
-    const path =
-      window.location.pathname
-        .replace(/\/+$/, '') || '/';
+  const path =
+    window.location.pathname
+      .replace(/\/+$/, '') || '/';
 
-    if (path === '/checkout') {
-      renderCheckoutPage();
-      return;
-    }
-
-    if (
-      path.startsWith('/pedido/')
-    ) {
-      renderOrderPage();
-    }
+  if (path === '/checkout') {
+    renderCheckoutPage();
+    return;
   }
-);
+
+  if (
+    path.startsWith('/pedido/')
+  ) {
+    renderOrderPage();
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootCheckoutRoutes, { once: true });
+} else {
+  bootCheckoutRoutes();
+}
 
 
 function installMyOrderLink() {
@@ -155,42 +158,28 @@ async function renderCheckoutPage() {
     return;
   }
 
+  document.title =
+    'Finalizar compra | Venta de Mudanza';
+
   if (window.__staticCartReady) await window.__staticCartReady;
+  if (!window.__staticCartSynchronized) {
+    renderCheckoutLoadError(
+      'No pudimos confirmar tu carrito.',
+      'Intentá nuevamente en unos minutos.'
+    );
+    return;
+  }
+
   if (window.__checkoutRecovery) {
     const recovered = window.__checkoutRecovery;
     window.location.replace(`/pedido/${encodeURIComponent(recovered.orderId)}?access=${encodeURIComponent(recovered.accessToken)}`);
     return;
   }
 
-  try {
-    const response = await fetch('/.netlify/functions/volume2-catalog', { cache: 'no-store' });
-    if (!response.ok) throw new Error('No se pudo cargar el catálogo.');
-    const data = await response.json();
-    if (!Array.isArray(data.products)) throw new Error('El catálogo no tiene el formato esperado.');
-    window.__catalogProducts = data.products;
-  } catch (error) {
-    console.error('Checkout:', error);
-    main.innerHTML = '<section class="empty-cart"><h1>No se pudo cargar el catálogo.</h1><p>Intentá nuevamente en unos minutos.</p></section>';
-    return;
-  }
-
-  document.title =
-    'Finalizar compra | Venta de Mudanza';
-
   const cart =
     getCheckoutCart();
 
-  const leaseExpiresAt = Number(cart.expiresAt || 0);
-
-  const products =
-    cart.ids
-      .map(
-        (id) =>
-          getEmbeddedProductById(id)
-      )
-      .filter(Boolean);
-
-  if (!products.length) {
+  if (!cart.ids.length) {
     main.innerHTML = `
       <section class="empty-cart">
         <span>Finalizar compra</span>
@@ -206,7 +195,39 @@ async function renderCheckoutPage() {
         </a>
       </section>
     `;
+    completeCheckoutRoute();
+    return;
+  }
 
+  try {
+    if (typeof window.loadAuthoritativeCatalog !== 'function') {
+      throw new Error('No se pudo iniciar la carga del catálogo.');
+    }
+    await window.loadAuthoritativeCatalog();
+  } catch (error) {
+    console.error('Checkout:', error);
+    renderCheckoutLoadError(
+      'No se pudo cargar tu compra.',
+      'No mostramos un estado incompleto. Intentá nuevamente en unos minutos.'
+    );
+    return;
+  }
+
+  const leaseExpiresAt = Number(cart.expiresAt || 0);
+
+  const products =
+    cart.ids
+      .map(
+        (id) =>
+          getEmbeddedProductById(id)
+      )
+      .filter(Boolean);
+
+  if (products.length !== cart.ids.length) {
+    renderCheckoutLoadError(
+      'No se pudieron cargar todos tus artículos.',
+      'No mostramos una compra incompleta. Intentá nuevamente en unos minutos.'
+    );
     return;
   }
 
@@ -624,6 +645,27 @@ async function renderCheckoutPage() {
         }
       }
     );
+
+  completeCheckoutRoute();
+}
+
+function completeCheckoutRoute() {
+  document.documentElement.classList.remove('checkout-route-pending');
+}
+
+function renderCheckoutLoadError(title, message) {
+  const main = document.querySelector('main');
+  if (!main) return;
+
+  main.innerHTML = `
+    <section class="empty-cart" role="alert">
+      <span>FINALIZAR COMPRA</span>
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(message)}</p>
+      <a class="primary-action" href="/checkout">Volver a intentar</a>
+    </section>
+  `;
+  completeCheckoutRoute();
 }
 
 

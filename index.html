@@ -7,12 +7,33 @@
   <meta charSet="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script>
-    if (window.location.pathname.replace(/\/+$/, '').startsWith('/producto/')) {
-      document.documentElement.classList.add('product-route-pending');
-    }
+    (function setInitialRouteState() {
+      const initialPath = window.location.pathname.replace(/\/+$/, '') || '/';
+
+      if (initialPath.startsWith('/producto/')) {
+        document.documentElement.classList.add('product-route-pending');
+      } else if (initialPath === '/' || initialPath === '/index.html') {
+        document.documentElement.classList.add('catalog-route-pending');
+      } else if (initialPath === '/carrito') {
+        document.documentElement.classList.add('cart-route-pending');
+      } else if (initialPath === '/checkout') {
+        document.documentElement.classList.add('checkout-route-pending');
+      }
+    })();
   </script>
   <style>
     .product-route-pending main { visibility: hidden; }
+    .route-loading-state,
+    .catalog-loading-state { display: none; }
+    .cart-route-pending main > :not(.route-loading-state),
+    .checkout-route-pending main > :not(.route-loading-state) { display: none !important; }
+    .cart-route-pending .route-loading-state,
+    .checkout-route-pending .route-loading-state { display: block; }
+    .route-loading-state > * { display: none; }
+    .cart-route-pending [data-route-loading="cart"],
+    .checkout-route-pending [data-route-loading="checkout"] { display: block; }
+    .catalog-route-pending .catalog > :not(.catalog-loading-state) { display: none !important; }
+    .catalog-route-pending .catalog-loading-state { display: block; }
   </style>
   <link
   rel="stylesheet"
@@ -67,6 +88,18 @@
       </a><a class="cart-link" href="/carrito">Carrito <span>0</span></a></nav>
   </header>
   <main>
+    <section class="route-loading-state empty-cart" aria-live="polite" aria-busy="true">
+      <div data-route-loading="cart">
+        <span>Tu carrito</span>
+        <h1>Cargando carrito…</h1>
+        <p>Estamos confirmando tus artículos y su disponibilidad.</p>
+      </div>
+      <div data-route-loading="checkout">
+        <span>FINALIZAR COMPRA</span>
+        <h1>Cargando tu compra…</h1>
+        <p>Estamos confirmando tu carrito antes de continuar.</p>
+      </div>
+    </section>
     <section class="intro" id="inicio">
       <div class="intro-grid">
         <div>
@@ -81,6 +114,11 @@
       </div>
     </section>
     <section class="catalog" id="articulos" aria-labelledby="catalog-title">
+      <div class="catalog-loading-state empty-cart" role="status" aria-live="polite" aria-busy="true">
+        <span>CATÁLOGO</span>
+        <h2>Cargando artículos…</h2>
+        <p>Estamos consultando la disponibilidad actual.</p>
+      </div>
       <div class="catalog-heading">
         <div><span class="section-kicker">CATÁLOGO</span>
           <h2 id="catalog-title">Encontrá algo para tu casa</h2>

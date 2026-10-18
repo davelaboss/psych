@@ -9,7 +9,40 @@ const FINAL_SALE_POLICY_VERSION = '2026-10-02-v1';
 const FINAL_SALE_SHORT_NOTICE = 'Importante: La mayoría de los artículos son usados. Todas las ventas son finales.';
 const NO_DELIVERY_NOTICE = 'No realizamos entregas. El comprador debe retirar su compra en nuestro domicilio en la fecha correspondiente.';
 const DELAYED_PICKUP_NOTICE = 'Aunque el artículo esté pagado, si está marcado para retiro posterior deberá permanecer con nosotros hasta la fecha de retiro indicada.';
+window.loadAuthoritativeCatalog = loadAuthoritativeCatalog;
 window.__staticCartReady = syncStaticCartFromServer({ migrateLegacy: true });
+
+function loadAuthoritativeCatalog(requestedSlug = '') {
+  if (!window.__catalogReady) {
+    const url = new URL('/.netlify/functions/volume2-catalog', window.location.origin);
+    if (requestedSlug) url.searchParams.set('slug', requestedSlug);
+
+    window.__catalogReady = fetch(url, { cache: 'no-store' })
+      .then(async (response) => {
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'No se pudo cargar el catálogo.');
+        }
+
+        if (!Array.isArray(data.products)) {
+          throw new Error('El catálogo no tiene el formato esperado.');
+        }
+
+        const catalog = {
+          products: data.products,
+          deliveredProduct: data.deliveredProduct && typeof data.deliveredProduct === 'object'
+            ? data.deliveredProduct
+            : null,
+        };
+
+        window.__catalogProducts = catalog.products;
+        return catalog;
+      });
+  }
+
+  return window.__catalogReady;
+}
 
 async function bootStaticStorefront() {
   setupStaticMobileNavigation();
@@ -37,13 +70,61 @@ async function bootStaticStorefront() {
   refreshCartReservationUi();
 
   if (path === '/carrito') {
-    await renderCartPage();
+    await renderSynchronizedCartPage();
     return;
   }
 
   if (path === '/' || path === '/index.html') {
     setupCatalogCartButtons();
   }
+}
+
+async function renderSynchronizedCartPage() {
+  if (!window.__staticCartSynchronized) {
+    renderCartLoadError(
+      'No pudimos confirmar tu carrito.',
+      'Intentá nuevamente en unos minutos.'
+    );
+    return;
+  }
+
+  const cart = getStaticCart();
+
+  if (cart.ids.length) {
+    try {
+      await loadAuthoritativeCatalog();
+    } catch (error) {
+      console.error('Carrito:', error);
+      renderCartLoadError(
+        'No se pudo cargar tu carrito.',
+        'No mostramos un estado incompleto. Intentá nuevamente en unos minutos.'
+      );
+      return;
+    }
+  }
+
+  renderCartPage();
+}
+
+function renderCartLoadError(title, message) {
+  const main = document.querySelector('main');
+  if (!main) return;
+
+  document.title = 'Carrito | Venta de Mudanza';
+  main.innerHTML = `
+    <section class="empty-cart" role="alert">
+      <span>Tu carrito</span>
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(message)}</p>
+      <a class="primary-action" href="/carrito">Volver a intentar</a>
+    </section>
+  `;
+  completeCartRoute();
+}
+
+function completeCartRoute() {
+  document.documentElement.classList.remove('cart-route-pending');
+  window.dispatchEvent(new CustomEvent('storefront:cart-rendered'));
 }
 
 if (document.readyState === 'loading') {
@@ -1067,14 +1148,13 @@ function renderProductDetail(product) {
 }
 
 
-async function renderCartPage() {
+function renderCartPage() {
   const main = document.querySelector('main');
 
   if (!main) {
     return;
   }
 
-  await syncStaticCartFromServer();
   document.title = 'Carrito | Venta de Mudanza';
 
   const cart = getStaticCart();
@@ -1083,7 +1163,7 @@ async function renderCartPage() {
     .map((id) => getEmbeddedProductById(id))
     .filter(Boolean);
 
-  if (!products.length) {
+  if (!cart.ids.length) {
     main.innerHTML = `
       <section class="empty-cart">
         <span>Tu carrito</span>
@@ -1099,6 +1179,15 @@ async function renderCartPage() {
     `;
 
     updateStaticCartCount();
+    completeCartRoute();
+    return;
+  }
+
+  if (products.length !== cart.ids.length) {
+    renderCartLoadError(
+      'No se pudieron cargar todos tus artículos.',
+      'No mostramos un carrito incompleto. Intentá nuevamente en unos minutos.'
+    );
     return;
   }
 
@@ -1235,6 +1324,7 @@ async function renderCartPage() {
   setupCartPageEvents(hasUnavailable);
   startCartCountdown(cart);
   updateStaticCartCount();
+  completeCartRoute();
 }
 
 
@@ -1626,10 +1716,12 @@ function setStaticCartFromLease(lease) {
 
 async function syncStaticCartFromServer({ migrateLegacy = false } = {}) {
   const local = getStaticCart();
+  window.__staticCartSynchronized = false;
   try {
     const response = await fetch('/api/cart/reservation', { cache: 'no-store' });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'No se pudo consultar la reserva.');
+    window.__staticCartSynchronized = true;
     window.__checkoutRecovery = result.checkoutRecovery || null;
     if (result.checkoutRecovery) {
       localStorage.setItem('mudanza-last-order', JSON.stringify({ id: result.checkoutRecovery.orderId, access: result.checkoutRecovery.accessToken }));
@@ -1665,6 +1757,7 @@ async function syncStaticCartFromServer({ migrateLegacy = false } = {}) {
       }
       const refreshed = await fetch('/api/cart/reservation', { cache: 'no-store' });
       const current = await refreshed.json();
+      if (!refreshed.ok) throw new Error(current.error || 'No se pudo confirmar la reserva.');
       if (current.lease) {
         setStaticCartFromLease(current.lease);
         return current.lease;
@@ -1674,6 +1767,7 @@ async function syncStaticCartFromServer({ migrateLegacy = false } = {}) {
     clearCartReservationUi();
     return null;
   } catch (error) {
+    window.__staticCartSynchronized = false;
     showCartNotice(error instanceof Error ? error.message : 'No se pudo consultar la reserva.');
     return null;
   }
@@ -2030,7 +2124,7 @@ async function synchronizeExpiredCart(expectedExpiration) {
   if (Number(getStaticCart().expiresAt) !== Number(expectedExpiration)) return;
   await syncStaticCartFromServer();
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
-  if (path === '/carrito') await renderCartPage();
+  if (path === '/carrito') await renderSynchronizedCartPage();
   if (path === '/checkout' && typeof renderCheckoutPage === 'function') await renderCheckoutPage();
 }
 
@@ -2078,11 +2172,13 @@ function showCartNotice(message) {
 }
 
 
-window.addEventListener('storage', function (event) {
+window.addEventListener('storage', async function (event) {
   if (event.key !== STATIC_CART_KEY) return;
-  void syncStaticCartFromServer();
+  await syncStaticCartFromServer();
   updateStaticCartCount();
-  if ((window.location.pathname.replace(/\/+$/, '') || '/') === '/carrito') void renderCartPage();
+  if ((window.location.pathname.replace(/\/+$/, '') || '/') === '/carrito') {
+    await renderSynchronizedCartPage();
+  }
 });
 
 
