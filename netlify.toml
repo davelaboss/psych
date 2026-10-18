@@ -6,3 +6,8 @@
   framework = "#static"
   publish = "."
   port = 8888
+
+[functions]
+  # The committed HTML is the single maintained source for legacy base products.
+  # Every function using loadBaseCatalog/loadCatalog needs the deployment copy.
+  included_files = ["index.html"]
