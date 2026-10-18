@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { PGlite } from '@electric-sql/pglite';
+import { loadBaseCatalog, loadCatalog } from './commerce.mjs';
 import { createAnalyticsEventHandler } from '../analytics-event.mjs';
 import { createAdminSalePulseHandler, loadSalePulseSnapshot } from '../admin-sale-pulse.mjs';
 import { readPurchasableInventory } from './inventory-database.mjs';
@@ -506,7 +507,7 @@ test('packet allowlist exports authoritative public facts and signal membership 
     generatedAt: now, trackingStartedAt: hoursAgo(48),
     products: [product(1, {
       ...privateFields, title: 'Título actual', slug: 'titulo-actual', category: 'Hogar',
-      askingPricePYG: 175000, saleMode: 'IMMEDIATE', mainImage: '/assets/media/current.jpg',
+      askingPricePYG: 175000, saleMode: 'IMMEDIATE', images: ['/images/example-cover.webp', '/images/example-second.webp'],
     })],
     purchasableInventory: new Map([['product-1', inventoryRow(1, privateFields)]]),
     events: [event('PRODUCT_VIEW', 1, { ...privateFields, productId: 'product-1' })],
@@ -522,12 +523,64 @@ test('packet allowlist exports authoritative public facts and signal membership 
   ].sort());
   assert.equal(record.title, 'Título actual');
   assert.equal(record.askingPricePYG, 175000);
-  assert.equal(record.mainImage, '/assets/media/current.jpg');
+  assert.equal(record.mainImage, '/images/example-cover.webp');
   assert.equal(record.productUrl, '/producto/titulo-actual');
   assert.equal(record.views, 1);
   assert.equal(record.signals.hotUnsold, true);
   assert.deepEqual(packet.signalLists.hotUnsold, ['product-1']);
   assert.deepEqual(JSON.parse(serialized).marketableProducts[0], record);
+});
+
+for (const [label, images] of [
+  ['empty images', []], ['missing images', undefined], ['null images', null], ['invalid cover', [null, '/images/second.webp']],
+]) {
+  test(`packet mainImage safely returns null for ${label}`, () => {
+    const packet = buildSalePulseSnapshot({
+      products: [product(1, { images })], purchasableInventory: availableInventory(1),
+    }).marketingPacket;
+    assert.equal(packet.marketableProducts[0].mainImage, null);
+  });
+}
+
+test('packet mainImage uses only the first authoritative image and leaves image order unchanged', () => {
+  const images = ['/images/example-cover.webp', '/images/example-second.webp', '/images/example-third.webp'];
+  const source = product(1, { images, mainImage: '/stale-synthetic-cover.jpg' });
+  const before = structuredClone(source);
+  const record = buildSalePulseSnapshot({
+    products: [source], purchasableInventory: availableInventory(1),
+  }).marketingPacket.marketableProducts[0];
+  assert.equal(record.mainImage, images[0]);
+  assert.notEqual(record.mainImage, images[1]);
+  assert.deepEqual(source, before);
+});
+
+test('packet cover follows current authoritative catalog adapter overrides without synthetic mainImage input', async () => {
+  const base = await loadBaseCatalog('https://example.com');
+  const source = base.find((item) => item.status === 'AVAILABLE' && item.quantityRemaining > 0 && item.images?.length);
+  assert.ok(source, 'committed production catalog includes a public product with images');
+  const originalImages = structuredClone(source.images);
+  const overrideImages = ['/images/current-override-cover.webp', '/images/current-override-second.webp'];
+  const authoritative = await loadCatalog('https://example.com', {
+    loadBaseCatalog: async () => [source],
+    listProductOverrides: async () => [{
+      productId: source.id, images: overrideImages,
+      publicFields: { title: 'Título actualizado', askingPricePYG: 189000 },
+    }],
+    readCommittedInventory: async () => new Map(),
+  });
+  assert.equal(Object.hasOwn(authoritative[0], 'mainImage'), false);
+  const packet = buildSalePulseSnapshot({
+    products: authoritative,
+    purchasableInventory: new Map([[source.id, {
+      ...inventoryRow(1), product_id: source.id,
+      capacity: source.quantityRemaining, purchasable_quantity: source.quantityRemaining,
+    }]]),
+  }).marketingPacket;
+  assert.deepEqual(authoritative[0].images, overrideImages);
+  assert.equal(packet.marketableProducts[0].mainImage, authoritative[0].images[0]);
+  assert.equal(packet.marketableProducts[0].title, 'Título actualizado');
+  assert.equal(packet.marketableProducts[0].askingPricePYG, 189000);
+  assert.deepEqual(source.images, originalImages);
 });
 
 test('purchasable inventory uses one passive aggregate with existing CART/ORDER expiry semantics', async () => {

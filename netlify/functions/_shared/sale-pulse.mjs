@@ -301,7 +301,7 @@ function marketingProduct(product, inventory, publicIds) {
     category: String(product.category || ''),
     askingPricePYG: Number(product.askingPricePYG || 0),
     saleMode: String(product.saleMode || ''),
-    mainImage: typeof product.mainImage === 'string' ? product.mainImage : null,
+    mainImage: Array.isArray(product.images) && typeof product.images[0] === 'string' ? product.images[0] : null,
     quantityRemaining,
     purchasableQuantity,
     cartHeldQuantity,

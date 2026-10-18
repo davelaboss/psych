@@ -65,6 +65,9 @@ quantityRemaining, purchasableQuantity, cartHeldQuantity, orderHeldQuantity,
 nextReleaseAt, marketabilityStatus, marketabilityReason, seven-day views/cartAdds,
 and boolean `signals` memberships. Relative product/image paths resolve against
 the storefront origin used to load the packet. No AI ranking is added.
+`mainImage` is the first current authoritative `product.images[0]`, matching the
+production cover and respecting catalog image overrides/order. Empty, missing or
+invalid cover arrays produce null; the packet does not reorder or change images.
 
 No buyer identity/contact details, order/checkout/session/cart IDs, cookies,
 tokens, receipt details/URLs, bank information, private seller/customer notes,
