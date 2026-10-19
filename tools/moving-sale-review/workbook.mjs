@@ -33,7 +33,8 @@ export async function generateWorkbook(state, outputDir, { preview = false } = {
     header.format.horizontalAlignment = 'center'; header.format.verticalAlignment = 'center';
     s.freezePanes.freezeRows(4); s.freezePanes.freezeColumns(1);
     const end = Math.max(5, 4 + data.length);
-    s.tables.add(`A4:${String.fromCharCode(64 + head.length)}${end}`, true, name === 'Revisión' ? 'Volume5Revision' : 'Volume5Referencia');
+    const table = s.tables.add(`A4:${String.fromCharCode(64 + head.length)}${end}`, true, name === 'Revisión' ? 'Volume5Revision' : 'Volume5Referencia');
+    table.showFilterButton = true;
     s.getRange(`A5:A${end}`).format.columnWidth = 17;
     return end;
   }
