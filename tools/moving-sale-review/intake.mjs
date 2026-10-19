@@ -1,7 +1,8 @@
 import path from 'node:path';
-import { readFile, mkdir, copyFile, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, copyFile, writeFile, access } from 'node:fs/promises';
+import sharp from 'sharp';
 import { randomUUID } from 'node:crypto';
-import { optimizeGroups, parseGroupedNotes } from '../volume4-pilot/workflow.mjs';
+import { optimizeGroups, parseGroupedNotes, validatePhotoPlan } from '../volume4-pilot/workflow.mjs';
 import { applyTiming, pricingResearch, slugify, assert, EDIT_FIELDS } from './core.mjs';
 import { hash, walk, registry, allocate, safeOutput, atomicJson, saveState, copyApp, validateState } from './storage.mjs';
 export async function ingest({ root, intakeDir, notesPath, outputDir, fixture = false, workbook = true }) {
@@ -13,37 +14,51 @@ export async function ingest({ root, intakeDir, notesPath, outputDir, fixture = 
   assert(files.every(f => path.dirname(f) === intakeDir), 'Use una carpeta plana de originales.');
   const names = files.map(f => path.basename(f));
   assert(new Set(names.map(f => f.toLowerCase())).size === names.length, 'Nombres de foto duplicados.');
-  let groups, companion = null;
+  let groups, companion = null, excludedPhotos = [], photoTransforms = {};
   if (notesPath) {
     const buffer = await readFile(notesPath); companion = { path: path.resolve(notesPath), sha256: hash(buffer) };
-    if (/\.json$/i.test(notesPath)) groups = JSON.parse(buffer.toString('utf8')).groups;
+    if (/\.json$/i.test(notesPath)) {
+      const manifest = JSON.parse(buffer.toString('utf8'));
+      ({ groups, excludedPhotos = [], photoTransforms = {} } = manifest);
+    }
     else groups = parseGroupedNotes(buffer.toString('utf8')).map(g => ({ groupId: g.groupId, photos: g.photos, product: { title: g.fields.name || '', category: g.fields.category || 'Otros', description: g.notes.join(' ') || g.fields.name || '', asking: g.fields.price || null, condition: g.fields.condition || '', knownDefects: g.fields.defects || '', functionality: g.fields.functionality || '', measurements: g.fields.dimensions || '', quantityTotal: Number(g.fields.quantity || 1), includedAccessories: g.fields.includes?.split(';').map(s => s.trim()).filter(Boolean) || [] } }));
   } else groups = names.map((name, index) => ({ groupId: String(index + 1).padStart(4, '0'), photos: [name], product: {} }));
   assert(Array.isArray(groups) && groups.length > 0, 'No hay grupos.');
   const normalized = groups.map((g, index) => ({ ...g, groupId: String(index + 1).padStart(4, '0'), photos: g.photos || [], referencePhotos: g.referencePhotos || [] }));
   const refs = normalized.flatMap(g => [...g.photos, ...g.referencePhotos]);
   assert(new Set(refs.map(n => n.toLowerCase())).size === refs.length, 'Foto asignada más de una vez.');
-  assert(JSON.stringify([...refs].sort()) === JSON.stringify([...names].sort()), 'Fotos sin asignar o fuentes faltantes.');
+  assert(refs.every(name => names.includes(name)), 'Fotos sin asignar o fuentes faltantes; use los nombres originales exactos.');
+  const plan = await validatePhotoPlan(normalized, { intakeDir, excludedPhotos, photoTransforms });
   for (const g of normalized) {
     assert(Object.keys(g.product || {}).every(key => EDIT_FIELDS.includes(key)), 'Las notas de producto solo pueden contener campos públicos editables; conserve la investigación y notas internas por separado.');
     assert(g.photos.length, 'Cada grupo necesita una foto pública.');
     if (g.photos.length > 1) assert(g.groupingJustification?.trim(), 'Para agrupar varias fotos explique por qué muestran el mismo producto o juego.');
     for (const name of g.referencePhotos) assert(g.referenceJustifications?.[name]?.trim(), 'Cada foto de referencia necesita una justificación.');
+    if (g.groupingConfirmed !== undefined) assert(typeof g.groupingConfirmed === 'boolean' && (!g.groupingConfirmed || (g.sellerConfirmed === true && g.groupingJustification?.trim())), 'La agrupación confirmada requiere confirmación del vendedor y justificación.');
   }
+  // Decode every assigned image and hash every original before the irreversible reservation.
+  const sources = [];
+  for (const file of files) {
+    const filename = path.basename(file), excluded = plan.excludedNames.has(filename.toLowerCase());
+    if (!excluded) await sharp(file).stats();
+    const exclusion = excludedPhotos.find(p => p.filename.toLowerCase() === filename.toLowerCase());
+    sources.push({ filename, originalPath: file, sha256: hash(await readFile(file)), ...(excluded ? { disposition: 'excluded', exclusionReason: exclusion.reason } : {}) });
+  }
+  await access(outputDir).then(() => { throw new Error('EEXIST: La salida ya existe; use un directorio nuevo.'); }, error => { if (error.code !== 'ENOENT') throw error; });
   // Exclusive output: rerunning intake cannot erase any prior owner state.
   await mkdir(outputDir, { recursive: false });
-  const sources = await Promise.all(files.map(async file => ({ filename: path.basename(file), originalPath: file, sha256: hash(await readFile(file)) })));
   const batchId = `volume5-${fixture ? 'fixture' : 'real'}-${randomUUID()}`;
   const reg = fixture ? { existing: [], used: new Set(), ledgerPath: null } : await registry(root);
   const itemNumbers = fixture ? normalized.map((_, i) => `fixture-v5-${String(i + 1).padStart(4, '0')}`) : await allocate({ ...reg, count: normalized.length, batchId });
   const imageDir = path.join(outputDir, 'images/volume-5');
   // The proven Volume 4 optimizer receives every source, including explicit references.
   // Reference roles stay private in the state and never appear in finalized public photos.
-  const optimized = await optimizeGroups(normalized.map(g => ({ groupId: g.groupId, photos: [...g.photos, ...g.referencePhotos] })), { intakeDir, outputDir: imageDir, publicPrefix: 'images/volume-5', filePrefix: 'v5' });
+  const optimized = await optimizeGroups(normalized.map(g => ({ groupId: g.groupId, photos: [...g.photos, ...g.referencePhotos] })), { intakeDir, outputDir: imageDir, publicPrefix: 'images/volume-5', filePrefix: 'v5', excludedPhotos, photoTransforms });
   for (const [index, row] of optimized.report.entries()) {
     const source = sources.find(s => s.filename === row.originalFilename);
-    Object.assign(source, { sourceId: `v5-source-${String(index + 1).padStart(5, '0')}`, optimizedPath: row.publicPath, optimizedSha256: hash(await readFile(path.join(outputDir, row.publicPath))) });
+    Object.assign(source, { sourceId: `v5-source-${String(index + 1).padStart(5, '0')}`, optimizedPath: row.publicPath, optimizedSha256: hash(await readFile(path.join(outputDir, row.publicPath))), ...(row.manualRotationDegrees ? { manualRotationDegrees: row.manualRotationDegrees } : {}) });
   }
+  sources.filter(s => s.disposition === 'excluded').forEach((s, index) => { s.sourceId = `v5-source-${String(optimized.report.length + index + 1).padStart(5, '0')}`; });
   const { pyg } = await import('./core.mjs');
   const items = normalized.map((g, index) => {
     const number = itemNumbers[index], facts = g.product || {}, title = facts.title || 'Producto por identificar';
@@ -52,13 +67,13 @@ export async function ingest({ root, intakeDir, notesPath, outputDir, fixture = 
     product.asking = pyg(product.asking); product.slug = `${slugify(product.title)}-item-${number}`;
     product.status = 'NEEDS_REVIEW'; product.needsReview = true; applyTiming(product);
     const photos = [...g.photos, ...g.referencePhotos].map(name => { const s = sources.find(s => s.filename === name); return { sourceId: s.sourceId, path: s.optimizedPath, role: g.referencePhotos.includes(name) ? 'reference' : 'public', justification: g.referenceJustifications?.[name] || '' }; });
-    return { product, initialProduct: structuredClone(product), photos, coverSourceId: null, reviewStatus: 'unreviewed', groupingConfirmed: false, groupingJustification: g.groupingJustification || '', copyChecked: false, confirmedFields: g.sellerConfirmed === true ? Object.keys(facts) : [], ownerNotes: '', pricingDecision: '', pricing: pricingResearch(g.pricing), questions: [{ id: 'grouping', text: 'Confirmar que las fotos corresponden al mismo producto físico o juego intencional.', required: true, resolved: false }, ...(g.questions || [])], edited: false, retired: false };
+    return { product, initialProduct: structuredClone(product), photos, coverSourceId: null, reviewStatus: 'unreviewed', sourceGroupId: g.sourceGroupId || g.groupId, groupingConfirmed: g.groupingConfirmed === true, groupingJustification: g.groupingJustification || '', copyChecked: false, confirmedFields: g.sellerConfirmed === true ? Object.keys(facts) : [], ownerNotes: g.ownerNotes || '', pricingDecision: '', pricing: pricingResearch(g.pricing), questions: [...(g.groupingConfirmed ? [] : [{ id: 'grouping', text: 'Confirmar que las fotos corresponden al mismo producto físico o juego intencional.', required: true, resolved: false }]), ...(g.questions || [])], edited: false, retired: false };
   });
-  const state = { schemaVersion: 1, volume: 5, batchId, mode: fixture ? 'fixture' : 'real', revision: 0, sources, companion, items, retiredItemNumbers: [], events: [{ type: 'INTAKE', at: new Date().toISOString() }] };
+  const state = { schemaVersion: 1, volume: 5, publicationAllowed: false, batchId, mode: fixture ? 'fixture' : 'real', revision: 0, sources, companion, items, retiredItemNumbers: [], events: [{ type: 'INTAKE', at: new Date().toISOString() }] };
   const validation = await validateState(state, { outputDir, ...reg, allocated: itemNumbers });
   await saveState(outputDir, state);
   await atomicJson(path.join(outputDir, 'initial-owner-review-state.json'), state);
-  await atomicJson(path.join(outputDir, 'intake-reconciliation.json'), { ...validation, images: optimized.report, grouping: items.map(i => ({ itemNumber: i.product.itemNumber, confirmed: false, justification: i.groupingJustification })) });
+  await atomicJson(path.join(outputDir, 'intake-reconciliation.json'), { ...validation, excludedSources: sources.filter(s => s.disposition === 'excluded'), images: optimized.report, grouping: items.map(i => ({ itemNumber: i.product.itemNumber, confirmed: i.groupingConfirmed, justification: i.groupingJustification })) });
   await copyApp(outputDir);
   if (companion) await copyFile(companion.path, path.join(outputDir, `companion-notes${path.extname(companion.path)}`));
   if (workbook) { const { generateWorkbook } = await import('./workbook.mjs'); await generateWorkbook(state, outputDir); }

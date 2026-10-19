@@ -55,10 +55,18 @@ export function reconcile(state) {
   identity(state);
   const sourceIds = state.sources.map(p => p.sourceId);
   assert(new Set(sourceIds).size === sourceIds.length, 'Fuente duplicada.');
+  const excluded = state.sources.filter(s => s.disposition === 'excluded');
+  for (const source of state.sources) assert(source.disposition === undefined || source.disposition === 'excluded', 'Disposición de fuente inválida.');
+  for (const source of excluded) {
+    assert(typeof source.exclusionReason === 'string' && source.exclusionReason.trim(), 'Una fuente excluida requiere motivo.');
+    assert(source.filename && source.originalPath && source.sha256, 'Fuente excluida sin original o huella.');
+    assert(!source.optimizedPath && !source.optimizedSha256, 'Una fuente excluida no debe tener copia optimizada.');
+    assert(!state.items.some(i => i.photos.some(p => p.sourceId === source.sourceId) || i.coverSourceId === source.sourceId), 'Una fuente excluida no puede pertenecer a un Item ni ser portada.');
+  }
   const assigned = active(state).flatMap(i => i.photos);
   assert(new Set(assigned.map(p => p.sourceId)).size === assigned.length, 'Foto asignada más de una vez.');
   assert(new Set(assigned.map(p => p.path)).size === assigned.length, 'Ruta de salida duplicada.');
-  assert(equal([...assigned.map(p => p.sourceId)].sort(), [...sourceIds].sort()), 'Foto sin asignar o pérdida de fotos.');
+  assert(equal([...assigned.map(p => p.sourceId), ...excluded.map(s => s.sourceId)].sort(), [...sourceIds].sort()), 'Foto sin asignar o pérdida de fotos.');
   for (const photo of assigned) {
     assert(['public', 'reference'].includes(photo.role), 'Uso de foto inválido.');
     if (photo.role === 'reference') assert(photo.justification?.trim(), 'Una foto de referencia requiere justificación explícita.');
@@ -66,7 +74,7 @@ export function reconcile(state) {
     assert(source.optimizedPath === photo.path, 'Identidad de foto alterada.');
   }
   for (const key of ['itemNumber', 'id', 'slug']) assert(new Set(state.items.map(i => i.product[key])).size === state.items.length, `Identificador duplicado: ${key}.`);
-  return { inputPhotos: sourceIds.length, publicCandidatePhotos: assigned.filter(p => p.role === 'public').length, referenceOnlyPhotos: assigned.filter(p => p.role === 'reference').length, unassignedPhotos: 0 };
+  return { inputPhotos: sourceIds.length, publicCandidatePhotos: assigned.filter(p => p.role === 'public').length, referenceOnlyPhotos: assigned.filter(p => p.role === 'reference').length, excludedPhotos: excluded.length, unassignedPhotos: 0 };
 }
 const leak = /\b(?:MEDIR|REMOVE|NEEDS_REVIEW|reviewer|review|confidence|todo|owner.confirmed|seller.confirmed|IA|AI)\b|revisor|inteligencia artificial|según (?:las notas|el vendedor)|pendiente de revisión|falta (?:confirmar|probar|medir)/i;
 const english = /\b(?:sold separately|price per unit|set of|good condition|works(?: very well)?|does not work|need to test|not included|included with|small|medium|large|pending|unknown|blender|chair|table|shelf|kitchen|furniture)\b/i;

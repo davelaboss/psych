@@ -172,7 +172,8 @@ async function exists(file) {
   try { await access(file); return true; } catch { return false; }
 }
 
-export async function optimizeGroups(groups, { intakeDir, outputDir, publicPrefix = '/images/volume-4-pilot', filePrefix = 'v4' }) {
+// Shared preflight: exclusions are opt-in and never weaken the default guard.
+export async function validatePhotoPlan(groups, { intakeDir, excludedPhotos = [], photoTransforms = {} }) {
   const intakeFiles = (await readdir(intakeDir, { withFileTypes: true })).filter(entry => entry.isFile());
   const intakeByName = new Map(intakeFiles.map(entry => [entry.name.toLowerCase(), entry.name]));
   const referenced = groups.flatMap(group => [...(group.photos || []), ...(group.referencePhotos || [])].map(photo => ({ group, photo })));
@@ -182,8 +183,32 @@ export async function optimizeGroups(groups, { intakeDir, outputDir, publicPrefi
   }
   const missing = normalizedReferences.filter(name => !intakeByName.has(name));
   if (missing.length) throw new Error(`Referenced intake photos are missing: ${missing.join(', ')}`);
-  const unassigned = intakeFiles.map(entry => entry.name).filter(name => !normalizedReferences.includes(name.toLowerCase()));
+  if (!Array.isArray(excludedPhotos)) throw new Error('Excluded photos must be an array.');
+  const excludedNames = new Set();
+  for (const entry of excludedPhotos) {
+    if (!entry || typeof entry.filename !== 'string' || typeof entry.reason !== 'string' || !entry.reason.trim()) throw new Error('Each excluded source needs a filename and reason.');
+    const name = entry.filename.toLowerCase();
+    if (!intakeByName.has(name)) throw new Error(`Excluded original is missing: ${entry.filename}`);
+    if (excludedNames.has(name)) throw new Error(`Excluded original declared twice: ${entry.filename}`);
+    if (normalizedReferences.includes(name)) throw new Error(`Source cannot be assigned and excluded: ${entry.filename}`);
+    excludedNames.add(name);
+  }
+  const unassigned = intakeFiles.map(entry => entry.name).filter(name => !normalizedReferences.includes(name.toLowerCase()) && !excludedNames.has(name.toLowerCase()));
   if (unassigned.length) throw new Error(`Intake photos are not assigned to a group: ${unassigned.join(', ')}`);
+  if (!photoTransforms || typeof photoTransforms !== 'object' || Array.isArray(photoTransforms)) throw new Error('Photo transforms must be an object.');
+  const transformsByName = new Map();
+  for (const [filename, transform] of Object.entries(photoTransforms)) {
+    const name = filename.toLowerCase();
+    if (!intakeByName.has(name) || excludedNames.has(name)) throw new Error(`Transform requires an assigned original: ${filename}`);
+    if (transformsByName.has(name)) throw new Error(`Duplicate photo transform: ${filename}`);
+    if (!transform || Object.keys(transform).length !== 1 || !Object.hasOwn(transform, 'rotateDegrees') || ![0, -90, 90, -180, 180, -270, 270].includes(transform.rotateDegrees)) throw new Error(`Invalid quarter-turn transform: ${filename}`);
+    transformsByName.set(name, transform.rotateDegrees);
+  }
+  return { intakeByName, transformsByName, excludedNames };
+}
+
+export async function optimizeGroups(groups, { intakeDir, outputDir, publicPrefix = '/images/volume-4-pilot', filePrefix = 'v4', excludedPhotos = [], photoTransforms = {} }) {
+  const { intakeByName, transformsByName } = await validatePhotoPlan(groups, { intakeDir, excludedPhotos, photoTransforms });
 
   await mkdir(outputDir, { recursive: true });
   const report = [];
@@ -198,7 +223,10 @@ export async function optimizeGroups(groups, { intakeDir, outputDir, publicPrefi
       if (await exists(output)) throw new Error(`Refusing to overwrite optimized image: ${outputName}`);
 
       const originalMetadata = await sharp(input).metadata();
-      await sharp(input).rotate().resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true })
+      const manualRotationDegrees = transformsByName.get(originalName.toLowerCase()) || 0;
+      // autoOrient is applied before rotate by Sharp; two rotate calls are not cumulative.
+      const pipeline = manualRotationDegrees ? sharp(input).autoOrient().rotate(manualRotationDegrees) : sharp(input).rotate();
+      await pipeline.resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true })
         .toColourspace('srgb').webp({ quality: 82 }).toFile(output);
       const optimizedMetadata = await sharp(output).metadata();
       const originalStat = await stat(input);
@@ -213,6 +241,7 @@ export async function optimizeGroups(groups, { intakeDir, outputDir, publicPrefi
         originalWidth: originalMetadata.width,
         originalHeight: originalMetadata.height,
         originalOrientation: originalMetadata.orientation || 1,
+        manualRotationDegrees,
         originalBytes: originalStat.size,
         optimizedFilename: outputName,
         optimizedWidth: optimizedMetadata.width,

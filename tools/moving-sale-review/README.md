@@ -43,6 +43,33 @@ npm run review:volume5 -- ingest --repo "C:\Users\davel\Documents\GitHub\psych-v
 
 `example-notes.json` muestra el esquema. Debe enumerar todas las fotos exactamente una vez. Varios archivos en un grupo requieren `groupingJustification`. `referencePhotos` requiere `referenceJustifications` por archivo. El formato de notas `GROUP` de Volume 4 también sirve para fotos individuales; para varias fotos use JSON con justificación. Las notas se conservan con su huella y una copia. No se importa una planilla arbitraria como fuente de hechos sin reconciliarla; convierta sus filas al esquema de notas identificando los archivos. El archivo Excel generado es de revisión, no un mecanismo de importación automática de correcciones.
 
+### Originales excluidos y rotación del propietario
+
+Un original puede quedar fuera de todos los Items mediante una declaración explícita en el JSON:
+
+```json
+{
+  "groups": [{
+    "sourceGroupId": "G014",
+    "photos": ["frente.jpg", "detalle.jpg"],
+    "groupingJustification": "Dos vistas del mismo recipiente, confirmadas por el propietario.",
+    "sellerConfirmed": true,
+    "groupingConfirmed": true,
+    "product": { "title": "Recipiente", "description": "Recipiente con tapa." }
+  }],
+  "excludedPhotos": [{ "filename": "ya-publicado.jpg", "reason": "Pertenece a un artículo ya publicado." }],
+  "photoTransforms": { "frente.jpg": { "rotateDegrees": -90 } }
+}
+```
+
+Cada original debe aparecer exactamente una vez como foto pública, referencia justificada o fuente excluida con motivo. Una exclusión no crea Item, foto de referencia, portada ni copia optimizada: conserva nombre, ruta, SHA-256 y motivo en el estado y la reconciliación. La verificación sigue leyendo y comprobando el original excluido. Sin declaración explícita, una foto sin asignar sigue siendo un error.
+
+`photoTransforms` acepta únicamente `rotateDegrees`: 0, ±90, ±180 o ±270. El signo negativo gira en sentido antihorario. El optimizador normaliza primero la orientación EXIF, aplica la rotación manual, redimensiona proporcionalmente y genera WebP sRGB sin metadatos. No cambia los originales. Los llamadores de Volume 4 sin estas opciones mantienen el comportamiento anterior.
+
+Antes de reservar IDs, el ingreso valida exclusiones, duplicados, cobertura de originales, referencias, transformaciones y salida nueva, y decodifica todas las fotos que necesitan derivados. La salida existente no se sobrescribe: preserve el archivo de preparación y elija un hijo nuevo, por ejemplo `review/intake`.
+
+`groupingConfirmed:true` requiere `sellerConfirmed:true` y justificación; conserva una agrupación ya revisada sin volver a abrir esa pregunta. No aprueba el producto: el estado sigue sin revisar, con `NEEDS_REVIEW`, portada sin elegir y revisión del español pendiente. `sourceGroupId` y `ownerNotes` conservan la referencia y notas del propietario; la copia del manifiesto conserva los datos de preparación. Los precios, defectos, medidas o funcionamiento desconocidos no se completan automáticamente.
+
 `--repo`, `--photos`, `--notes`, `--output` y `--port` son configurables. Ninguna ruta de Downloads está codificada. La salida debe ser nueva: el ingreso rechaza sobrescribir una revisión existente o escribir dentro de los originales o rutas de producción. Para otro lote use otra salida; el registro de IDs es compartido entre worktrees del repositorio.
 
 ## Archivos y persistencia
