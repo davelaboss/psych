@@ -1132,6 +1132,10 @@ function renderOverviewTab() {
     });
 
   target
+    .querySelector('[data-copy-sale-pulse-chatgpt]')
+    ?.addEventListener('click', copySalePulseForChatgpt);
+
+  target
     .querySelectorAll('[data-go-tab]')
     .forEach((button) => {
       button.addEventListener('click', () => {
@@ -1168,6 +1172,93 @@ function renderOverviewTab() {
         );
       }
     );
+}
+
+
+const CHATGPT_MARKETING_DRIVE_URL = 'https://drive.google.com/drive/folders/13qE2dHUjJBr1TOBUX7omaWr7r1k2nfct';
+const CHATGPT_MARKETING_SITE_URL = 'https://thelabossieres.com';
+
+function buildChatgptMarketingHandoff(packet) {
+  const links = packet.marketableProducts.map((product) => {
+    const productUrl = product.productUrl
+      ? new URL(product.productUrl, CHATGPT_MARKETING_SITE_URL).href : null;
+    const imageUrl = product.mainImage
+      ? new URL(product.mainImage, CHATGPT_MARKETING_SITE_URL).href : null;
+    const trackedUrl = (source) => {
+      if (!productUrl) return null;
+      const url = new URL(productUrl);
+      url.searchParams.set('src', source);
+      return url.href;
+    };
+    return {
+      itemNumber: product.itemNumber,
+      productId: product.productId,
+      productUrl,
+      imageUrl,
+      storyUrl: trackedUrl('story'),
+      whatsappGroupUrl: trackedUrl('jw-group'),
+    };
+  });
+
+  return `Prepara marketing actual para la venta de mudanza de David y María en Paraguay. Responde en español claro, natural, breve y amable. David tiene la aprobación final.
+
+FUENTES Y AUTORIDAD
+- El paquete Sale Pulse recién copiado al final de este mensaje es la autoridad FINAL para disponibilidad, comercialización, precios, títulos y cantidades actuales. Usa exclusivamente marketingPacket.marketableProducts para elegir artículos. No promociones Items vendidos, temporalmente reservados, pendientes de pago, no publicados o de cualquier otro modo no comercializables. No crees carritos ni reservas para comprobar disponibilidad.
+- Si tienes acceso al Google Drive Personal conectado de David, consulta el Marketing Production Desk: ${CHATGPT_MARKETING_DRIVE_URL} (Current, Config, Logs, Backups, Scripts, Archive). Puedes usar el README, manifiesto, preflight y materiales auténticos de Facebook Marketplace de Current como contexto, pero sus advertencias o datos de disponibilidad antiguos nunca reemplazan este paquete más reciente. Por ejemplo, una advertencia anterior sobre Item 034 quedó superada al publicarse correctamente.
+- Si Drive no está disponible, trabaja con este paquete y el sitio público ${CHATGPT_MARKETING_SITE_URL}. No pidas el flujo de Desktop Work.
+
+SELECCIÓN Y ENTREGABLES
+- Cuando haya suficientes productos adecuados, elige 10 Items únicos: 5 para David y 5 para María, sin repetir entre ambos. Si hay menos de 10, usa solo los comercializables disponibles y explica la limitación.
+- Para David, propone un collage de 3 productos y otro de 2. Para María, uno de 3 y otro de 2. Da recomendaciones, razones, composición y referencias a las imágenes auténticas; escribe textos cortos en español para Story y para el grupo de WhatsApp Compras/Ventas/Servicios, con enlaces directos a cada producto.
+- Equilibra señales reales de interés comprador, atractivo visual, variedad, productos más antiguos que necesitan exposición y oportunidades nuevas. Se puede publicar a diario si hay un ángulo fresco; evita publicaciones repetitivas.
+- Usa los números de Item, títulos, precios, cantidades y URLs actuales del paquete. No inventes condición, especificaciones, accesorios, urgencia, descuentos, popularidad ni otros hechos. Usa imágenes públicas actuales o activos auténticos de Drive; nunca generes imágenes falsas o engañosas de productos. Si puedes crear collages realmente con estas imágenes auténticas, hazlo; si no, entrega imágenes y una composición fácil de usar en el móvil.
+
+ENLACES Y DATOS DE LA VENTA
+- Resuelve las rutas relativas de producto e imagen contra ${CHATGPT_MARKETING_SITE_URL}. Para enlaces de Story añade o actualiza src=story; para el grupo de WhatsApp Compras/Ventas/Servicios añade o actualiza src=jw-group. Conserva cualquier otro parámetro de la URL y no añadas src a la URL de imagen.
+- Ubicación: San Lorenzo, Barrio Santo Tomás, Paraguay. Sin entrega; cada comprador organiza su retiro. Para artículos diferidos: pago final del 1 al 8 de diciembre de 2026 y retiro del 9 al 12 de diciembre de 2026. Menciona estos plazos solo cuando correspondan al artículo.
+- Prepara borradores para aprobación de David. No publiques automáticamente, cambies precios, reserves artículos ni hagas compromisos en nombre del vendedor.
+
+REFERENCIAS DE ENLACES E IMÁGENES PARA PRODUCTOS COMERCIALIZABLES
+${JSON.stringify(links, null, 2)}
+
+PAQUETE SALE PULSE ACTUAL COMPLETO (marketingPacket)
+${JSON.stringify(packet, null, 2)}`;
+}
+
+async function copySalePulseForChatgpt(event) {
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = 'ACTUALIZANDO Y COPIANDO…';
+
+  // Start the write in the tap/click gesture; mobile Safari loses that gesture after fetch.
+  const prompt = fetchSalePulse().then((pulse) => {
+    if (!pulse?.marketingPacket || !Array.isArray(pulse.marketingPacket.marketableProducts)) {
+      throw new Error('No hay un paquete Sale Pulse actual.');
+    }
+    ADMIN_STATE.salePulse = pulse;
+    return buildChatgptMarketingHandoff(pulse.marketingPacket);
+  });
+
+  try {
+    if (typeof ClipboardItem === 'function' && typeof navigator.clipboard?.write === 'function') {
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'text/plain': prompt.then((text) => new Blob([text], { type: 'text/plain' })) }),
+      ]);
+      await prompt;
+    } else {
+      await navigator.clipboard.writeText(await prompt);
+    }
+    button.textContent = 'PROMPT COPIADO PARA CHATGPT';
+  } catch {
+    try {
+      await prompt;
+      button.textContent = 'NO SE PUDO COPIAR · REINTENTAR';
+    } catch {
+      button.textContent = 'NO SE PUDO ACTUALIZAR · REINTENTAR';
+    }
+  } finally {
+    button.disabled = false;
+  }
 }
 
 
@@ -1432,6 +1523,7 @@ function renderSalePulsePanel() {
         <p>${adminEscape(pulse.tracking?.historyWarning || '')}</p>
         <button class="primary-action" type="button" data-copy-sale-pulse>COPIAR INFORME PARA MARKETING</button>
         <button class="secondary-action" type="button" data-copy-sale-pulse-packet ${pulse.marketingPacket ? '' : 'disabled'}>COPIAR PAQUETE PARA MARKETING</button>
+        <button class="secondary-action" type="button" data-copy-sale-pulse-chatgpt>COPIAR PARA CHATGPT</button>
       </div>
     </section>`;
 }

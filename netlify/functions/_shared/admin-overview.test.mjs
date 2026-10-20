@@ -23,7 +23,10 @@ function pulse(overrides = {}) {
   };
 }
 
-function overviewScenario({ stats = {}, orders = [], salePulse = pulse(), writeClipboard = async () => {} } = {}) {
+function overviewScenario({
+  stats = {}, orders = [], salePulse = pulse(), writeClipboard = async () => {},
+  writeClipboardItem, fetchSalePulse = async () => pulse(),
+} = {}) {
   const listeners = [];
   const target = {
     innerHTML: '',
@@ -54,15 +57,34 @@ function overviewScenario({ stats = {}, orders = [], salePulse = pulse(), writeC
     },
   };
   const context = {
+    Blob,
     console,
     document: {
       getElementById(id) { return id === 'admin-tab-content' ? target : null; },
     },
     Intl,
-    navigator: { clipboard: { writeText: writeClipboard } },
+    Headers,
+    URL,
+    fetch: async (url, options) => {
+      const value = await fetchSalePulse(url, options);
+      return {
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({ salePulse: value }),
+      };
+    },
+    navigator: { clipboard: {
+      writeText: writeClipboard,
+      ...(writeClipboardItem ? { write: writeClipboardItem } : {}),
+    } },
     setTimeout,
     window: { addEventListener() {}, location: { pathname: '/admin' } },
   };
+  if (writeClipboardItem) {
+    context.ClipboardItem = class ClipboardItem {
+      constructor(data) { this.data = data; }
+    };
+  }
   runInNewContext(`${adminSource}\n;globalThis.__adminOverview = { ADMIN_STATE, renderOverviewTab };`, context);
   Object.assign(context.__adminOverview.ADMIN_STATE, {
     stats: {
@@ -80,9 +102,10 @@ function overviewScenario({ stats = {}, orders = [], salePulse = pulse(), writeC
     salePulse,
     salePulseLoading: false,
     salePulseError: '',
+    token: 'secret-admin-token',
   });
   context.__adminOverview.renderOverviewTab();
-  return { html: target.innerHTML, listeners };
+  return { html: target.innerHTML, listeners, state: context.__adminOverview.ADMIN_STATE };
 }
 
 test('Resumen puts Sale Pulse before collapsed technical information', () => {
@@ -183,4 +206,170 @@ test('packet clipboard failure gives feedback and permits retry', async () => {
   await listeners.find(({ selector }) => selector === '[data-copy-sale-pulse-packet]').listener({ currentTarget: button });
   assert.equal(button.textContent, 'NO SE PUDO COPIAR');
   assert.equal(button.disabled, false);
+});
+
+const handoffPacket = {
+  schemaVersion: 1,
+  generatedAt: '2026-10-20T15:00:00Z',
+  marketabilitySummary: { marketable: 1, sold: 1 },
+  products: [
+    { itemNumber: 34, title: 'Mesa actual', marketabilityStatus: 'MARKETABLE' },
+    { itemNumber: 35, title: 'Artículo vendido', marketabilityStatus: 'SOLD' },
+  ],
+  marketableProducts: [{
+    productId: 'product-34', itemNumber: 34, title: 'Mesa actual', askingPricePYG: 189000,
+    purchasableQuantity: 2, productUrl: '/producto/mesa-actual?ref=catalogo',
+    mainImage: '/assets/media/mesa-actual.jpg', marketabilityStatus: 'MARKETABLE',
+  }],
+  signalLists: { hotUnsold: ['product-34'] },
+};
+
+function chatgptButton(listeners) {
+  return listeners.find(({ selector }) => selector === '[data-copy-sale-pulse-chatgpt]').listener;
+}
+
+test('ChatGPT button preserves both existing copy controls and uses mobile full-width layout', () => {
+  const { html, listeners } = overviewScenario({ salePulse: pulse({ marketingPacket: handoffPacket }) });
+  assert.match(html, /data-copy-sale-pulse>COPIAR INFORME PARA MARKETING/);
+  assert.match(html, /data-copy-sale-pulse-packet[^>]*>COPIAR PAQUETE PARA MARKETING/);
+  assert.match(html, /data-copy-sale-pulse-chatgpt>COPIAR PARA CHATGPT/);
+  assert.equal(typeof chatgptButton(listeners), 'function');
+  assert.match(adminSource, /@media \(max-width: 620px\)[\s\S]*?\.sale-pulse-heading button, \.sale-pulse-copy button \{ width: 100%; \}/);
+});
+
+test('ChatGPT handoff fetches fresh authenticated Sale Pulse and copies complete safe instructions', async () => {
+  const requests = [];
+  const copied = [];
+  const fresh = pulse({ marketingPacket: handoffPacket });
+  const { listeners, state } = overviewScenario({
+    salePulse: pulse({ marketingPacket: { marketableProducts: [{ title: 'STALE PRODUCT' }] } }),
+    fetchSalePulse: async (url, options) => { requests.push({ url, options }); return fresh; },
+    writeClipboardItem: async ([item]) => copied.push(await (await item.data['text/plain']).text()),
+  });
+  const button = { disabled: false, textContent: '' };
+  await chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, '/api/admin/sale-pulse');
+  assert.equal(requests[0].options.cache, 'no-store');
+  assert.equal(requests[0].options.headers.get('x-admin-token'), 'secret-admin-token');
+  assert.equal(state.salePulse, fresh);
+  assert.equal(copied.length, 1);
+  assert.doesNotMatch(copied[0], /STALE PRODUCT|secret-admin-token|x-admin-token|cookie|session ID|receipt|bank/i);
+  assert.match(copied[0], /drive\.google\.com\/drive\/folders\/13qE2dHUjJBr1TOBUX7omaWr7r1k2nfct/);
+  assert.match(copied[0], /autoridad FINAL/);
+  assert.match(copied[0], /Item 034/);
+  assert.match(copied[0], /marketingPacket\.marketableProducts/);
+  assert.match(copied[0], /10 Items únicos: 5 para David y 5 para María/);
+  assert.match(copied[0], /Para David, propone un collage de 3 productos y otro de 2\. Para María, uno de 3 y otro de 2/);
+  assert.match(copied[0], /San Lorenzo, Barrio Santo Tomás, Paraguay/);
+  assert.match(copied[0], /Sin entrega/);
+  assert.match(copied[0], /1 al 8 de diciembre de 2026/);
+  assert.match(copied[0], /9 al 12 de diciembre de 2026/);
+  assert.match(copied[0], /No publiques automáticamente/);
+  const links = JSON.parse(copied[0].split('REFERENCIAS DE ENLACES E IMÁGENES PARA PRODUCTOS COMERCIALIZABLES\n')[1].split('\n\nPAQUETE SALE PULSE ACTUAL COMPLETO')[0]);
+  assert.equal(links.length, 1);
+  assert.equal(links[0].productUrl, 'https://thelabossieres.com/producto/mesa-actual?ref=catalogo');
+  assert.equal(links[0].imageUrl, 'https://thelabossieres.com/assets/media/mesa-actual.jpg');
+  assert.equal(links[0].storyUrl, 'https://thelabossieres.com/producto/mesa-actual?ref=catalogo&src=story');
+  assert.equal(links[0].whatsappGroupUrl, 'https://thelabossieres.com/producto/mesa-actual?ref=catalogo&src=jw-group');
+  assert.deepEqual(JSON.parse(copied[0].split('PAQUETE SALE PULSE ACTUAL COMPLETO (marketingPacket)\n')[1]), handoffPacket);
+  assert.equal(button.textContent, 'PROMPT COPIADO PARA CHATGPT');
+  assert.equal(button.disabled, false);
+});
+
+test('fresh Sale Pulse failure copies nothing stale and retries successfully', async () => {
+  let calls = 0;
+  const copied = [];
+  const { listeners } = overviewScenario({
+    salePulse: pulse({ marketingPacket: handoffPacket }),
+    fetchSalePulse: async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('Network down');
+      return pulse({ marketingPacket: handoffPacket });
+    },
+    writeClipboardItem: async ([item]) => copied.push(await (await item.data['text/plain']).text()),
+  });
+  const button = { disabled: false, textContent: '' };
+  await chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(copied.length, 0);
+  assert.equal(button.textContent, 'NO SE PUDO ACTUALIZAR · REINTENTAR');
+  assert.equal(button.disabled, false);
+  await chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(calls, 2);
+  assert.equal(copied.length, 1);
+  assert.equal(button.textContent, 'PROMPT COPIADO PARA CHATGPT');
+});
+
+test('mobile clipboard write starts in the click gesture before the fresh fetch resolves', async () => {
+  let finishFetch;
+  let writes = 0;
+  const { listeners } = overviewScenario({
+    fetchSalePulse: () => new Promise((resolve) => { finishFetch = resolve; }),
+    writeClipboardItem: async ([item]) => {
+      writes += 1;
+      await item.data['text/plain'];
+    },
+  });
+  const button = { disabled: false, textContent: '' };
+  const copying = chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(writes, 1);
+  assert.equal(button.disabled, true);
+  finishFetch(pulse({ marketingPacket: handoffPacket }));
+  await copying;
+  assert.equal(button.textContent, 'PROMPT COPIADO PARA CHATGPT');
+});
+
+test('mobile clipboard failure permits a fresh retry', async () => {
+  let fetches = 0;
+  let writes = 0;
+  const { listeners } = overviewScenario({
+    fetchSalePulse: async () => { fetches += 1; return pulse({ marketingPacket: handoffPacket }); },
+    writeClipboardItem: async ([item]) => {
+      await item.data['text/plain'];
+      writes += 1;
+      if (writes === 1) throw new Error('Clipboard denied');
+    },
+  });
+  const button = { disabled: false, textContent: '' };
+  await chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(button.textContent, 'NO SE PUDO COPIAR · REINTENTAR');
+  assert.equal(button.disabled, false);
+  await chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(fetches, 2);
+  assert.equal(writes, 2);
+  assert.equal(button.textContent, 'PROMPT COPIADO PARA CHATGPT');
+});
+
+test('fresh response without a marketing packet never copies the cached packet', async () => {
+  const copied = [];
+  const { listeners } = overviewScenario({
+    salePulse: pulse({ marketingPacket: handoffPacket }),
+    fetchSalePulse: async () => pulse({ marketingPacket: null }),
+    writeClipboardItem: async ([item]) => copied.push(await (await item.data['text/plain']).text()),
+  });
+  const button = { disabled: false, textContent: '' };
+  await chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(copied.length, 0);
+  assert.equal(button.textContent, 'NO SE PUDO ACTUALIZAR · REINTENTAR');
+  assert.equal(button.disabled, false);
+});
+
+test('clipboard failure permits a fresh retry, including writeText fallback', async () => {
+  let calls = 0;
+  let writes = 0;
+  const { listeners } = overviewScenario({
+    fetchSalePulse: async () => { calls += 1; return pulse({ marketingPacket: handoffPacket }); },
+    writeClipboard: async () => {
+      writes += 1;
+      if (writes === 1) throw new Error('Clipboard unavailable');
+    },
+  });
+  const button = { disabled: false, textContent: '' };
+  await chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(button.textContent, 'NO SE PUDO COPIAR · REINTENTAR');
+  assert.equal(button.disabled, false);
+  await chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(calls, 2);
+  assert.equal(writes, 2);
+  assert.equal(button.textContent, 'PROMPT COPIADO PARA CHATGPT');
 });
