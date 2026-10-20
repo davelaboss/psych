@@ -1177,52 +1177,116 @@ function renderOverviewTab() {
 
 const CHATGPT_MARKETING_DRIVE_URL = 'https://drive.google.com/drive/folders/13qE2dHUjJBr1TOBUX7omaWr7r1k2nfct';
 const CHATGPT_MARKETING_SITE_URL = 'https://thelabossieres.com';
+const CHATGPT_MOBILE_LIMIT = 18000;
+const CHATGPT_MOBILE_TARGET = 36;
+const CHATGPT_MOBILE_END = 'FIN DEL PAQUETE MOVIL';
+
+function mobileMarketingCandidates(packet) {
+  const seen = new Set();
+  const seenItems = new Set();
+  const products = packet.marketableProducts.filter((product) => {
+    if (!product || (product.marketabilityStatus && product.marketabilityStatus !== 'MARKETABLE') ||
+      !product.productId || !Number.isInteger(Number(product.itemNumber)) || Number(product.itemNumber) <= 0 ||
+      !product.title || !Number.isFinite(Number(product.askingPricePYG)) ||
+      !product.category || !product.saleMode || Number(product.purchasableQuantity) <= 0 ||
+      !product.productUrl || !product.mainImage || seen.has(product.productId) ||
+      seenItems.has(Number(product.itemNumber))) return false;
+    try {
+      if (new URL(product.productUrl, CHATGPT_MARKETING_SITE_URL).protocol !== 'https:' ||
+        new URL(product.mainImage, CHATGPT_MARKETING_SITE_URL).protocol !== 'https:') return false;
+    } catch { return false; }
+    seen.add(product.productId);
+    seenItems.add(Number(product.itemNumber));
+    return true;
+  });
+  const itemNumber = (product) => Number(product.itemNumber) || Number.MAX_SAFE_INTEGER;
+  const interest = (a, b) => Number(b.cartAdds || 0) - Number(a.cartAdds || 0) ||
+    Number(b.views || 0) - Number(a.views || 0) || itemNumber(a) - itemNumber(b);
+  const byInterest = [...products].sort(interest);
+  const byLowExposure = [...products].sort((a, b) => Number(a.views || 0) - Number(b.views || 0) ||
+    Number(a.cartAdds || 0) - Number(b.cartAdds || 0) || itemNumber(a) - itemNumber(b));
+  const byOldItem = [...products].sort((a, b) => itemNumber(a) - itemNumber(b));
+  const byNewItem = [...byOldItem].reverse();
+  const categories = new Map();
+  for (const product of byInterest) {
+    const category = product.category || 'Sin categoría';
+    if (!categories.has(category)) categories.set(category, product);
+  }
+  const lanes = [[...categories.values()], byInterest.filter((product) => Number(product.cartAdds || 0) > 0),
+    byInterest.filter((product) => Number(product.views || 0) > 0), byLowExposure, byOldItem, byNewItem];
+  const selected = [];
+  const selectedIds = new Set();
+  for (let index = 0; selected.length < Math.min(CHATGPT_MOBILE_TARGET, products.length); index += 1) {
+    let added = false;
+    for (const lane of lanes) {
+      const product = lane[index];
+      if (product && !selectedIds.has(product.productId)) {
+        selected.push(product);
+        selectedIds.add(product.productId);
+        added = true;
+        if (selected.length === CHATGPT_MOBILE_TARGET) break;
+      }
+    }
+    if (!added && index >= products.length) break;
+  }
+  return selected.map((product) => ({
+    itemNumber: product.itemNumber,
+    productId: product.productId,
+    title: product.title,
+    askingPricePYG: product.askingPricePYG,
+    category: product.category,
+    saleMode: product.saleMode,
+    purchasableQuantity: product.purchasableQuantity,
+    productUrl: new URL(product.productUrl, CHATGPT_MARKETING_SITE_URL).href,
+    mainImageUrl: new URL(product.mainImage, CHATGPT_MARKETING_SITE_URL).href,
+    views7d: product.views || 0,
+    cartAdds7d: product.cartAdds || 0,
+    signals: ['hotUnsold', 'lowNoInterest', 'attention', 'viewedButNotAdded', 'cartInterestWithoutSale']
+      .filter((signal) => product.signals?.[signal] === true),
+  }));
+}
 
 function buildChatgptMarketingHandoff(packet) {
-  const links = packet.marketableProducts.map((product) => {
-    const productUrl = product.productUrl
-      ? new URL(product.productUrl, CHATGPT_MARKETING_SITE_URL).href : null;
-    const imageUrl = product.mainImage
-      ? new URL(product.mainImage, CHATGPT_MARKETING_SITE_URL).href : null;
-    const trackedUrl = (source) => {
-      if (!productUrl) return null;
-      const url = new URL(productUrl);
-      url.searchParams.set('src', source);
-      return url.href;
-    };
-    return {
-      itemNumber: product.itemNumber,
-      productId: product.productId,
-      productUrl,
-      imageUrl,
-      storyUrl: trackedUrl('story'),
-      whatsappGroupUrl: trackedUrl('jw-group'),
-    };
-  });
+  const candidates = mobileMarketingCandidates(packet);
+  const minimum = Math.min(10, packet.marketableProducts.length);
+  if (candidates.length < minimum || !packet.generatedAt) {
+    throw new Error('Faltan datos completos para preparar el paquete móvil.');
+  }
+  const totalMarketable = packet.marketableProducts.length;
+  const limitation = totalMarketable < 10
+    ? `LIMITACIÓN ACTUAL: solo hay ${totalMarketable} Items comercializables; trabaja únicamente con ellos y explica que no alcanza para 5+5.\n`
+    : '';
+  const instructions = `Prepara marketing actual para la venta de mudanza de David y María en Paraguay. Responde en español claro, natural, breve y amable. David tiene la aprobación final.
 
-  return `Prepara marketing actual para la venta de mudanza de David y María en Paraguay. Responde en español claro, natural, breve y amable. David tiene la aprobación final.
+Antes de recomendar productos, comprueba que este mensaje termina exactamente con ${CHATGPT_MOBILE_END}. Si falta, no hagas recomendaciones de productos: pide copiar el paquete otra vez.
+
+DATOS ACTUALES: este JSON es un SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUALES, no el inventario completo. Los productos omitidos no se consideran vendidos ni no disponibles por esa omisión.
+`;
+  const detail = `
 
 FUENTES Y AUTORIDAD
-- El paquete Sale Pulse recién copiado al final de este mensaje es la autoridad FINAL para disponibilidad, comercialización, precios, títulos y cantidades actuales. Usa exclusivamente marketingPacket.marketableProducts para elegir artículos. No promociones Items vendidos, temporalmente reservados, pendientes de pago, no publicados o de cualquier otro modo no comercializables. No crees carritos ni reservas para comprobar disponibilidad.
-- Si tienes acceso al Google Drive Personal conectado de David, consulta el Marketing Production Desk: ${CHATGPT_MARKETING_DRIVE_URL} (Current, Config, Logs, Backups, Scripts, Archive). Puedes usar el README, manifiesto, preflight y materiales auténticos de Facebook Marketplace de Current como contexto, pero sus advertencias o datos de disponibilidad antiguos nunca reemplazan este paquete más reciente. Por ejemplo, una advertencia anterior sobre Item 034 quedó superada al publicarse correctamente.
-- Si Drive no está disponible, trabaja con este paquete y el sitio público ${CHATGPT_MARKETING_SITE_URL}. No pidas el flujo de Desktop Work.
+- La consulta Sale Pulse recién copiada es la autoridad FINAL para disponibilidad, comercialización, precios, títulos y cantidades actuales. Elige exclusivamente del subconjunto JSON. No promociones Items vendidos, temporalmente reservados, pendientes de pago o no publicados. No crees carritos ni reservas para comprobar disponibilidad.
+- Si tienes acceso al Google Drive Personal conectado de David, consulta el Marketing Production Desk: ${CHATGPT_MARKETING_DRIVE_URL} (Current, Config, Logs, Backups, Scripts, Archive). Usa su README, manifiesto, preflight y materiales auténticos de Facebook Marketplace como contexto; los datos antiguos de Drive nunca reemplazan este Sale Pulse actual.
+- Si Drive no está disponible, trabaja con estos datos y el sitio público ${CHATGPT_MARKETING_SITE_URL}. No pidas el flujo de Desktop Work.
 
 SELECCIÓN Y ENTREGABLES
 - Cuando haya suficientes productos adecuados, elige 10 Items únicos: 5 para David y 5 para María, sin repetir entre ambos. Si hay menos de 10, usa solo los comercializables disponibles y explica la limitación.
 - Para David, propone un collage de 3 productos y otro de 2. Para María, uno de 3 y otro de 2. Da recomendaciones, razones, composición y referencias a las imágenes auténticas; escribe textos cortos en español para Story y para el grupo de WhatsApp Compras/Ventas/Servicios, con enlaces directos a cada producto.
-- Equilibra señales reales de interés comprador, atractivo visual, variedad, productos más antiguos que necesitan exposición y oportunidades nuevas. Se puede publicar a diario si hay un ángulo fresco; evita publicaciones repetitivas.
+- Equilibra señales reales de interés comprador, atractivo visual, variedad, Items anteriores con poca exposición y oportunidades nuevas. Los números de Item solo aproximan antigüedad; no son fechas de publicación. Se puede publicar a diario si hay un ángulo fresco; evita publicaciones repetitivas.
 - Usa los números de Item, títulos, precios, cantidades y URLs actuales del paquete. No inventes condición, especificaciones, accesorios, urgencia, descuentos, popularidad ni otros hechos. Usa imágenes públicas actuales o activos auténticos de Drive; nunca generes imágenes falsas o engañosas de productos. Si puedes crear collages realmente con estas imágenes auténticas, hazlo; si no, entrega imágenes y una composición fácil de usar en el móvil.
 
 ENLACES Y DATOS DE LA VENTA
-- Resuelve las rutas relativas de producto e imagen contra ${CHATGPT_MARKETING_SITE_URL}. Para enlaces de Story añade o actualiza src=story; para el grupo de WhatsApp Compras/Ventas/Servicios añade o actualiza src=jw-group. Conserva cualquier otro parámetro de la URL y no añadas src a la URL de imagen.
+- Para enlaces de Story añade o actualiza src=story en cada productUrl; para el grupo de WhatsApp Compras/Ventas/Servicios usa src=jw-group. Conserva cualquier otro parámetro de la URL y no añadas src a mainImageUrl.
 - Ubicación: San Lorenzo, Barrio Santo Tomás, Paraguay. Sin entrega; cada comprador organiza su retiro. Para artículos diferidos: pago final del 1 al 8 de diciembre de 2026 y retiro del 9 al 12 de diciembre de 2026. Menciona estos plazos solo cuando correspondan al artículo.
-- Prepara borradores para aprobación de David. No publiques automáticamente, cambies precios, reserves artículos ni hagas compromisos en nombre del vendedor.
-
-REFERENCIAS DE ENLACES E IMÁGENES PARA PRODUCTOS COMERCIALIZABLES
-${JSON.stringify(links, null, 2)}
-
-PAQUETE SALE PULSE ACTUAL COMPLETO (marketingPacket)
-${JSON.stringify(packet, null, 2)}`;
+- Prepara borradores para aprobación de David. No publiques automáticamente, cambies precios, reserves artículos ni hagas compromisos en nombre del vendedor.`;
+  while (candidates.length >= minimum) {
+    const data = { generatedAt: packet.generatedAt, snapshotTotalMarketable: totalMarketable,
+      includedCandidates: candidates.length, candidates };
+    const text = `${instructions}${limitation}\nCANDIDATOS_JSON\n${JSON.stringify(data)}\nFIN_CANDIDATOS_JSON\n${detail}\n\n${CHATGPT_MOBILE_END}`;
+    if (text.length <= CHATGPT_MOBILE_LIMIT) return text;
+    candidates.pop();
+  }
+  throw new Error('El paquete móvil supera el límite seguro; no se copió ningún dato incompleto.');
 }
 
 async function copySalePulseForChatgpt(event) {
@@ -1253,8 +1317,11 @@ async function copySalePulseForChatgpt(event) {
     try {
       await prompt;
       button.textContent = 'NO SE PUDO COPIAR · REINTENTAR';
-    } catch {
-      button.textContent = 'NO SE PUDO ACTUALIZAR · REINTENTAR';
+    } catch (error) {
+      button.textContent = error?.message?.startsWith('El paquete móvil')
+        ? 'PAQUETE MÓVIL MUY GRANDE · NO COPIADO'
+        : error?.message?.startsWith('Faltan datos completos')
+          ? 'DATOS INCOMPLETOS · NO COPIADO' : 'NO SE PUDO ACTUALIZAR · REINTENTAR';
     }
   } finally {
     button.disabled = false;

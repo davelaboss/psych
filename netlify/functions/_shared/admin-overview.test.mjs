@@ -220,12 +220,49 @@ const handoffPacket = {
     productId: 'product-34', itemNumber: 34, title: 'Mesa actual', askingPricePYG: 189000,
     purchasableQuantity: 2, productUrl: '/producto/mesa-actual?ref=catalogo',
     mainImage: '/assets/media/mesa-actual.jpg', marketabilityStatus: 'MARKETABLE',
+    category: 'Muebles', saleMode: 'IMMEDIATE', views: 12, cartAdds: 2,
+    signals: { hotUnsold: true },
   }],
   signalLists: { hotUnsold: ['product-34'] },
 };
 
 function chatgptButton(listeners) {
   return listeners.find(({ selector }) => selector === '[data-copy-sale-pulse-chatgpt]').listener;
+}
+
+function handoffData(text) {
+  assert.ok(text.endsWith('FIN DEL PAQUETE MOVIL'));
+  const match = text.match(/\nCANDIDATOS_JSON\n([^\n]+)\nFIN_CANDIDATOS_JSON\n/);
+  assert.ok(match);
+  return JSON.parse(match[1]);
+}
+
+function largePacket() {
+  const categories = ['Muebles', 'Oficina', 'Decoración', 'Hogar', 'Jardín', 'Electrónica', 'Cocina', 'Herramientas'];
+  const marketableProducts = Array.from({ length: 310 }, (_, index) => {
+    const itemNumber = index + 1;
+    return {
+      productId: `product-${itemNumber}`, itemNumber,
+      title: `Artículo de mudanza ${String(itemNumber).padStart(3, '0')} en buen estado para el hogar`,
+      askingPricePYG: 75000 + itemNumber * 1000,
+      category: categories[index % categories.length], saleMode: index % 4 ? 'IMMEDIATE' : 'DELAYED',
+      purchasableQuantity: index % 5 ? 1 : 2, marketabilityStatus: 'MARKETABLE',
+      productUrl: `/producto/articulo-de-mudanza-${itemNumber}?ref=catalogo`,
+      mainImage: `/assets/media/articulo-de-mudanza-${itemNumber}-principal.webp`,
+      views: index % 6 === 0 ? 0 : index % 19, cartAdds: index % 11 === 0 ? 3 : 0,
+      signals: { hotUnsold: index % 11 === 0, attention: index % 7 === 0 },
+      adminToken: 'secret-admin-token', buyerEmail: 'private@example.com',
+    };
+  });
+  const unavailable = Array.from({ length: 110 }, (_, index) => ({
+    productId: `unavailable-${index}`, itemNumber: 311 + index, title: `Unavailable ${index}`,
+    marketabilityStatus: ['SOLD', 'TEMPORARILY_RESERVED', 'PENDING_PAYMENT_OR_CONFIRMATION', 'NOT_MARKETABLE'][index % 4],
+  }));
+  return {
+    schemaVersion: 1, generatedAt: '2026-10-20T15:00:00Z',
+    marketabilitySummary: { marketable: 310, sold: 28 },
+    products: [...marketableProducts, ...unavailable], marketableProducts,
+  };
 }
 
 test('ChatGPT button preserves both existing copy controls and uses mobile full-width layout', () => {
@@ -257,8 +294,7 @@ test('ChatGPT handoff fetches fresh authenticated Sale Pulse and copies complete
   assert.doesNotMatch(copied[0], /STALE PRODUCT|secret-admin-token|x-admin-token|cookie|session ID|receipt|bank/i);
   assert.match(copied[0], /drive\.google\.com\/drive\/folders\/13qE2dHUjJBr1TOBUX7omaWr7r1k2nfct/);
   assert.match(copied[0], /autoridad FINAL/);
-  assert.match(copied[0], /Item 034/);
-  assert.match(copied[0], /marketingPacket\.marketableProducts/);
+  assert.match(copied[0], /SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUALES/);
   assert.match(copied[0], /10 Items únicos: 5 para David y 5 para María/);
   assert.match(copied[0], /Para David, propone un collage de 3 productos y otro de 2\. Para María, uno de 3 y otro de 2/);
   assert.match(copied[0], /San Lorenzo, Barrio Santo Tomás, Paraguay/);
@@ -266,15 +302,121 @@ test('ChatGPT handoff fetches fresh authenticated Sale Pulse and copies complete
   assert.match(copied[0], /1 al 8 de diciembre de 2026/);
   assert.match(copied[0], /9 al 12 de diciembre de 2026/);
   assert.match(copied[0], /No publiques automáticamente/);
-  const links = JSON.parse(copied[0].split('REFERENCIAS DE ENLACES E IMÁGENES PARA PRODUCTOS COMERCIALIZABLES\n')[1].split('\n\nPAQUETE SALE PULSE ACTUAL COMPLETO')[0]);
-  assert.equal(links.length, 1);
-  assert.equal(links[0].productUrl, 'https://thelabossieres.com/producto/mesa-actual?ref=catalogo');
-  assert.equal(links[0].imageUrl, 'https://thelabossieres.com/assets/media/mesa-actual.jpg');
-  assert.equal(links[0].storyUrl, 'https://thelabossieres.com/producto/mesa-actual?ref=catalogo&src=story');
-  assert.equal(links[0].whatsappGroupUrl, 'https://thelabossieres.com/producto/mesa-actual?ref=catalogo&src=jw-group');
-  assert.deepEqual(JSON.parse(copied[0].split('PAQUETE SALE PULSE ACTUAL COMPLETO (marketingPacket)\n')[1]), handoffPacket);
+  const data = handoffData(copied[0]);
+  assert.equal(data.generatedAt, handoffPacket.generatedAt);
+  assert.equal(data.snapshotTotalMarketable, 1);
+  assert.equal(data.includedCandidates, 1);
+  assert.equal(data.candidates[0].productUrl, 'https://thelabossieres.com/producto/mesa-actual?ref=catalogo');
+  assert.equal(data.candidates[0].mainImageUrl, 'https://thelabossieres.com/assets/media/mesa-actual.jpg');
+  assert.equal(data.candidates[0].views7d, 12);
+  assert.deepEqual(Array.from(data.candidates[0].signals), ['hotUnsold']);
+  assert.doesNotMatch(copied[0], /REFERENCIAS DE ENLACES|PAQUETE SALE PULSE ACTUAL COMPLETO|storyUrl|whatsappGroupUrl/);
   assert.equal(button.textContent, 'PROMPT COPIADO PARA CHATGPT');
   assert.equal(button.disabled, false);
+});
+
+test('420-product snapshot produces a complete, varied mobile handoff within the budget', async () => {
+  const packet = largePacket();
+  const copied = [];
+  const { listeners } = overviewScenario({
+    fetchSalePulse: async () => pulse({ marketingPacket: packet }),
+    writeClipboardItem: async ([item]) => copied.push(await (await item.data['text/plain']).text()),
+  });
+  await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
+  assert.equal(copied.length, 1);
+  assert.ok(copied[0].length <= 18000, `Copied ${copied[0].length} characters`);
+  const data = handoffData(copied[0]);
+  assert.equal(data.snapshotTotalMarketable, 310);
+  assert.equal(data.includedCandidates, data.candidates.length);
+  assert.ok(data.candidates.length >= 30 && data.candidates.length <= 40);
+  assert.equal(new Set(data.candidates.map((product) => product.productId)).size, data.candidates.length);
+  assert.ok(new Set(data.candidates.map((product) => product.category)).size >= 6);
+  assert.ok(data.candidates.some((product) => product.views7d === 0));
+  assert.ok(data.candidates.some((product) => product.cartAdds7d > 0));
+  assert.ok(data.candidates.some((product) => product.itemNumber <= 30));
+  assert.ok(data.candidates.some((product) => product.itemNumber >= 280));
+  for (const candidate of data.candidates) {
+    const source = packet.marketableProducts.find((product) => product.productId === candidate.productId);
+    assert.ok(source);
+    assert.equal(candidate.title, source.title);
+    assert.equal(candidate.askingPricePYG, source.askingPricePYG);
+    assert.equal(candidate.saleMode, source.saleMode);
+    assert.equal(candidate.purchasableQuantity, source.purchasableQuantity);
+    assert.equal(candidate.productUrl, new URL(source.productUrl, 'https://thelabossieres.com').href);
+    assert.equal(candidate.mainImageUrl, new URL(source.mainImage, 'https://thelabossieres.com').href);
+    assert.equal(candidate.views7d, source.views);
+    assert.equal(candidate.cartAdds7d, source.cartAdds);
+  }
+  assert.doesNotMatch(copied[0], /Unavailable|secret-admin-token|private@example.com|"products"|storyUrl|whatsappGroupUrl/);
+  assert.match(copied[0], /productos omitidos no se consideran vendidos ni no disponibles/);
+  assert.match(copied[0], /Si falta, no hagas recomendaciones de productos/);
+});
+
+test('under ten marketable Items includes every eligible candidate and states the limit', async () => {
+  const packet = largePacket();
+  packet.marketableProducts = packet.marketableProducts.slice(0, 7);
+  const copied = [];
+  const { listeners } = overviewScenario({
+    fetchSalePulse: async () => pulse({ marketingPacket: packet }),
+    writeClipboardItem: async ([item]) => copied.push(await (await item.data['text/plain']).text()),
+  });
+  await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
+  assert.equal(handoffData(copied[0]).includedCandidates, 7);
+  assert.match(copied[0], /LIMITACIÓN ACTUAL: solo hay 7 Items comercializables/);
+  assert.match(copied[0], /Si hay menos de 10, usa solo los comercializables disponibles y explica la limitación/);
+});
+
+test('inconsistent marketable input cannot select sold, held, unlisted, or duplicate Items', async () => {
+  const packet = largePacket();
+  const valid = packet.marketableProducts.slice(0, 16);
+  packet.marketableProducts = [
+    ...valid,
+    ...['SOLD', 'TEMPORARILY_RESERVED', 'PENDING_PAYMENT_OR_CONFIRMATION', 'NOT_MARKETABLE']
+      .map((marketabilityStatus, index) => ({ ...valid[index], productId: `unsafe-${index}`, marketabilityStatus })),
+    { ...valid[0], productId: 'zero-stock', purchasableQuantity: 0 },
+    { ...valid[0], productId: 'no-photo', mainImage: null },
+    { ...valid[0], itemNumber: 999 },
+  ];
+  const copied = [];
+  const { listeners } = overviewScenario({
+    fetchSalePulse: async () => pulse({ marketingPacket: packet }),
+    writeClipboardItem: async ([item]) => copied.push(await (await item.data['text/plain']).text()),
+  });
+  await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
+  const candidates = handoffData(copied[0]).candidates;
+  assert.equal(candidates.length, 16);
+  assert.ok(candidates.every((candidate) => valid.some((product) => product.productId === candidate.productId)));
+});
+
+test('oversized mandatory candidate data never writes a partial clipboard result', async () => {
+  const packet = largePacket();
+  packet.marketableProducts = packet.marketableProducts.slice(0, 10).map((product) => ({
+    ...product, title: `Item ${product.itemNumber} ${'L'.repeat(1900)}`,
+  }));
+  let copies = 0;
+  const { listeners } = overviewScenario({
+    fetchSalePulse: async () => pulse({ marketingPacket: packet }),
+    writeClipboardItem: async ([item]) => { await item.data['text/plain']; copies += 1; },
+  });
+  const button = { disabled: false, textContent: '' };
+  await chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(copies, 0);
+  assert.match(button.textContent, /PAQUETE MÓVIL MUY GRANDE · NO COPIADO/);
+  assert.equal(button.disabled, false);
+});
+
+test('the separate report and raw packet buttons still copy their original content', async () => {
+  const copied = [];
+  const { listeners } = overviewScenario({
+    salePulse: pulse({ marketingPacket: handoffPacket }),
+    writeClipboard: async (text) => copied.push(text),
+  });
+  const report = listeners.find(({ selector }) => selector === '[data-copy-sale-pulse]').listener;
+  const raw = listeners.find(({ selector }) => selector === '[data-copy-sale-pulse-packet]').listener;
+  await report({ currentTarget: { disabled: false, textContent: '' } });
+  await raw({ currentTarget: { disabled: false, textContent: '' } });
+  assert.equal(copied[0], 'Informe diario');
+  assert.deepEqual(JSON.parse(copied[1]), handoffPacket);
 });
 
 test('fresh Sale Pulse failure copies nothing stale and retries successfully', async () => {
