@@ -3,6 +3,10 @@ import {
 } from '../../../source/lib/volume2-batch.ts';
 
 import {
+  PHASE2_BATCH_ITEMS,
+} from '../../../source/lib/phase2-batch.ts';
+
+import {
   SALE_READINESS_SUPPLEMENTAL_ITEMS,
 } from '../../../source/lib/sale-readiness-supplemental.ts';
 
@@ -325,6 +329,18 @@ function publicProduct(item) {
 
 
 export function catalogBatchProducts() {
+  // Admit only this seller-reviewed recovered item. Other Phase 2 items stay pending.
+  // Keep its approved copy verbatim; runtime Admin fields and media still win.
+  const publishedPhase2 = PHASE2_BATCH_ITEMS
+    .filter(item => item.id === 'real-20260828-34' && item.itemNumber === 34)
+    .map(item => ({
+      ...publicProduct(item),
+      description: item.description,
+      conditionNotes: item.conditionNotes,
+      knownDefects: item.knownDefects,
+      depositPercent: item.depositPercent,
+    }));
+
   return [
     ...VOLUME2_BATCH_ITEMS,
     ...SALE_READINESS_SUPPLEMENTAL_ITEMS,
@@ -332,6 +348,7 @@ export function catalogBatchProducts() {
     ...VOLUME4_ITEMS,
   ]
     .map(publicProduct)
+    .concat(publishedPhase2)
     .filter(
       (product) =>
         product.status !== 'UNLISTED'

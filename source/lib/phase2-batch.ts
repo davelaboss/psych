@@ -20,6 +20,7 @@ export type Phase2BatchItem = {
   floor: number;
   confidence: 'Alta' | 'Media' | 'Baja';
   saleMode: SaleMode;
+  depositPercent?: number;
   pickupDate: string | null;
   pickupWindowStart: string | null;
   pickupWindowEnd: string | null;
@@ -91,7 +92,27 @@ export const PHASE2_BATCH_ITEMS: Phase2BatchItem[] = [
   item(31, { title: 'Tradescantia morada con maceta y soporte', category: 'Jardín', description: 'Planta de follaje morado en maceta, con soporte de madera incluido.', condition: 'Buen estado visual', conditionNotes: 'Dos vistas del mismo conjunto; follaje abundante.', knownDefects: 'Estado de raíces no verificado.', photos: ['IMG_7723.JPG', 'IMG_7729.JPG'], asking: 170000, marketLow: 130000, marketHigh: 240000, fast: 145000, floor: 120000, confidence: 'Media', ...immediate, research: SOURCES.plants }),
   item(32, { title: 'Pala de jardín', category: 'Herramientas', description: 'Pala de punta con mango largo para jardín o patio.', condition: 'Usado', conditionNotes: 'Tiene tierra y desgaste propio del uso.', knownDefects: 'Unión entre mango y hoja no verificada en detalle.', photos: ['IMG_7724.JPG'], asking: 50000, marketLow: 35000, marketHigh: 65000, fast: 40000, floor: 30000, confidence: 'Alta', ...immediate, research: SOURCES.tools }),
   item(33, { title: 'Lote de 3 plantas pequeñas con macetas', category: 'Jardín', description: 'Lote de tres plantas pequeñas con sus macetas, incluida una aloe. La mesa que aparece en las fotos no está incluida. Se vende por separado.', condition: 'Buen estado visual', conditionNotes: 'Incluye las tres plantas y sus recipientes visibles.', knownDefects: 'Estado de raíces no verificado.', photos: ['IMG_7725.JPG'], asking: 200000, marketLow: 150000, marketHigh: 300000, fast: 170000, floor: 140000, confidence: 'Media', ...immediate, includedAccessories: ['3 macetas o recipientes visibles'], sellerConfirmedFields: ['description', 'includedAccessories'], research: SOURCES.plants }),
-  item(34, { title: 'Parrilla a carbón Fire King con ruedas', category: 'Cocina', description: 'Parrilla Fire King a carbón con tapa, termómetro, bandejas laterales, estante inferior y ruedas.', condition: 'Buen estado usado', conditionNotes: 'Tres vistas muestran exterior, interior y funda protectora.', knownDefects: 'Desgaste y residuos normales de cocción; accesorios internos a confirmar.', photos: ['IMG_7726.JPG', 'IMG_7727.JPG', 'IMG_7745.JPG'], asking: 950000, marketLow: 750000, marketHigh: 1300000, fast: 800000, floor: 700000, confidence: 'Media', ...delayed, requiresVehicle: true, requiresLoadingHelp: true, research: SOURCES.grill }),
+  item(34, {
+    title: "Parrilla a carbón Fire King con ruedas y funda",
+    category: "Cocina",
+    description: "Parrilla Fire King a carbón de 3 años de uso, equipada con tapa, termómetro, bandejas laterales plegables, estante inferior, ruedas y funda protectora. Precio de referencia nueva en Paraguay: Gs. 2.400.000.\n​La bandeja interior para el carbón fue reemplazada por una chapa perforada nueva, muy resistente y de gran grosor, diseñada para soportar alto calor y durar mucho más que la pieza original.",
+    condition: "Buen estado",
+    conditionNotes: "Funciona perfectamente y está lista para usar. La estructura principal y el sistema de elevación del carbón están firmes. La reparación de la bandeja interior quedó muy sólida y robusta.",
+    knownDefects: "Detalles estéticos y signos de uso continuo durante 3 años, como óxido superficial en las bandejas laterales de madera y en la parte interior de la tapa.",
+    // Historical source photos; the five current Admin media overrides remain authoritative.
+    photos: ['IMG_7726.JPG', 'IMG_7727.JPG', 'IMG_7745.JPG'],
+    asking: 1200000,
+    marketLow: 750000, marketHigh: 1300000, fast: 800000, floor: 700000, confidence: 'Media',
+    saleMode: "IMMEDIATE",
+    depositPercent: 0,
+    pickupDate: "2026-12-09",
+    pickupWindowStart: "2026-12-09",
+    pickupWindowEnd: "2026-12-12",
+    includedAccessories: ["Funda protectora para intemperie."],
+    requiresVehicle: true,
+    requiresLoadingHelp: true,
+    research: SOURCES.grill,
+  }),
   item(35, { title: 'Planta de jade grande con maceta', category: 'Jardín', description: 'Planta de jade de mayor tamaño en maceta, fotografiada desde dos ángulos.', condition: 'Buen estado visual', conditionNotes: 'Follaje abundante y sano en las fotos.', knownDefects: 'Estado de raíces no verificado.', photos: ['IMG_7730.JPG', 'IMG_7732.JPG'], asking: 150000, marketLow: 110000, marketHigh: 220000, fast: 125000, floor: 100000, confidence: 'Media', ...immediate, research: SOURCES.plants }),
   item(36, { title: 'Maceta grande blanca acanalada', category: 'Jardín', description: 'Maceta grande blanca con acabado acanalado vertical.', condition: 'Buen estado visual', conditionNotes: 'No se observan grietas evidentes.', knownDefects: 'Medidas y drenaje a confirmar.', photos: ['IMG_7733.JPG'], asking: 150000, marketLow: 110000, marketHigh: 220000, fast: 125000, floor: 100000, confidence: 'Media', ...immediate, research: SOURCES.general }),
   item(37, { title: 'Hacha Tramontina de mango largo', category: 'Herramientas', description: 'Hacha Tramontina con mango de madera para tareas de jardín y corte.', condition: 'Usado', conditionNotes: 'Hoja y mango presentan desgaste de uso.', knownDefects: 'Filo y fijación de la cabeza a revisar antes de usar.', photos: ['IMG_7734.JPG'], asking: 50000, marketLow: 40000, marketHigh: 70000, fast: 45000, floor: 35000, confidence: 'Alta', ...immediate, research: SOURCES.tools }),
