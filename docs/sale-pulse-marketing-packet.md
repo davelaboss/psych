@@ -8,14 +8,23 @@ the existing text report.
 
 **COPIAR PARA CHATGPT** starts a new authenticated, uncached Sale Pulse request on
 every click and copies a self-contained Spanish handoff for an ordinary ChatGPT
-conversation. It includes the entire privacy-safe `marketingPacket`, public
-product and image URLs, Story and WhatsApp group links, and the optional Personal
-Google Drive Marketing Production Desk folder. The newly fetched packet is final
-authority for current marketability, prices, titles and quantities; older Drive
-preflight warnings cannot override it. Selection is restricted to
-`marketableProducts`. If the refresh or clipboard write fails, the button reports
-the failure and permits another click. On supported mobile browsers, the clipboard
-write begins in the original tap gesture while the fresh request resolves.
+conversation. It includes a compact, complete JSON subset selected only from the
+fresh `marketableProducts` list, current product and main-image URLs, and the
+optional Personal Google Drive Marketing Production Desk folder. The subset aims
+for 36 varied candidates and fits within 18,000 characters. It states the
+snapshot time, total marketable count, included count, and that omitted Items
+are not thereby sold or unavailable. The ending marker `FIN DEL PAQUETE MOVIL`
+lets the receiving conversation detect paste truncation before recommending.
+The newly fetched packet is final authority for current marketability, prices,
+titles and quantities; older Drive preflight warnings cannot override it.
+Story and WhatsApp links are derived from each product URL in the conversation.
+If fewer than 10 marketable products exist, the handoff includes all eligible
+products and explains the limit. If it cannot fit a safe complete handoff, it
+copies nothing and shows a Spanish error. The separate raw packet button still
+copies the full, unmodified `marketingPacket`. If refresh or clipboard write
+fails, the button permits another click. On supported mobile browsers, the
+clipboard write begins in the original tap gesture while the fresh request
+resolves.
 
 ## Authority and safety
 
