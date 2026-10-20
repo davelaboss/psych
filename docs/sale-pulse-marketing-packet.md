@@ -6,6 +6,17 @@ analytics and marketing report. In Admin → Resumen → Sale Pulse, **COPIAR PA
 PARA MARKETING** copies readable JSON. **COPIAR INFORME PARA MARKETING** still copies
 the existing text report.
 
+**COPIAR PARA CHATGPT** starts a new authenticated, uncached Sale Pulse request on
+every click and copies a self-contained Spanish handoff for an ordinary ChatGPT
+conversation. It includes the entire privacy-safe `marketingPacket`, public
+product and image URLs, Story and WhatsApp group links, and the optional Personal
+Google Drive Marketing Production Desk folder. The newly fetched packet is final
+authority for current marketability, prices, titles and quantities; older Drive
+preflight warnings cannot override it. Selection is restricted to
+`marketableProducts`. If the refresh or clipboard write fails, the button reports
+the failure and permits another click. On supported mobile browsers, the clipboard
+write begins in the original tap gesture while the fresh request resolves.
+
 ## Authority and safety
 
 Availability comes from passive server-side database reads, never Add to Cart.
