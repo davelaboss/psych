@@ -13,6 +13,7 @@ import { VOLUME4_ITEMS } from '../../../source/lib/volume4-batch.mjs';
 import { VOLUME2_IMAGE_MAP } from '../../../source/lib/volume2-image-map.mjs';
 import { jsonResponse, loadBaseCatalog, loadCatalog, loadPublicCatalog, projectPublicCatalog } from './commerce.mjs';
 import { catalogBatchProducts } from './volume2-public.mjs';
+import { applyReviewDisposition, isReviewArchived, reviewDisposition } from './review-dispositions.mjs';
 
 const origin = 'https://example.test';
 const id = 'real-20260828-34';
@@ -84,23 +85,23 @@ function inventoryHandler(overrides = [sellerOverride], products = base) {
     loadBaseCatalog: async () => products,
     loadCatalog: url => loadCatalog(url, inputs(overrides, new Map(), products)),
     listProductOverrides: async () => overrides,
+    applyReviewDisposition, isReviewArchived, reviewDisposition,
   }, 'handler');
 }
 
-test('only Item 034 is added to both the base and public catalog, with immutable identity', () => {
+test('Item 034 publication and unrelated catalog records survive the later authorized cleanup', () => {
   assert.equal(source.itemNumber, 34);
   assert.equal(product.id, id);
   assert.equal(product.itemNumber, 34);
   assert.equal(product.status, 'AVAILABLE');
   assert.equal(product.quantityRemaining, 1);
-  assert.equal(base.length, previousBase.length + 1);
-  assert.deepEqual(base.filter(item => item.id !== id), previousBase);
-  assert.equal(catalogBatchProducts().length, previousBatch.length + 1);
+  const unrelated = items => items.filter(item => item.id !== id && !reviewDisposition(item));
+  assert.deepEqual(unrelated(base), unrelated(previousBase));
+  assert.equal(unrelated(catalogBatchProducts()).length, unrelated(previousBatch).length);
   const before = projectPublicCatalog(previousBase, []).products;
   const after = projectPublicCatalog(base, []).products;
-  assert.equal(after.length, before.length + 1);
-  assert.deepEqual(after.filter(item => !before.some(previous => previous.id === item.id)).map(item => item.id), [id]);
-  for (const pending of PHASE2_BATCH_ITEMS.filter(item => !before.some(previous => previous.id === item.id))) {
+  assert.deepEqual(unrelated(after), unrelated(before));
+  for (const pending of PHASE2_BATCH_ITEMS.filter(item => !reviewDisposition(item) && !before.some(previous => previous.id === item.id))) {
     assert.equal(after.some(item => item.id === pending.id), pending.id === id, pending.id);
   }
 });
@@ -173,7 +174,7 @@ test('Admin marks Item 034 published while unrelated pending originals stay pend
   assert.deepEqual(actual.images, images);
   assert.deepEqual(actual.sourceMismatchFields, ['images']);
   const previousIds = new Set(previousBase.map(item => item.id));
-  for (const pending of PHASE2_BATCH_ITEMS.filter(item => item.id !== id && !previousIds.has(item.id))) {
+  for (const pending of PHASE2_BATCH_ITEMS.filter(item => item.id !== id && !reviewDisposition(item) && !previousIds.has(item.id))) {
     assert.equal(products.find(item => item.id === pending.id).published, false, pending.id);
   }
 });

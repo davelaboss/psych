@@ -1,4 +1,5 @@
 import { catalogBatchProducts } from './volume2-public.mjs';
+import { applyReviewDisposition, isReviewArchived, reviewDisposition } from './review-dispositions.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
 import { readFile } from 'node:fs/promises';
@@ -374,7 +375,7 @@ export async function loadBaseCatalog(origin) {
   return [...byId.values()]
     .filter(
       (product) =>
-        product.status !== 'UNLISTED'
+        product.status !== 'UNLISTED' && !isReviewArchived(product)
     )
     .sort(
       (a, b) =>
@@ -403,18 +404,29 @@ export async function loadCatalog(origin, dependencies = {}) {
     );
 
   return products
+    .filter(product => !isReviewArchived(product))
     .map(
       (product) => {
-        const source = applyProductOverride(
+        const rawSource = applyProductOverride(
           product,
           overrideById.get(product.id)
         );
         const inventory = committedInventory.get(product.id);
+        if (reviewDisposition(product)?.disposition === 'REGALADO' && Number(inventory?.committed_quantity) > 0) {
+          return { ...rawSource, status: 'NEEDS_REVIEW', quantityRemaining: 0 };
+        }
+        const source = applyReviewDisposition(rawSource);
+        // The additional plant is separate from the paid unit confirmed by David.
+        // Fail closed if its operational row is missing or not yet reconciled.
+        if (source.id === 'real-20260828-31' && source.itemNumber === 31 &&
+            (!inventory || Number(inventory.committed_quantity) < 1 || Number(inventory.capacity) < 2)) {
+          return { ...source, status: 'NEEDS_REVIEW', quantityRemaining: 0 };
+        }
         if (!inventory) return source;
         const remaining = Math.max(0,
           Math.min(Number(source.quantityRemaining ?? source.quantityTotal ?? 1), inventory.capacity)
             - inventory.committed_quantity);
-        return {
+        return applyReviewDisposition({
           ...source,
           description: inventory.committed_quantity > 0 && typeof source.description === 'string'
             ? source.description.replace(/\bHay \d+ unidades disponibles\b/i,
@@ -424,7 +436,7 @@ export async function loadCatalog(origin, dependencies = {}) {
           quantitySold: Math.max(Number(source.quantitySold || 0),
             Number(source.quantityTotal ?? 1) - remaining),
           status: source.status === 'AVAILABLE' && remaining === 0 ? 'SOLD' : source.status,
-        };
+        });
       }
     )
     .map(correctItem054058DefectNote)
