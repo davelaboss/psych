@@ -122,9 +122,13 @@ test('brand display URLs are small while original remains available', () => {
   assert.equal(tags.length,2);
   for (const tag of tags) { assert.match(tag,/src="\/\.netlify\/images\?/); assert.match(tag,/w=252/); assert.match(tag,/data-original-src="\/assets\/media\/maria-david-luciano.png"/); }
 });
-test('social preview retains full canonical image rather than card delivery URL', () => {
+test('social preview uses its own JPEG image without changing the canonical photo', () => {
   const metadata = buildProductPreviewMetadata(product, 'https://shop.test');
-  assert.equal(metadata.imageUrl,'https://shop.test/photo.jpg');
+  const preview = new URL(metadata.imageUrl);
+  assert.equal(preview.pathname, '/.netlify/images');
+  assert.equal(preview.searchParams.get('url'), '/photo.jpg');
+  assert.equal(preview.searchParams.get('fm'), 'jpg');
+  assert.equal(product.images[0], 'photo.jpg');
 });
 test('verification rejects larger responses, crops, distortions and upscales', () => {
   const source={width:1000,height:500,bytes:10000,opaque:true};

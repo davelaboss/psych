@@ -17,6 +17,9 @@ const shell = `<!doctype html>
   <meta property="og:title" content="Venta de Mudanza" />
   <meta property="og:description" content="Venta particular en Paraguay" />
   <meta property="og:image" content="/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Venta de Mudanza" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Venta de Mudanza" />
   <meta name="twitter:image" content="/og.png" />
@@ -64,7 +67,7 @@ function deliveredRow(productId, overrides = {}) {
   };
 }
 
-test('product preview uses the real primary image and clean canonical URL', () => {
+test('product preview uses a proportional JPEG derivative and clean canonical URL', () => {
   assert.deepEqual(
     buildProductPreviewMetadata(item313, 'https://thelabossieres.com'),
     {
@@ -72,7 +75,8 @@ test('product preview uses the real primary image and clean canonical URL', () =
       canonicalUrl:
         'https://thelabossieres.com/producto/ups-apc-easy-ups-srv2ki-de-2000-va-2-kva-1-6-kw-item-313',
       imageUrl:
-        'https://thelabossieres.com/images/volume-3/PXL_20260926_194643111.jpg',
+        'https://thelabossieres.com/.netlify/images?url=%2Fimages%2Fvolume-3%2FPXL_20260926_194643111.jpg&w=900&h=900&fit=contain&q=70&fm=jpg',
+      imageType: 'image/jpeg',
     }
   );
 });
@@ -86,7 +90,7 @@ test('product preview replaces the generic social image without adding special m
 
   assert.match(
     html,
-    /property="og:image" content="https:\/\/thelabossieres\.com\/images\/volume-3\/PXL_20260926_194643111\.jpg"/
+    /property="og:image" content="https:\/\/thelabossieres\.com\/\.netlify\/images\?url=%2Fimages%2Fvolume-3%2FPXL_20260926_194643111\.jpg&amp;w=900&amp;h=900&amp;fit=contain&amp;q=70&amp;fm=jpg"/
   );
   assert.match(
     html,
@@ -107,6 +111,48 @@ test('product preview replaces the generic social image without adding special m
   assert.doesNotMatch(
     html,
     /property="og:image" content="\/og\.png"/
+  );
+  assert.match(html, /property="og:image:type" content="image\/jpeg"/);
+  assert.doesNotMatch(html, /property="og:image:(?:width|height|alt)"/);
+});
+
+test('WebP and Admin Blob photos are converted through the same public JPEG path', () => {
+  for (const source of [
+    '/images/volume-4/v4-g039-01.webp',
+    '/.netlify/functions/product-photo?key=product-1%2Fnew-photo',
+  ]) {
+    const metadata = buildProductPreviewMetadata(product({ images: [source] }), 'https://thelabossieres.com');
+    const url = new URL(metadata.imageUrl);
+    assert.equal(url.pathname, '/.netlify/images');
+    assert.equal(url.searchParams.get('url'), source);
+    assert.equal(url.searchParams.get('w'), '900');
+    assert.equal(url.searchParams.get('h'), '900');
+    assert.equal(url.searchParams.get('fit'), 'contain');
+    assert.equal(url.searchParams.get('q'), '70');
+    assert.equal(url.searchParams.get('fm'), 'jpg');
+    assert.equal(metadata.imageType, 'image/jpeg');
+  }
+});
+
+test('external photos retain their original URL and receive no invented JPEG type', () => {
+  const metadata = buildProductPreviewMetadata(
+    product({ images: ['https://photos.example/item.jpg'] }),
+    'https://thelabossieres.com'
+  );
+  assert.equal(metadata.imageUrl, 'https://photos.example/item.jpg');
+  assert.equal(metadata.imageType, null);
+});
+
+test('replacement photo identity is preserved and missing photos use the site fallback', () => {
+  const changed = buildProductPreviewMetadata(
+    product({ images: ['/assets/media/photo.jpg?v=2'] }),
+    'https://thelabossieres.com'
+  );
+  assert.equal(new URL(changed.imageUrl).searchParams.get('url'), '/assets/media/photo.jpg?v=2');
+  assert.equal(buildProductPreviewMetadata(product({ images: [] }), 'https://thelabossieres.com'), null);
+  assert.equal(
+    injectProductPreviewMetadata(shell, product({ images: [] }), 'https://thelabossieres.com'),
+    shell
   );
 });
 
