@@ -64,13 +64,29 @@ export function buildProductPreviewMetadata(product, origin) {
     return null;
   }
 
+  const source = new URL(primaryImage, origin);
+  const site = new URL(origin);
+  const image = source.origin === site.origin
+    ? new URL('/.netlify/images', site)
+    : source;
+
+  if (image !== source) {
+    image.searchParams.set('url', source.pathname + source.search);
+    image.searchParams.set('w', '900');
+    image.searchParams.set('h', '900');
+    image.searchParams.set('fit', 'contain');
+    image.searchParams.set('q', '70');
+    image.searchParams.set('fm', 'jpg');
+  }
+
   return {
     title: String(product.title).trim(),
     canonicalUrl: new URL(
       '/producto/' + encodeURIComponent(product.slug),
       origin
     ).toString(),
-    imageUrl: new URL(primaryImage, origin).toString(),
+    imageUrl: image.toString(),
+    imageType: image === source ? null : 'image/jpeg',
   };
 }
 
@@ -86,6 +102,10 @@ export function injectProductPreviewMetadata(html, product, origin) {
   for (const [attribute, value] of [
     ['property', 'og:title'],
     ['property', 'og:image'],
+    ['property', 'og:image:width'],
+    ['property', 'og:image:height'],
+    ['property', 'og:image:alt'],
+    ['property', 'og:image:type'],
     ['property', 'og:url'],
     ['name', 'twitter:title'],
     ['name', 'twitter:image'],
@@ -102,6 +122,9 @@ export function injectProductPreviewMetadata(html, product, origin) {
   const tags = [
     '  <meta property="og:title" content="' + title + '" />',
     '  <meta property="og:image" content="' + imageUrl + '" />',
+    ...(metadata.imageType
+      ? ['  <meta property="og:image:type" content="' + metadata.imageType + '" />']
+      : []),
     '  <meta property="og:url" content="' + canonicalUrl + '" />',
     '  <meta name="twitter:title" content="' + title + '" />',
     '  <meta name="twitter:image" content="' + imageUrl + '" />',
