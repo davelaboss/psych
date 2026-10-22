@@ -1256,7 +1256,7 @@ function buildChatgptMarketingHandoff(packet) {
   const limitation = totalMarketable < 10
     ? `LIMITACIÓN ACTUAL: solo hay ${totalMarketable} Items comercializables; trabaja únicamente con ellos y explica que no alcanza para 5+5.\n`
     : '';
-  const instructions = `Prepara marketing actual para la venta de mudanza de David y María en Paraguay. Responde en español claro, natural, breve y amable. David tiene la aprobación final.
+  const instructions = `Prepara marketing actual para la venta de mudanza de David y María en Paraguay. Escribe las instrucciones para ellos en inglés sencillo y todo texto para compradores en español claro, natural, breve y amable. David tiene la aprobación final.
 
 Antes de recomendar productos, comprueba que este mensaje termina exactamente con ${CHATGPT_MOBILE_END}. Si falta, no hagas recomendaciones de productos: pide copiar el paquete otra vez.
 
@@ -1266,18 +1266,24 @@ DATOS ACTUALES: este JSON es un SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUA
 
 FUENTES Y AUTORIDAD
 - La consulta Sale Pulse recién copiada es la autoridad FINAL para disponibilidad, comercialización, precios, títulos y cantidades actuales. Elige exclusivamente del subconjunto JSON. No promociones Items vendidos, temporalmente reservados, pendientes de pago o no publicados. No crees carritos ni reservas para comprobar disponibilidad.
-- Si tienes acceso al Google Drive Personal conectado de David, consulta el Marketing Production Desk: ${CHATGPT_MARKETING_DRIVE_URL} (Current, Config, Logs, Backups, Scripts, Archive). Usa su README, manifiesto, preflight y materiales auténticos de Facebook Marketplace como contexto; los datos antiguos de Drive nunca reemplazan este Sale Pulse actual.
-- Si Drive no está disponible, trabaja con estos datos y el sitio público ${CHATGPT_MARKETING_SITE_URL}. No pidas el flujo de Desktop Work.
+- Si tienes acceso al Drive Personal de David, consulta el Marketing Production Desk: ${CHATGPT_MARKETING_DRIVE_URL}. Usa README, manifiesto, preflight y archivos Marketplace como contexto; este Sale Pulse prevalece. Si Drive no está disponible, usa estos datos y ${CHATGPT_MARKETING_SITE_URL}.
 
 SELECCIÓN Y ENTREGABLES
 - Cuando haya suficientes productos adecuados, elige 10 Items únicos: 5 para David y 5 para María, sin repetir entre ambos. Si hay menos de 10, usa solo los comercializables disponibles y explica la limitación.
-- Para David, propone un collage de 3 productos y otro de 2. Para María, uno de 3 y otro de 2. Da recomendaciones, razones, composición y referencias a las imágenes auténticas; escribe textos cortos en español para Story y para el grupo de WhatsApp Compras/Ventas/Servicios, con enlaces directos a cada producto.
-- Equilibra señales reales de interés comprador, atractivo visual, variedad, Items anteriores con poca exposición y oportunidades nuevas. Los números de Item solo aproximan antigüedad; no son fechas de publicación. Se puede publicar a diario si hay un ángulo fresco; evita publicaciones repetitivas.
-- Usa los números de Item, títulos, precios, cantidades y URLs actuales del paquete. No inventes condición, especificaciones, accesorios, urgencia, descuentos, popularidad ni otros hechos. Usa imágenes públicas actuales o activos auténticos de Drive; nunca generes imágenes falsas o engañosas de productos. Si puedes crear collages realmente con estas imágenes auténticas, hazlo; si no, entrega imágenes y una composición fácil de usar en el móvil.
+- Para David y María, prepara cinco Stories individuales por persona: un producto y una foto auténtica por Story, con un solo Link sticker al detalle de ese producto, src=story y texto VER ARTÍCULO. Da textos breves en español y referencias a las fotos auténticas.
+- Una hoja de contacto de cinco imágenes es opcional para revisión interna, no un archivo necesario para publicar. Evita imágenes adjuntas redundantes, instrucciones duplicadas y documentos intermedios innecesarios.
+- Equilibra interés real, atractivo visual, variedad, Items antiguos poco vistos y oportunidades nuevas. El número de Item solo aproxima antigüedad. Evita repeticiones sin ángulo nuevo.
+- Usa solo números, títulos, precios, cantidades, URLs e imágenes auténticas actuales. No inventes condición, especificaciones, accesorios, urgencia ni popularidad, ni alteres productos en imágenes.
 
 ENLACES Y DATOS DE LA VENTA
-- Para enlaces de Story añade o actualiza src=story en cada productUrl; para el grupo de WhatsApp Compras/Ventas/Servicios usa src=jw-group. Conserva cualquier otro parámetro de la URL y no añadas src a mainImageUrl.
+- Instagram Stories: cada foto lleva su propio Link sticker directo con src=story y VER ARTÍCULO. No agrupes varios productos en una Story.
+- WhatsApp Status/Updates: publica entradas nativas individuales con nombre, precio, retiro y URL directa clicable con src=story. No uses src=jw-group ni supongas que el Link sticker de Instagram sigue siendo clicable al compartir una Story en WhatsApp.
+- Grupo de WhatsApp Compras/Ventas/Servicios: añade o actualiza src=jw-group en cada productUrl. Prepara una introducción amable y entradas individuales fáciles de copiar; integra el cierre en la última entrada. Si las vistas previas muestran bien el producto, no exijas fotos adjuntas duplicadas. Si hacen falta fotos, indica envíos de cuatro y una, nunca cinco juntas.
+- Comprueba que cada vista previa de enlace muestre la foto del producto correcto. Si una vista previa de WhatsApp está desactualizada, añade un parámetro nuevo de caché (por ejemplo, cb=fecha-hora) al enlace del producto, conservando src y los demás parámetros; vuelve a comprobar la vista previa. No añadas src a mainImageUrl.
 - Ubicación: San Lorenzo, Barrio Santo Tomás, Paraguay. Sin entrega; cada comprador organiza su retiro. Para artículos diferidos: pago final del 1 al 8 de diciembre de 2026 y retiro del 9 al 12 de diciembre de 2026. Menciona estos plazos solo cuando correspondan al artículo.
+- Da listas breves y separadas para Android y iPhone, en inglés cotidiano. Android: Drive, pulsación larga en primera foto, selección de las demás, Download; Instagram, Select Multiple > fotos numeradas > Next > Separate. Cada Link sticker lleva su enlace y VER ARTÍCULO. Quita pasos obsoletos.
+- Android Facebook Marketplace: Marketplace > Sell > Create listing > One item > Add photos; elige las fotos, toca Done, establece el orden con toques numerados y toca Next. Completa Title, Price, Category, Condition y Description; escribe el precio solo con números, conserva la categoría correcta si ya se seleccionó, ubica aproximadamente San Lorenzo en el mapa y revisa el anuncio completo directamente antes de Publish, sin inventar otra pantalla de vista previa.
+- iPhone: usa controles comprobados, sin copiar Android. Para una foto en Drive: More > Send a copy > Save image. Señala si no comprobaste descarga por lotes o Marketplace.
 - Prepara borradores para aprobación de David. No publiques automáticamente, cambies precios, reserves artículos ni hagas compromisos en nombre del vendedor.`;
   while (candidates.length >= minimum) {
     const data = { generatedAt: packet.generatedAt, snapshotTotalMarketable: totalMarketable,
