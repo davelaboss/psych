@@ -1776,7 +1776,7 @@ async function syncStaticCartFromServer({ migrateLegacy = false } = {}) {
     return null;
   } catch (error) {
     window.__staticCartSynchronized = false;
-    showCartNotice(error instanceof Error ? error.message : 'No se pudo consultar la reserva.');
+    showCartNotice(error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError) ? error.message : 'No se pudo consultar la reserva.');
     return null;
   }
 }
@@ -2219,7 +2219,7 @@ async function addStaticCartItem(productId, analytics = null) {
     return true;
   } catch (error) {
     showAddToCartErrorDialog(
-      error instanceof Error
+      error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError)
         ? error.message
         : 'No se pudo reservar el artículo.',
       returnFocusTo
@@ -2237,7 +2237,7 @@ async function removeStaticCartItem(productId) {
     if (result.lease) setStaticCartFromLease(result.lease);
     else saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
   } catch (error) {
-    showCartNotice(error instanceof Error ? error.message : 'No se pudo liberar el artículo.');
+    showCartNotice(error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError) ? error.message : 'No se pudo liberar el artículo.');
   }
 }
 
@@ -2249,7 +2249,7 @@ async function clearStaticCart() {
     if (!result.ok) throw new Error(result.error || 'No se pudo liberar el carrito.');
     saveStaticCart({ expiresAt: null, ids: [], quantities: {} });
   } catch (error) {
-    showCartNotice(error instanceof Error ? error.message : 'No se pudo liberar el carrito.');
+    showCartNotice(error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError) ? error.message : 'No se pudo liberar el carrito.');
   }
 }
 
@@ -2276,7 +2276,7 @@ async function setStaticCartQuantity(productId, quantity) {
     if (!result.ok) throw new Error(result.error || 'No se pudo actualizar la cantidad.');
     if (result.lease) setStaticCartFromLease(result.lease);
   } catch (error) {
-    showCartNotice(error instanceof Error ? error.message : 'No se pudo actualizar la cantidad.');
+    showCartNotice(error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError) ? error.message : 'No se pudo actualizar la cantidad.');
     await syncStaticCartFromServer();
   }
 }

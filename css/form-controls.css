@@ -1,0 +1,75 @@
+/* Shared field surfaces; exclude toggles, hidden fields and copy-only values. */
+body main :is(input:not([type]), input[type="text"], input[type="search"], input[type="tel"], input[type="email"], input[type="password"], input[type="number"], input[type="date"], input[type="url"], textarea, select):not([readonly]):not([hidden]):not(:disabled) {
+  border: 1px solid #75877c;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  min-height: 44px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 9px 11px;
+  font-size: 16px;
+}
+body main select { padding-right: 28px; }
+body main :is(input, select, textarea):disabled {
+  background: #eeeee8;
+  color: #626960;
+  border-style: dashed;
+  cursor: not-allowed;
+  opacity: 1;
+}
+body main :is(input, textarea)[readonly] { cursor: text; }
+body main :is(input, select, textarea):not([readonly]):not([hidden]):not(:disabled):is([aria-invalid="true"], :user-invalid) {
+  border: 2px solid #a23226;
+}
+body :is(input, select, textarea, button, a, summary):focus-visible,
+body main .search-panel .catalog-search-label input:focus-visible {
+  outline: 3px solid var(--forest-dark);
+  outline-offset: 3px;
+}
+.file-picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid #75877c;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+.file-picker-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 9px 12px;
+  border-radius: 6px;
+  background: var(--forest);
+  color: #fff;
+  font-weight: 700;
+}
+.file-picker-name { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+/* The native input stays focusable and clickable over the Spanish presentation. */
+body main .file-picker > input[type="file"].file-picker-input,
+#receipt-form .file-picker > input[type="file"].file-picker-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.file-picker:focus-within, .admin-upload-label:focus-within, .upload-button:focus-within {
+  outline: 3px solid var(--forest-dark);
+  outline-offset: 3px;
+}
+.file-picker:has(input:disabled) { background: #eeeee8; border-style: dashed; }
+.file-picker:has(input:disabled) .file-picker-action { background: #626960; }
+.file-picker:has(input:is([aria-invalid="true"], :user-invalid)) { border: 2px solid #a23226; }

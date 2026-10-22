@@ -390,7 +390,7 @@ async function renderCheckoutPage() {
 
           <label>
             <span>
-              Email
+              Correo electrónico
               <small>
                 (opcional)
               </small>
@@ -632,7 +632,7 @@ async function renderCheckoutPage() {
           );
         } catch (error) {
           errorBox.textContent =
-            error instanceof Error
+            error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError)
               ? error.message
               : 'No se pudo crear el pedido.';
 
@@ -793,7 +793,7 @@ async function renderOrderPage() {
 
         <p>
           ${escapeHtml(
-            error instanceof Error
+            error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError)
               ? error.message
               : 'Intentá nuevamente.'
           )}
@@ -1195,7 +1195,7 @@ function setupCustomerCancellation(order, access) {
       dialog.close();
       displayOrder(result.order, access);
     } catch (error) {
-      errorBox.textContent = error instanceof Error
+      errorBox.textContent = error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError)
         ? error.message
         : 'No se pudo cancelar el pedido.';
       errorBox.hidden = false;
@@ -1256,14 +1256,15 @@ async function setupPickupScheduler(order, access) {
           if (!saved.ok) throw new Error(result.error || 'No se pudo agendar el retiro.');
           await setupPickupScheduler(order, access);
         } catch (problem) {
-          error.textContent = problem.message;
+          error.textContent = problem instanceof TypeError || problem instanceof SyntaxError
+            ? 'No se pudo agendar el retiro. Intenta de nuevo.' : problem.message;
           error.hidden = false;
           button.disabled = false;
         }
       });
     });
   } catch (error) {
-    target.innerHTML = `<h2>Retiro</h2><p>${escapeHtml(error.message)}</p>`;
+    target.innerHTML = `<h2>Retiro</h2><p>${escapeHtml(error instanceof TypeError || error instanceof SyntaxError ? 'No se pudieron cargar los horarios. Intenta de nuevo.' : error.message)}</p>`;
   }
 }
 
@@ -1434,6 +1435,7 @@ function renderBankSection(
             name="file"
             accept="image/jpeg,image/png,image/webp,application/pdf"
             required
+            aria-describedby="receipt-file-help receipt-error"
           >
         </label>
 
@@ -1451,7 +1453,7 @@ function renderBankSection(
           Enviar comprobante
         </button>
 
-        <small>
+        <small id="receipt-file-help">
           JPEG, PNG, WebP o PDF.
           Máximo 3 MB.
         </small>
@@ -1483,7 +1485,7 @@ function setupBankAliasCopy(alias) {
 
       aliasValue.focus();
       aliasValue.select();
-      status.textContent = 'Alias seleccionado; copiálo.';
+      status.textContent = 'Alias seleccionado; cópialo.';
     }
   });
 }
@@ -1519,6 +1521,24 @@ function setupReceiptUpload(
 
       const data =
         new FormData(form);
+
+      const fileInput = form.querySelector('input[type="file"]');
+      const file = data.get('file');
+      let validationError = '';
+      if (!file || !file.name) validationError = 'Selecciona el comprobante.';
+      else if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
+        validationError = 'El comprobante debe ser JPEG, PNG, WebP o PDF.';
+      } else if (file.size <= 0 || file.size > 3_000_000) {
+        validationError = 'El comprobante debe pesar entre 1 byte y 3 MB.';
+      }
+      if (validationError) {
+        errorBox.textContent = validationError;
+        errorBox.hidden = false;
+        fileInput.setAttribute('aria-invalid', 'true');
+        fileInput.focus();
+        return;
+      }
+      fileInput.removeAttribute('aria-invalid');
 
       data.append(
         'orderId',
@@ -1563,7 +1583,7 @@ function setupReceiptUpload(
         );
       } catch (error) {
         errorBox.textContent =
-          error instanceof Error
+          error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError)
             ? error.message
             : 'No se pudo enviar el comprobante.';
 
@@ -1622,7 +1642,7 @@ function orderStatusLabel(status) {
 
   return (
     labels[status] ||
-    status
+    'Estado por confirmar'
   );
 }
 
