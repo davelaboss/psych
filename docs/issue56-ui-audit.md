@@ -10,6 +10,7 @@ Verification date: October 22, 2026. Scope: the Netlify static application serve
 - Localized native constraint-validation messages for website inputs, so an English browser still receives Spanish missing-value, email, range and generic validation messages.
 - Added receipt preflight validation for the existing JPEG/PNG/WebP/PDF whitelist and 1–3,000,000-byte bounds. Server authorization, validation, storage and submission endpoint are unchanged. Error focus returns to the input; server rejection and network errors preserve the file for retry. Existing Spanish receipt-success display is retained.
 - Changed checkout `Email` and Admin order-search `email` to `Correo electrónico`; translated header/FAQ `delivery` to `entregas`; corrected the Alias copy fallback accent. Customer fetch/parsing errors now use the existing Spanish fallback rather than browser-generated English exceptions. Unknown order statuses receive a Spanish fallback.
+- Translated Admin marketing weekday/period selectors and stored slot-label previews to Spanish without changing slot identifiers, scheduling, email artifacts, or PR #54 handoff instructions.
 - Made the existing Admin add-photo input keyboard reachable while keeping its Spanish label and immediate-upload behavior. Replacement-photo buttons and existing Spanish upload labels retain their behavior.
 - Loaded the shared assets from the common HTML shell. Did not change the marketing handoff function or PR #54 instructions.
 
@@ -37,7 +38,7 @@ Buttons, hidden inputs, radio/checkbox sizing, product photographs and decorativ
 ## Automated results
 
 - `npm test`: **573 passed, 0 failed, 0 skipped**.
-- `npm run test:forms`: **106 browser assertions passed** in Chromium at 1280×1000 and 390×1000, with `en-US` browser locale and Spanish document language.
+- `npm run test:forms`: **110 browser assertions passed** in Chromium at 1280×1000 and 390×1000, with `en-US` browser locale and Spanish document language.
 - Browser coverage includes actual static route bootstraps for `/`, `/carrito`, `/checkout`, `/pedido/...`, `/admin`; actual Admin inventory/review/pricing/marketing/orders renderers; keyboard entry to the native file chooser; focus/labels; all editable field types; readonly/disabled/hidden preservation; email validation; file-validation/retry/payload behavior; long filenames; and horizontal-overflow checks.
 - `node --check` passed for all four changed JavaScript files. `git diff --check` passed.
 - Reproduce: `npm ci`, `npx playwright install chromium`, `npm test`, `npm run test:forms`. Set `FORM_QA_OUTPUT` for screenshot location; `FORM_QA_BASE` can override the baseline SHA. Browser tests start their own loopback server and never create production data.

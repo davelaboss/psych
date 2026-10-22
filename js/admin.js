@@ -756,16 +756,16 @@ function renderAdminTab() {
 
 
 const MARKETING_SLOTS = [
-  ['MONDAY_AM', 'Monday AM'],
-  ['MONDAY_PM', 'Monday PM'],
-  ['TUESDAY_AM', 'Tuesday AM'],
-  ['TUESDAY_PM', 'Tuesday PM'],
-  ['WEDNESDAY_AM', 'Wednesday AM'],
-  ['WEDNESDAY_PM', 'Wednesday PM'],
-  ['THURSDAY_AM', 'Thursday AM'],
-  ['THURSDAY_PM', 'Thursday PM'],
-  ['FRIDAY_AM', 'Friday AM'],
-  ['FRIDAY_PM', 'Friday PM'],
+  ['MONDAY_AM', 'Lunes · mañana'],
+  ['MONDAY_PM', 'Lunes · tarde'],
+  ['TUESDAY_AM', 'Martes · mañana'],
+  ['TUESDAY_PM', 'Martes · tarde'],
+  ['WEDNESDAY_AM', 'Miércoles · mañana'],
+  ['WEDNESDAY_PM', 'Miércoles · tarde'],
+  ['THURSDAY_AM', 'Jueves · mañana'],
+  ['THURSDAY_PM', 'Jueves · tarde'],
+  ['FRIDAY_AM', 'Viernes · mañana'],
+  ['FRIDAY_PM', 'Viernes · tarde'],
 ];
 
 const MARKETING_DAY_KEYS = [
@@ -844,7 +844,7 @@ function renderMarketingPacket(packet) {
         <div>
           <span class="section-kicker">VISTA PREVIA</span>
           <h3>${adminEscape(packet.subject)}</h3>
-          <p>${adminEscape(packet.slotDate)} · ${adminEscape(packet.slotLabel)}</p>
+          <p>${adminEscape(packet.slotDate)} · ${adminEscape(MARKETING_SLOTS.find(([key]) => key === packet.slotKey)?.[1] || 'Franja seleccionada')}</p>
         </div>
         <span class="admin-pill ${sent ? 'is-published' : ''}">
           ${statusLabel}

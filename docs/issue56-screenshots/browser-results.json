@@ -43,6 +43,8 @@
     "1280: Admin review editable fields bounded",
     "1280: Admin pricing editable fields bounded",
     "1280: Admin marketing editable fields bounded",
+    "1280: marketing slot labels Spanish, identifiers preserved",
+    "1280: stored English slot label localized in preview",
     "1280: Admin orders editable fields bounded",
     "1280: shipped / renders",
     "1280: catalog dropdown field surface",
@@ -96,6 +98,8 @@
     "390: Admin review editable fields bounded",
     "390: Admin pricing editable fields bounded",
     "390: Admin marketing editable fields bounded",
+    "390: marketing slot labels Spanish, identifiers preserved",
+    "390: stored English slot label localized in preview",
     "390: Admin orders editable fields bounded",
     "390: shipped / renders",
     "390: catalog dropdown field surface",
@@ -108,5 +112,5 @@
     "390: cancellation confirmation Spanish",
     "390: shipped /admin renders"
   ],
-  "passed": 106
+  "passed": 110
 }

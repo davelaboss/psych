@@ -21,6 +21,16 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/api/orders/get') return json({ order });
   if (url.pathname === '/api/orders/pickup') return json({ fulfillments: [{ timingKey: 'IMMEDIATE', timingLabel: 'Retiro', eligible: true, slots: [{ key: 'LOCAL', label: '9 de diciembre, 09:00–10:00', remaining: 1 }] }] });
   if (url.pathname.startsWith('/api/')) return json({ ok: true });
+  if (/^\/(assets|images|inventory)\//.test(url.pathname) || url.pathname === '/.netlify/images') {
+    try {
+      const imagePath = url.pathname === '/.netlify/images' ? url.searchParams.get('url') : url.pathname;
+      const file = path.resolve(root, '.' + (imagePath.startsWith('/') ? imagePath : '/' + imagePath));
+      if (!file.startsWith(root + path.sep)) throw new Error('outside root');
+      res.setHeader('Content-Type', file.endsWith('.png') ? 'image/png' : file.endsWith('.webp') ? 'image/webp' : 'image/jpeg');
+      res.end(await readFile(file));
+    } catch { res.statusCode = 404; res.end(); }
+    return;
+  }
   if (/^\/(css|js|_next)\//.test(url.pathname)) {
     try {
       const file = path.resolve(root, '.' + url.pathname);
@@ -183,6 +193,10 @@ try {
         ({ inventory: renderInventoryTab, review: renderReviewTab, pricing: renderPricingTab, marketing: renderMarketingTab, orders: renderOrdersTab })[tab]();
       }, tab);
       check(`${width}: Admin ${tab} editable fields bounded`, await page.locator('main input:not([type=checkbox]), main select').evaluateAll(els => els.length > 0 && els.every(el => getComputedStyle(el).borderColor === 'rgb(117, 135, 124)')));
+      if (tab === 'marketing') {
+        check(`${width}: marketing slot labels Spanish, identifiers preserved`, await page.locator('select[name=slotKey] option').evaluateAll(options => options.length === 10 && options.every(el => /^(Lunes|Martes|Miércoles|Jueves|Viernes) · (mañana|tarde)$/.test(el.textContent) && /^[A-Z]+_(AM|PM)$/.test(el.value))));
+        check(`${width}: stored English slot label localized in preview`, await page.evaluate(() => renderMarketingPacket({ status: 'DRAFT', slotDate: '2026-10-05', slotKey: 'MONDAY_AM', slotLabel: 'Monday AM', subject: 'Vista de prueba', products: [], socialCopy: '' }).includes('Lunes · mañana')));
+      }
       await page.screenshot({ path: path.join(output, `admin-${tab}-${width}.png`), fullPage: true });
     }
     // Exercise actual shipped route bootstraps against exclusively local API fixtures.
