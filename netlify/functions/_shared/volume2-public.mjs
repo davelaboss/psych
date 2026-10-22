@@ -21,6 +21,7 @@ import {
 import {
   VOLUME2_IMAGE_MAP,
 } from '../../../source/lib/volume2-image-map.mjs';
+import { applyReviewDisposition, isReviewArchived, reviewDisposition, ITEM_031_APPROVED_PUBLIC, withItem031Availability } from './review-dispositions.mjs';
 
 
 function slugify(value) {
@@ -329,16 +330,24 @@ function publicProduct(item) {
 
 
 export function catalogBatchProducts() {
-  // Admit only this seller-reviewed recovered item. Other Phase 2 items stay pending.
-  // Keep its approved copy verbatim; runtime Admin fields and media still win.
+  // Admit only the specifically approved recovered Phase 2 items.
+  // Keep approved copy verbatim; runtime Admin fields and media still win.
   const publishedPhase2 = PHASE2_BATCH_ITEMS
-    .filter(item => item.id === 'real-20260828-34' && item.itemNumber === 34)
+    .filter(item => (item.id === 'real-20260828-34' && item.itemNumber === 34) ||
+      (item.id === 'real-20260828-31' && item.itemNumber === 31))
     .map(item => ({
       ...publicProduct(item),
       description: item.description,
       conditionNotes: item.conditionNotes,
       knownDefects: item.knownDefects,
-      depositPercent: item.depositPercent,
+      depositPercent: item.depositPercent ?? (item.saleMode === 'DELAYED' ? 25 : 100),
+      ...(item.itemNumber === 31 ? {
+        ...structuredClone(ITEM_031_APPROVED_PUBLIC),
+        quantityTotal: 2, quantityRemaining: 2,
+        // Retained historically; select the remaining plant's photo only after
+        // the owner identifies which of the two originals belongs to it.
+        images: [],
+      } : {}),
     }));
 
   return [
@@ -347,11 +356,15 @@ export function catalogBatchProducts() {
     ...VOLUME3_ITEMS,
     ...VOLUME4_ITEMS,
   ]
+    .map(item => reviewDisposition(item)?.disposition === 'RESTORED' && item.status === 'UNLISTED'
+      ? { ...item, status: 'AVAILABLE' } : item)
     .map(publicProduct)
     .concat(publishedPhase2)
+    .map(applyReviewDisposition)
+    .map(withItem031Availability)
     .filter(
       (product) =>
-        product.status !== 'UNLISTED'
+        product.status !== 'UNLISTED' && !isReviewArchived(product)
     )
     .sort(
       (a, b) =>

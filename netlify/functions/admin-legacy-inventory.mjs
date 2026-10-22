@@ -5,6 +5,7 @@ import {
   loadBaseCatalog,
   loadCatalog,
 } from './_shared/commerce.mjs';
+import { applyReviewDisposition, isReviewArchived, reviewDisposition } from './_shared/review-dispositions.mjs';
 
 import {
   PHASE2_BATCH_ID,
@@ -422,7 +423,7 @@ function applyLivePublicAuthority(
   if (
     !live ||
     Number(legacy.itemNumber || 0) < 1 ||
-    Number(legacy.itemNumber || 0) > 57
+    (Number(legacy.itemNumber || 0) > 57 && !reviewDisposition(legacy))
   ) {
     return legacy;
   }
@@ -585,17 +586,23 @@ export default async function handler(request) {
             );
           }
 
-          const authoritative =
-            applyLivePublicAuthority(
-              product,
-              live
-            );
+          const current = applyLivePublicAuthority(
+            product,
+            live
+          );
+          const authoritative = live?.status === 'NEEDS_REVIEW' ? current : applyReviewDisposition(current);
+
+          const decision = reviewDisposition(product);
 
           return {
             ...authoritative,
 
             published:
-              Boolean(live),
+              Boolean(live) && !(decision && live.status === 'NEEDS_REVIEW'),
+            ...(decision ? { reviewDisposition: decision, archived: isReviewArchived(product) } : {}),
+            ...(decision && live?.status === 'NEEDS_REVIEW' ? {
+              reviewFlag: 'Conflicto de inventario: verificar compromisos y capacidad antes de resolver este Item.',
+            } : {}),
 
             images:
               Array.isArray(
@@ -768,7 +775,10 @@ export default async function handler(request) {
         },
       ],
 
-      products,
+      // Private historical retrieval without a new archive UI. Normal Admin
+      // inventory, prices and Revisión receive only ordinary products.
+      archivedProducts: products.filter(isReviewArchived),
+      products: products.filter(product => !isReviewArchived(product)),
     });
   } catch (error) {
     return jsonResponse(
