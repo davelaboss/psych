@@ -2402,7 +2402,8 @@ function renderLegacyProductDetail(
               accept="image/*"
               multiple
               data-photo-add
-              hidden
+              class="sr-only"
+              aria-label="Agregar fotos"
             >
           </label>
         </header>
@@ -4771,7 +4772,7 @@ function renderOrdersTab() {
           <input
             type="search"
             value="${adminEscapeAttribute(ADMIN_STATE.orderSearch)}"
-            placeholder="N.º de pedido, nombre, teléfono o email"
+            placeholder="N.º de pedido, nombre, teléfono o correo electrónico"
             data-admin-order-search
           >
         </label>

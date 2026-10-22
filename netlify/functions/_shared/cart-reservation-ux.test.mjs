@@ -70,7 +70,7 @@ test('checkout removes premature order-hold copy and duplicate policy while reta
   assert.match(checkoutForm, /name="finalSaleAcknowledged"[\s\S]*?required/);
   assert.match(checkoutForm, /no se realizan entregas/i);
   assert.match(checkoutForm, /Me corresponde retirar la compra en el domicilio del vendedor/i);
-  assert.match(checkoutForm, /Nombre y apellido[\s\S]*?final-sale-acknowledgment[\s\S]*?WhatsApp[\s\S]*?Email[\s\S]*?Crear pedido y ver datos/);
+  assert.match(checkoutForm, /Nombre y apellido[\s\S]*?final-sale-acknowledgment[\s\S]*?WhatsApp[\s\S]*?Correo electrónico[\s\S]*?Crear pedido y ver datos/);
 });
 
 test('checkout order transition clears the cart and therefore its persistent reservation UI', () => {

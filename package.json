@@ -5,7 +5,8 @@
   "scripts": {
     "test": "node --import tsx --test netlify/functions/_shared/*.test.mjs tools/volume4-pilot/*.test.mjs tools/moving-sale-review/*.test.mjs",
     "review:volume5": "node --import tsx tools/moving-sale-review/cli.mjs",
-    "pilot:volume4": "node --import tsx tools/volume4-pilot/run-pilot.mjs"
+    "pilot:volume4": "node --import tsx tools/volume4-pilot/run-pilot.mjs",
+    "test:forms": "node tools/form-controls/verify.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.0",
@@ -13,6 +14,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.17",
+    "playwright": "^1.64.1",
     "sharp": "^0.35.5",
     "tsx": "^4.20.6"
   }
