@@ -38,6 +38,12 @@ test('admin order detail separates fulfillment, money, grouping, pickup, and act
   assert.doesNotMatch(admin, /Disponible después de confirmar el pago total\./);
 });
 
+test('admin buyer/order detail labels the unchanged escaped email value in Spanish', () => {
+  const detail = admin.slice(admin.indexOf('function renderAdminOrderDetail('));
+  assert.match(detail, /Correo electrónico:\s*\$\{adminEscape\(\s*order\.buyer\s*\.email/);
+  assert.doesNotMatch(detail, /\bEmail:/);
+});
+
 test('buyer regrouping surfaces backend protection errors and refreshes Planillas state', () => {
   const start = admin.indexOf('const updateBuyerGroup = async');
   const end = admin.indexOf("target.querySelector('[data-merge-buyer-group]')", start);

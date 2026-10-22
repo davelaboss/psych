@@ -37,7 +37,7 @@ Buttons, hidden inputs, radio/checkbox sizing, product photographs and decorativ
 
 ## Automated results
 
-- `npm test`: **573 passed, 0 failed, 0 skipped**.
+- `npm test`: **574 passed, 0 failed, 0 skipped**.
 - `npm run test:forms`: **110 browser assertions passed** in Chromium at 1280×1000 and 390×1000, with `en-US` browser locale and Spanish document language.
 - Browser coverage includes actual static route bootstraps for `/`, `/carrito`, `/checkout`, `/pedido/...`, `/admin`; actual Admin inventory/review/pricing/marketing/orders renderers; keyboard entry to the native file chooser; focus/labels; all editable field types; readonly/disabled/hidden preservation; email validation; file-validation/retry/payload behavior; long filenames; and horizontal-overflow checks.
 - `node --check` passed for all four changed JavaScript files. `git diff --check` passed.
@@ -68,3 +68,16 @@ The website-owned picker and validation text are Spanish regardless of browser l
 No inventory data, Item IDs, prices, orders, receipts, reservations, permissions, authentication, checkout rules, Volume 5 data/workflows, seller-confirmed information, or marketing handoff instructions were changed. Existing full-suite tests that cover those areas were run unchanged except for the email-label assertion.
 
 **Does David need to do anything?** Review the PR and before/after evidence through Governance. At release approval, include the Netlify badge toggle above. No immediate data entry or production test order/payment is needed.
+
+## Final Governance correction and release checklist
+
+The buyer/order detail label in `js/admin.js` now reads `Correo electrónico:`. The conditional display, underlying `order.buyer.email` value and escaping remain unchanged. A focused regression checks both the Spanish label with the existing escaped value and the absence of `Email:` in that renderer. Validation: focused UI tests 7/7, full suite 574/574, browser assertions 110/110; syntax and diff checks passed.
+
+- [ ] Governance obtains David's explicit final authorization before any merge, deployment or production hosting-setting change.
+- [ ] Only after that authorization, open the existing Moving Sale project in Netlify.
+- [ ] Navigate to **Project configuration → General → Powered by Netlify badge**.
+- [ ] Set the badge to **Off**, select **Save**, then reopen the setting and confirm it remains Off.
+- [ ] Verify the public production site in a fresh private browser session with no stored badge-dismissal preference. Check the homepage and a product page at desktop and mobile widths: the badge and its English invitation must be absent. Do not rely on the per-browser “Hide this badge” option.
+- [ ] After the authorized code release, verify Spanish controls and field visibility on the released site without creating test orders, payments or production records.
+
+The badge setting takes effect on the next request without a redeploy, per the official documentation linked above. **Checklist status: pending owner authorization; no production setting has been changed. Do not merge or deploy from this programming workflow.**

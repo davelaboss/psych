@@ -5352,7 +5352,7 @@ function renderAdminOrderDetail(
               ?.email
               ? `
                 <p>
-                  Email:
+                  Correo electrónico:
                   ${adminEscape(
                     order.buyer
                       .email
