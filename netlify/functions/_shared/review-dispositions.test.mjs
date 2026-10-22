@@ -8,7 +8,7 @@ import * as supplemental from '../../../source/lib/sale-readiness-supplemental.t
 import { loadBaseCatalog, loadCatalog, projectPublicCatalog, jsonResponse } from './commerce.mjs';
 import { isMarketingEligible } from './marketing-email.mjs';
 import { createCartReservationHandler } from '../cart-reservation.mjs';
-import { REVIEW_DISPOSITIONS, applyReviewDisposition, isReviewArchived, reviewDisposition } from './review-dispositions.mjs';
+import { REVIEW_DISPOSITIONS, applyReviewDisposition, isReviewArchived, reviewDisposition, ITEM_031_APPROVED_PUBLIC } from './review-dispositions.mjs';
 
 const base = await loadBaseCatalog('https://example.test');
 const byNumber = number => base.find(p => p.itemNumber === number);
@@ -57,13 +57,16 @@ test('all twelve decisions resolve without new IDs; seven histories remain priva
 
 test('restorations retain approved details and photos and newer seller fields remain authoritative', async () => {
   const p31 = byNumber(31), p90 = byNumber(90);
-  assert.equal(p31.askingPricePYG, 170000);
+  assert.equal(p31.askingPricePYG, 25000);
   assert.equal(p31.quantityTotal, 2);
-  assert.equal(p31.title, phase2.PHASE2_BATCH_ITEMS.find(p => p.itemNumber === 31).title);
+  assert.equal(p31.title, 'Tradescantia morada con maceta (cada una)');
+  assert.deepEqual(p31.includedAccessories, ['1 planta Tradescantia morada', '1 maceta']);
+  assert.match(p31.description, /La mesa no está incluida/);
+  assert.doesNotMatch(p31.description, /soporte|2 plantas|dos unidades/);
   for (const field of ['description','conditionNotes','knownDefects']) {
-    assert.equal(p31[field], phase2.PHASE2_BATCH_ITEMS.find(p => p.itemNumber === 31)[field]);
+    assert.equal(p31[field], ITEM_031_APPROVED_PUBLIC[field] + (field==='description'?' Queda 1 planta disponible.':''));
   }
-  assert.equal(p31.images.length, 2);
+  assert.deepEqual(p31.images, []);
   assert.equal(p90.askingPricePYG, 750000);
   assert.equal(p90.images.length, 6);
   assert.match(p90.description, /delantera derecha.*automático no funciona/);
@@ -79,7 +82,7 @@ test('restorations retain approved details and photos and newer seller fields re
     for (const p of [p31,p90]) {
       const actual = resolved.find(a => a.id === p.id);
       assert.equal(actual.askingPricePYG,123456);
-      assert.equal(actual.description,'Texto posterior');
+      assert.equal(actual.description,p.itemNumber===31?'Texto posterior. Queda 1 planta disponible.':'Texto posterior');
       assert.deepEqual(actual.images,overrides[0].images);
       assert.equal(actual.quantityRemaining,1);
       assert.equal(actual.status,'AVAILABLE');
@@ -88,6 +91,51 @@ test('restorations retain approved details and photos and newer seller fields re
     }
   }
   assert.deepEqual(overrides,snapshot);
+});
+
+test('Item 031 withholds ambiguous originals, preserves both historical files, and accepts new seller photos', async () => {
+  const original=phase2.PHASE2_BATCH_ITEMS.find(p=>p.itemNumber===31);
+  assert.deepEqual(original.photos,['IMG_7723.JPG','IMG_7729.JPG']);
+  const images=['assets/media/real-20260828-31-0.jpg?v=1789320365792',
+    '/assets/media/real-20260828-31-1.jpg',
+    'https://thelabossieres.com/.netlify/images?url=%2Fassets%2Fmedia%2Freal-20260828-31-0.jpg'];
+  const overrides=[{productId:original.id,images}];
+  const current=(await loadCatalog('',inputs(overrides))).find(p=>p.itemNumber===31);
+  assert.deepEqual(current.images,[]);
+  assert.deepEqual(overrides[0].images,images);
+  const admin=await (await adminHandler(overrides)(new Request('https://example.test/api/admin/legacy-inventory'))).json();
+  assert.deepEqual(admin.products.find(p=>p.itemNumber===31).photoFiles,original.photos);
+  const newer=(await loadCatalog('',inputs([{productId:original.id,images:['/.netlify/functions/product-photo?key=31%2Fnew-seller-photo']}]))).find(p=>p.itemNumber===31);
+  assert.deepEqual(newer.images,['/.netlify/functions/product-photo?key=31%2Fnew-seller-photo']);
+});
+
+test('Item 031 ignores obsolete source overrides, corrects two-plant copy and never offers more than the original two', async () => {
+  const historical = phase2.PHASE2_BATCH_ITEMS.find(p=>p.itemNumber===31);
+  const override = { productId: byNumber(31).id, publicFields: {
+    title: historical.title, askingPricePYG: historical.asking,
+    description: historical.description, includedAccessories: [],
+    conditionNotes: historical.conditionNotes, knownDefects: historical.knownDefects,
+    quantityTotal: 9, quantityRemaining: 9,
+  }};
+  const inventory = new Map([[byNumber(31).id,{capacity:9,committed_quantity:1}]]);
+  const get = async overrides => (await loadCatalog('',inputs(overrides,inventory))).find(p=>p.itemNumber===31);
+  const current = await get([override]);
+  assert.equal(current.title,ITEM_031_APPROVED_PUBLIC.title);
+  assert.equal(current.askingPricePYG,25000);
+  assert.deepEqual(current.includedAccessories,ITEM_031_APPROVED_PUBLIC.includedAccessories);
+  assert.deepEqual([current.quantityTotal,current.quantityRemaining,current.quantitySold],[2,1,1]);
+  assert.match(current.description,/Queda 1 planta disponible/);
+  assert.doesNotMatch(current.description,/soporte|2 plantas|dos unidades/);
+  const oldCopy = 'Tradescantia morada con maceta, vendida por unidad. Hay 2 plantas disponibles y cada foto muestra una de las dos unidades. El precio corresponde a una planta con su maceta. La mesa no está incluida.';
+  const latest = {productId:current.id,publicFields:{description:oldCopy,askingPricePYG:25000}};
+  const corrected = await get([latest]);
+  assert.equal(corrected.description,ITEM_031_APPROVED_PUBLIC.description+' Queda 1 planta disponible.');
+  inventory.set(current.id,{capacity:9,committed_quantity:2});
+  const sold = await get([latest]);
+  assert.equal(sold.quantityRemaining,0);
+  assert.equal(sold.status,'SOLD');
+  assert.match(sold.description,/No quedan plantas disponibles/);
+  assert.doesNotMatch(sold.description,/Queda 1|2 plantas|dos unidades/);
 });
 
 test('gift overrides cannot recreate stock, prices or the wrong game identity', async () => {

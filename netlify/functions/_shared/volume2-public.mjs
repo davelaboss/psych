@@ -21,7 +21,7 @@ import {
 import {
   VOLUME2_IMAGE_MAP,
 } from '../../../source/lib/volume2-image-map.mjs';
-import { applyReviewDisposition, isReviewArchived, reviewDisposition } from './review-dispositions.mjs';
+import { applyReviewDisposition, isReviewArchived, reviewDisposition, ITEM_031_APPROVED_PUBLIC, withItem031Availability } from './review-dispositions.mjs';
 
 
 function slugify(value) {
@@ -342,8 +342,11 @@ export function catalogBatchProducts() {
       knownDefects: item.knownDefects,
       depositPercent: item.depositPercent ?? (item.saleMode === 'DELAYED' ? 25 : 100),
       ...(item.itemNumber === 31 ? {
+        ...structuredClone(ITEM_031_APPROVED_PUBLIC),
         quantityTotal: 2, quantityRemaining: 2,
-        images: ['assets/media/real-20260828-31-0.jpg', 'assets/media/real-20260828-31-1.jpg'],
+        // Retained historically; select the remaining plant's photo only after
+        // the owner identifies which of the two originals belongs to it.
+        images: [],
       } : {}),
     }));
 
@@ -358,6 +361,7 @@ export function catalogBatchProducts() {
     .map(publicProduct)
     .concat(publishedPhase2)
     .map(applyReviewDisposition)
+    .map(withItem031Availability)
     .filter(
       (product) =>
         product.status !== 'UNLISTED' && !isReviewArchived(product)
