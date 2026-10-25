@@ -883,6 +883,10 @@ function renderProductDetail(product) {
                 <dd>${escapeHtml(accessories)}</dd>
               </div>
 
+              ${product.id.startsWith('real-202610-volume5-') && product.notIncludedVisible ? `<div><dt>No incluido con la venta</dt><dd>${escapeHtml(product.notIncludedVisible)}</dd></div>` : ''}
+              ${product.id.startsWith('real-202610-volume5-') && product.measurements ? `<div><dt>Medidas</dt><dd>${escapeHtml(product.measurements)}</dd></div>` : ''}
+              ${product.id.startsWith('real-202610-volume5-') && product.functionality ? `<div><dt>Funcionamiento</dt><dd>${escapeHtml(product.functionality)}</dd></div>` : ''}
+
               <div>
                 <dt>Disponibilidad</dt>
                 <dd>${escapeHtml(statusText)}</dd>

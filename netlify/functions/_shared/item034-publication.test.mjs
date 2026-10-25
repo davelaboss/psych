@@ -95,7 +95,7 @@ test('Item 034 publication and unrelated catalog records survive the later autho
   assert.equal(product.itemNumber, 34);
   assert.equal(product.status, 'AVAILABLE');
   assert.equal(product.quantityRemaining, 1);
-  const unrelated = items => items.filter(item => item.id !== id && !reviewDisposition(item));
+  const unrelated = items => items.filter(item => item.itemNumber < 510 && item.id !== id && !reviewDisposition(item));
   assert.deepEqual(unrelated(base), unrelated(previousBase));
   assert.equal(unrelated(catalogBatchProducts()).length, unrelated(previousBatch).length);
   const before = projectPublicCatalog(previousBase, []).products;

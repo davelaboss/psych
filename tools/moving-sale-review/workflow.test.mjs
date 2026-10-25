@@ -173,10 +173,10 @@ test('DELAYED uses website payment and pickup dates exactly', () => {
   assert.equal(p.finalPaymentWindowStart, '2026-12-01'); assert.equal(p.finalPaymentWindowEnd, '2026-12-08'); assert.equal(p.pickupWindowStart, '2026-12-09'); assert.equal(p.pickupWindowEnd, '2026-12-12');
 });
 
-test('private review/research fields cannot leak into finalized products; current public catalog contains no Volume 5', () => {
+test('private review/research fields cannot leak into finalized products; local drafts are not activated', () => {
   const item = sample().items[0]; item.product.pricingResearch = { privateSellerFloor: 1 }; item.product.ownerNotes = 'Privado';
   const final = finalizedProduct(item); assert.equal(Object.hasOwn(final, 'pricingResearch'), false); assert.equal(Object.hasOwn(final, 'ownerNotes'), false);
-  assert.ok(catalogBatchProducts().every(p => !/volume5-/.test(p.id)));
+  for (const p of catalogBatchProducts()) assert.equal(Object.hasOwn(p, 'ownerNotes'), false);
   assert.equal(final.status, 'NEEDS_REVIEW'); assert.equal(final.needsReview, true);
 });
 
@@ -224,6 +224,10 @@ test('previously used global item and product identities rejected in disk valida
   state.mode = 'real'; state.items[0].product.itemNumber = 510; state.items[0].product.id = 'real-202610-volume5-510'; state.items[0].product.slug = 'producto-item-510';
   await assert.rejects(() => validateState(state, { outputDir, used: new Set([510]), allocated: [510] }), /usado anteriormente/);
   await assert.rejects(() => validateState(state, { outputDir, used: new Set(), allocated: [510], existing: [{ id: state.items[0].product.id }] }), /global duplicado/);
+  const ownPublished = structuredClone(state.items[0].product);
+  assert.equal((await validateState(state, { outputDir, used: new Set([510]), allocated: [510], existing: [ownPublished] })).ok, true);
+  await assert.rejects(() => validateState(state, { outputDir, used: new Set([510]), allocated: [510], existing: [ownPublished, { id: 'foreign-product', itemNumber: 510 }] }), /otro producto/);
+  await assert.rejects(() => validateState(state, { outputDir, used: new Set([510]), allocated: [], existing: [ownPublished] }), /registro inmutable/);
 });
 
 // Exercise the actual UI control and save functions, including their emitted edit

@@ -2,7 +2,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { active, assert, reduceState, restoreState, finalizedProduct, approvalErrors } from './core.mjs';
+import { active, assert, reduceState, restoreState, approvedHandoff } from './core.mjs';
 import { readJson, saveState, validateState, stateContext, allocate, withLock, atomicJson, copyApp } from './storage.mjs';
 export async function serve({ root, outputDir, port = 5105 }) {
   outputDir = path.resolve(outputDir);
@@ -38,13 +38,11 @@ export async function serve({ root, outputDir, port = 5105 }) {
             await generateWorkbook(state, outputDir); return { state, message: 'Planilla actualizada.' };
           }
           if (url.pathname === '/api/handoff') {
-            assert(active(state).length && state.mode === 'real', 'El lote está vacío o es un ensayo.');
-            for (const item of active(state)) assert(item.reviewStatus === 'approved' && !approvalErrors(item).length, 'Todos los Items deben estar completos y aprobados.');
+            const handoff = approvedHandoff(state);
             const latestContext = await stateContext(state, root);
             await validateState(state, { ...latestContext, outputDir });
-            const batch = active(state).map(finalizedProduct);
-            await atomicJson(path.join(outputDir, 'volume5-local-handoff.json'), { volume: 5, batchId: state.batchId, publicationAllowed: false, publicProjectionAudit: 'REQUIRED_IN_SEPARATE_WORKSTREAM', products: batch, covers: active(state).map(i => ({ item: i.product.itemNumber, ownerApprovedCoverSource: i.coverSourceId, finalPhotos0: finalizedProduct(i).photos[0], publicImages0: null, match: 'NOT_CHECKED' })) });
-            return { state, message: 'Entrega local generada. Falta auditoría del catálogo público en el proceso de publicación separado.' };
+            await atomicJson(path.join(outputDir, 'volume5-local-handoff.json'), handoff);
+            return { state, message: `Entrega local generada: ${handoff.products.length} aprobados; ${handoff.heldItemNumbers.length} fuera de esta entrega. No se publicó.` };
           }
           let next;
           if (url.pathname === '/api/restore') next = restoreState(state, data.state);

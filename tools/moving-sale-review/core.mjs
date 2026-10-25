@@ -118,11 +118,28 @@ export function orderedPhotos(item) {
 export function finalizedProduct(item) {
   return { ...Object.fromEntries(PUBLIC_FIELDS.map(key => [key, clone(item.product[key])])), photos: orderedPhotos(item).map(p => `/${p.path}`), coverIndex: 0, status: 'NEEDS_REVIEW', needsReview: true };
 }
-export function auditRoundTrip(state, batch, projection) {
+export function approvedSelection(state, { itemNumbers, excludeItemNumbers = [] } = {}) {
   reconcile(state);
   assert(state.mode === 'real' && active(state).length > 0, 'Un ensayo o lote vacío no puede pasar a producción.');
-  const items = active(state);
+  const available = active(state), requested = itemNumbers === undefined ? null : new Set(itemNumbers);
+  assert(!requested || (requested.size === itemNumbers.length && requested.size > 0), 'Selección vacía o duplicada.');
+  if (requested) for (const number of requested) assert(available.some(i => i.product.itemNumber === number), `Item ${number}: no existe en la revisión.`);
+  const excluded = new Set(excludeItemNumbers);
+  const items = available.filter(i => !excluded.has(i.product.itemNumber) && (requested ? requested.has(i.product.itemNumber) : i.reviewStatus === 'approved'));
+  assert(items.length > 0, 'No hay Items aprobados nuevos para esta entrega.');
+  for (const item of items) assert(item.reviewStatus === 'approved' && !approvalErrors(item).length, `Item ${item.product.itemNumber}: aprobación incompleta. ${approvalErrors(item).join(' ')}`);
+  return items;
+}
+export function approvedHandoff(state, options = {}) {
+  const items = approvedSelection(state, options), selected = new Set(items.map(i => i.product.itemNumber));
+  return { volume: 5, batchId: state.batchId, revision: state.revision, publicationAllowed: false, selectionScope: 'approved-only', heldItemNumbers: active(state).filter(i => !selected.has(i.product.itemNumber)).map(i => i.product.itemNumber), publicProjectionAudit: 'REQUIRED_IN_SEPARATE_WORKSTREAM', products: items.map(finalizedProduct), covers: items.map(i => ({ item: i.product.itemNumber, ownerApprovedCoverSource: i.coverSourceId, finalPhotos0: finalizedProduct(i).photos[0], publicImages0: null, match: 'NOT_CHECKED' })) };
+}
+export function auditRoundTrip(state, batch, projection, { itemNumbers } = {}) {
+  reconcile(state);
+  assert(state.mode === 'real' && active(state).length > 0, 'Un ensayo o lote vacío no puede pasar a producción.');
+  const items = itemNumbers === undefined ? active(state) : approvedSelection(state, { itemNumbers });
   assert(batch.length === items.length && projection.length === items.length, 'Cobertura incompleta del lote o catálogo público.');
+  for (const rows of [batch, projection]) for (const key of ['id', 'itemNumber', 'slug']) assert(new Set(rows.map(p => p[key])).size === rows.length, `Identificador duplicado en entrega: ${key}.`);
   const result = [];
   for (const item of items) {
     assert(item.reviewStatus === 'approved' && !approvalErrors(item).length, `Item ${item.product.itemNumber}: aprobación incompleta.`);

@@ -44,7 +44,14 @@ export async function registry(root) {
     exec('git', ['log', '--all', '--format=', '-p', '--', 'index.html', 'source/lib/*batch*', 'source/lib/sample-products.ts', 'source/lib/*supplemental*', 'volume*/**/*.json', 'volume*/production-handoff.json', 'tools/volume4-pilot/*.mjs'], { cwd: root, maxBuffer: 128 * 1024 * 1024 }),
     exec('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root }),
   ]);
-  const existing = [...legacy, ...VOLUME4_ITEMS];
+  let volume5 = [];
+  try {
+    const file = path.join(root, 'source/lib/volume5-batch.mjs');
+    await readFile(file);
+    ({ VOLUME5_ITEMS: volume5 } = await import(pathToFileURL(file).href));
+    assert(Array.isArray(volume5), 'Lote publicado de Volume 5 inválido.');
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const existing = [...legacy, ...VOLUME4_ITEMS, ...volume5];
   const used = historicalNumbers(history.stdout);
   for (const product of existing) used.add(Number(product.itemNumber));
   // All legacy slots are blocked, including historical gaps, never inferred reusable.
@@ -99,10 +106,12 @@ export async function validateState(state, { outputDir, used = new Set(), existi
     assert(Object.hasOwn({ unreviewed: 1, missing: 1, approved: 1, 're-review': 1 }, item.reviewStatus), 'Estado de revisión inválido.');
     assert(item.product.status === 'NEEDS_REVIEW' && item.product.needsReview === true, 'Todos los borradores deben permanecer NEEDS_REVIEW.');
     if (state.mode === 'real') {
-      assert(!used.has(item.product.itemNumber), 'Item usado anteriormente en catálogo o historial.');
       assert(allowed.has(item.product.itemNumber), 'Item ausente del registro inmutable.');
+      assert(!existing.some(p => p.itemNumber === item.product.itemNumber && p.id !== item.product.id), 'Número de Item usado por otro producto.');
+      const ownPublished = existing.some(p => p.itemNumber === item.product.itemNumber && p.id === item.product.id && /^real-202610-volume5-\d+$/.test(p.id));
+      assert(!used.has(item.product.itemNumber) || ownPublished, 'Item usado anteriormente en catálogo o historial.');
     }
-    for (const key of ['id', 'slug']) assert(!existing.some(p => p[key] === item.product[key]), `Identificador global duplicado: ${key}.`);
+    for (const key of ['id', 'slug']) assert(!existing.some(p => p[key] === item.product[key] && !(state.mode === 'real' && allowed.has(item.product.itemNumber) && p.itemNumber === item.product.itemNumber && p.id === item.product.id && /^real-202610-volume5-\d+$/.test(p.id))), `Identificador global duplicado: ${key}.`);
     assert(Array.isArray(item.product.includedAccessories) && item.product.includedAccessories.every(x => typeof x === 'string'), 'Incluidos inválidos.');
     const timing = structuredClone(item.product); applyTiming(timing);
     for (const key of ['pickupWindowStart', 'pickupWindowEnd', 'finalPaymentWindowStart', 'finalPaymentWindowEnd']) assert(item.product[key] === timing[key], 'Fechas de retiro o pago inválidas.');
