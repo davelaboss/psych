@@ -5,13 +5,26 @@ import { parseArgs } from 'node:util';
 import { ingest } from './intake.mjs';
 import { serve } from './server.mjs';
 import { readJson, atomicJson, stateContext, validateState, saveState, copyApp } from './storage.mjs';
-import { auditRoundTrip, assert, reduceState } from './core.mjs';
-const { positionals, values } = parseArgs({ allowPositionals: true, options: { repo: { type: 'string' }, photos: { type: 'string' }, notes: { type: 'string' }, output: { type: 'string' }, port: { type: 'string' }, fixture: { type: 'boolean' }, batch: { type: 'string' }, projection: { type: 'string' }, operations: { type: 'string' } } });
+import { auditRoundTrip, assert, reduceState, approvedHandoff, approvedSelection } from './core.mjs';
+import { prepareRelease } from './release.mjs';
+const { positionals, values } = parseArgs({ allowPositionals: true, options: { repo: { type: 'string' }, photos: { type: 'string' }, notes: { type: 'string' }, output: { type: 'string' }, port: { type: 'string' }, fixture: { type: 'boolean' }, batch: { type: 'string' }, projection: { type: 'string' }, operations: { type: 'string' }, 'approved-only': { type: 'boolean' }, items: { type: 'string' }, held: { type: 'string' }, 'release-dir': { type: 'string' }, 'expected-count': { type: 'string' } } });
 const root = path.resolve(values.repo || fileURLToPath(new URL('../../', import.meta.url)));
 const outputDir = path.resolve(values.output || path.join(root, '.moving-sale-review/volume5'));
 try {
+  const numbers = value => { if (value === undefined) return undefined; assert(/^\d+(,\d+)*$/.test(value), 'Use números de Item separados por comas.'); return value.split(',').map(Number); };
   const command = positionals[0] || 'serve';
-  if (command === 'ingest') {
+  if (command === 'release') {
+    assert(values['release-dir'], 'Indique --release-dir fuera del sitio y de la revisión.');
+    const expectedCount = values['expected-count'] === undefined ? undefined : Number(values['expected-count']);
+    assert(expectedCount === undefined || (Number.isInteger(expectedCount) && expectedCount > 0), 'Cantidad esperada inválida.');
+    console.log(JSON.stringify(await prepareRelease({ root, outputDir, releaseDir: values['release-dir'], itemNumbers: numbers(values.items), heldItemNumbers: numbers(values.held), expectedCount }), null, 2));
+  } else if (command === 'handoff') {
+    const state = await readJson(path.join(outputDir, 'owner-review-state.json'));
+    await validateState(state, { ...await stateContext(state, root), outputDir });
+    const handoff = approvedHandoff(state, { itemNumbers: numbers(values.items) });
+    await atomicJson(path.join(outputDir, 'volume5-local-handoff.json'), handoff);
+    console.log(JSON.stringify({ approved: handoff.products.length, held: handoff.heldItemNumbers, publicationAllowed: false }));
+  } else if (command === 'ingest') {
     assert(values.photos, 'Indique --photos con la carpeta de originales.');
     const result = await ingest({ root, intakeDir: values.photos, notesPath: values.notes, outputDir, fixture: values.fixture });
     console.log(JSON.stringify({ outputDir, ...result.validation }, null, 2));
@@ -42,7 +55,8 @@ try {
     if (command === 'workbook') { const { generateWorkbook } = await import('./workbook.mjs'); await generateWorkbook(state, outputDir); console.log('Planilla actualizada.'); }
     if (command === 'audit') {
       assert(values.batch && values.projection, 'Indique --batch y --projection del proceso futuro.');
-      const audit = auditRoundTrip(state, await readJson(values.batch), await readJson(values.projection));
+      const itemNumbers = values.items ? numbers(values.items) : values['approved-only'] ? approvedSelection(state).map(i => i.product.itemNumber) : undefined;
+      const audit = auditRoundTrip(state, await readJson(values.batch), await readJson(values.projection), { itemNumbers });
       await atomicJson(path.join(outputDir, 'volume5-round-trip-audit.json'), { volume: 5, batchId: state.batchId, revision: state.revision, generatedAt: new Date().toISOString(), publicationAllowed: false, audit });
       console.log('Todos los campos y fotos coinciden. Esta herramienta no publica.');
     }

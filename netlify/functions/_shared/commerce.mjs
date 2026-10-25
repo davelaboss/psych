@@ -3,6 +3,7 @@ import { applyReviewDisposition, isReviewArchived, reviewDisposition, withItem03
 import { createHash, randomBytes } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { dispatchSellerNotificationsSafely } from './seller-notifications.mjs';
 
 export const SALES_OPEN_AT =
@@ -350,10 +351,10 @@ function parseEmbeddedCatalog(html) {
 }
 
 
-export async function loadBaseCatalog(origin) {
+export async function loadBaseCatalog(origin, { catalogRoot = '.' } = {}) {
   // Netlify bundles this same committed storefront source via included_files.
   // Keep the origin argument for existing consumers; no HTTP lookup is needed.
-  const html = await readFile('index.html', 'utf8');
+  const html = await readFile(path.join(catalogRoot, 'index.html'), 'utf8');
 
   const staticProducts =
     parseEmbeddedCatalog(html);

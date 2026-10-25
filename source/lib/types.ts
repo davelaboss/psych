@@ -21,6 +21,12 @@ export type PublicProduct = {
   condition: string;
   conditionNotes: string;
   knownDefects: string;
+  functionality?: string;
+  measurements?: string;
+  saleStructure?: 'individual' | 'set' | 'flexible' | 'undecided';
+  notIncludedVisible?: string;
+  finalPaymentWindowStart?: string | null;
+  finalPaymentWindowEnd?: string | null;
   images: string[];
   askingPricePYG: number;
   originalPricePYG: number | null;

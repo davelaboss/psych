@@ -224,6 +224,10 @@ test('previously used global item and product identities rejected in disk valida
   state.mode = 'real'; state.items[0].product.itemNumber = 510; state.items[0].product.id = 'real-202610-volume5-510'; state.items[0].product.slug = 'producto-item-510';
   await assert.rejects(() => validateState(state, { outputDir, used: new Set([510]), allocated: [510] }), /usado anteriormente/);
   await assert.rejects(() => validateState(state, { outputDir, used: new Set(), allocated: [510], existing: [{ id: state.items[0].product.id }] }), /global duplicado/);
+  const ownPublished = structuredClone(state.items[0].product);
+  assert.equal((await validateState(state, { outputDir, used: new Set([510]), allocated: [510], existing: [ownPublished] })).ok, true);
+  await assert.rejects(() => validateState(state, { outputDir, used: new Set([510]), allocated: [510], existing: [ownPublished, { id: 'foreign-product', itemNumber: 510 }] }), /otro producto/);
+  await assert.rejects(() => validateState(state, { outputDir, used: new Set([510]), allocated: [], existing: [ownPublished] }), /registro inmutable/);
 });
 
 // Exercise the actual UI control and save functions, including their emitted edit

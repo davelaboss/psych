@@ -117,7 +117,7 @@ npm run review:volume5 -- workbook --output .moving-sale-review/volume5
 
 El generador Excel usa las dependencias de documentos instaladas en el equipo, descubiertas desde `CODEX_WORKSPACE_NODE_MODULES` o el directorio estándar del runtime local. En otro equipo configure esa variable apuntando al `node_modules` que contiene `@oai/artifact-tool`. El servidor y la revisión existentes no dependen de Codex en ejecución. Si falla la planilla después del ingreso, los IDs ya reservados, imágenes y estado inicial quedan conservados; corrija la dependencia y ejecute `workbook`, **no repita el ingreso**.
 
-**Generar entrega local aprobada** solo crea `volume5-local-handoff.json` privado con productos `NEEDS_REVIEW`, `needsReview:true`, `publicationAllowed:false`. La portada seleccionada va a `photos[0]`, con `coverIndex:0`, sin cambiar nombres ni perder el orden relativo restante. La auditoría pública queda explícitamente pendiente; no se afirma MATCH sin una proyección real.
+**Generar entrega local aprobada** crea `volume5-local-handoff.json` privado solo con los Items aprobados y completos. Los demás siguen en la revisión, con sus IDs y estados originales. La entrega registra los IDs seleccionados y retenidos; sus productos siguen `NEEDS_REVIEW`, `needsReview:true`, `publicationAllowed:false`. La portada seleccionada va a `photos[0]`, con `coverIndex:0`, sin cambiar nombres ni perder el orden relativo restante. La auditoría pública queda explícitamente pendiente; no se afirma MATCH sin una proyección real. También puede ejecutar `npm run review:volume5 -- handoff --output "<revisión>"`.
 
 En un trabajo de publicación separado, compare el lote y la proyección reales:
 
@@ -125,7 +125,27 @@ En un trabajo de publicación separado, compare el lote y la proyección reales:
 npm run review:volume5 -- audit --output .moving-sale-review/volume5 --batch "C:\MovingSale\Volume5\future-final-batch.json" --projection "C:\MovingSale\Volume5\future-public-projection.json"
 ```
 
-Ambos archivos son arreglos JSON. La auditoría exige aprobación completa y compara todos los campos públicos enumerados en `PUBLIC_FIELDS`, además de conteo, identidades, orden y portada. Usa `askingPricePYG` e `images` para la proyección pública. Exige campos explícitos de medidas, funcionamiento, incluidos y no incluidos; el adaptador de publicación deberá preservarlos. **La proyección actual del sitio todavía omite algunos de esos campos y etiqueta Items mayores como volumen 4: no es apta para Volume 5 sin el cambio controlado futuro.** El auditor rechaza esa pérdida, no la oculta. Cualquier desigualdad falla con salida no cero; solo una coincidencia real genera `MATCH = YES`. El archivo de auditoría tampoco autoriza ni ejecuta publicación.
+Ambos archivos son arreglos JSON. Sin opciones, la auditoría conserva la exigencia de aprobación de todo el lote. Con `--approved-only` compara todos los aprobados; con `--items 512,514,604` compara exactamente esos IDs, que deben estar aprobados. Compara todos los campos de `PUBLIC_FIELDS`, además de conteo, identidades únicas, orden y portada; no admite Items omitidos, adicionales ni incompletos en la selección. Usa `askingPricePYG` e `images` para la proyección pública. El adaptador distingue Volume 5 por su identidad y conserva el texto aprobado, medidas, funcionamiento, estructura, exclusiones y fechas de pago como campos explícitos. Los Volumes anteriores conservan su proyección. Cualquier desigualdad falla con salida no cero; solo una coincidencia real genera `MATCH = YES`. El archivo de auditoría tampoco autoriza ni ejecuta publicación.
+
+### Preparar una entrega parcial para autorización
+
+Desde el checkout de código revisado, con la revisión real existente:
+
+```powershell
+npm run review:volume5 -- release --output "C:\MovingSale\Volume5\review\real-intake" --release-dir "C:\MovingSale\Volume5\release-102" --held 512,514,604 --expected-count 102
+```
+
+La carpeta de entrega debe estar fuera del checkout y de la revisión. La preparación bloquea escrituras concurrentes de la revisión mientras verifica los originales y copias optimizadas, el registro de IDs, todas las aprobaciones y el recorrido exacto de los campos públicos. No escribe en el estado del propietario, la planilla, las rutas de producción ni los servicios de Netlify. `publicationAllowed` permanece `false`.
+
+La entrega contiene un manifiesto con hashes del estado, registro y planilla, commits de base y herramientas, IDs seleccionados/retenidos, lote candidato, proyección real del adaptador público, auditoría por Item, comparación aditiva, manifiesto de fotos y copias idénticas de las fotos públicas seleccionadas. `candidate/source/lib/volume5-batch.mjs` contiene el lote acumulado, conservando sin cambios los productos ya publicados; las fotos de esta entrega corresponden solo a los nuevos Items. No incluye fotos de referencia, fuentes excluidas, investigación privada ni notas del propietario en los productos públicos.
+
+`activation.patch` es una integración pendiente de autorización. No se aplica durante la preparación. La versión de preparación de `catalogBatchProducts()` no importa ningún lote Volume 5. La activación autorizada copia los archivos candidatos y agrega el import de Volume 5 al catálogo aditivo; nunca reemplaza los módulos anteriores. Si Volume 5 ya está conectado, el patch queda vacío y solo se amplía su módulo acumulado. La proyección dinámica existente mantiene la prioridad de overrides, cantidades comprometidas y estados operativos. La preparación no migra, inicializa ni modifica esas tiendas.
+
+Repetir la misma preparación verifica el contenido existente y no duplica archivos ni registros; un archivo alterado se rechaza. Una entrega interrumpida puede completar los archivos faltantes únicamente si el manifiesto sigue siendo idéntico. Si cambia la revisión, el código o la fecha de catálogo, use una nueva carpeta.
+
+Cuando el propietario apruebe los tres retenidos, use `--items 512,514,604 --expected-count 3` sin el antiguo `--held`. Los IDs ya presentes en el catálogo se excluyen de la selección nueva; solicitarlos expresamente se rechaza. Se conservan los 102 registros anteriores en el módulo acumulado sin recalcularlos ni recodificar sus fotos. El validador acepta registros propios ya publicados solo si coinciden ID y número de Item con una asignación de este lote en el registro inmutable; una colisión extranjera o una asignación ausente sigue fallando. Use el código actualizado y el catálogo desplegado también en el runtime de revisión, conservando cualquier personalización local de interfaz.
+
+Antes de desplegar, Governance debe revisar el manifiesto, auditoría y comparación, reconfirmar el hash del estado y la base actual de main, verificar la integración candidata y autorizar expresamente merge/activación/despliegue. Conserve el commit y deploy anteriores. Si aún no hay órdenes Volume 5, puede revertir solo la activación. Si ya existen órdenes, conserve los productos e identidades y pause nuevas ventas únicamente para esos IDs mediante los controles existentes. No borre órdenes, pagos, reservas, overrides ni filas de inventario y no restaure una base vieja sobre actividad posterior.
 
 ## Pruebas sin consumir Item 510
 
