@@ -41,8 +41,6 @@ const notificationTypes = [
   'PAYMENT_CONFIRMED',
   'PICKUP_SCHEDULED',
   'PICKUP_CHANGED',
-  'ORDER_RESERVATION_EXPIRING',
-  'ORDER_RESERVATION_EXPIRED',
 ];
 
 async function queuedRows(type, email) {
@@ -79,24 +77,8 @@ async function queuedRows(type, email) {
   return { rows, queries };
 }
 
-test('queue routing sends emailed buyers only the two receipt acknowledgements', async () => {
-  for (const type of notificationTypes) {
-    const { rows, queries } = await queuedRows(type, '  maria@example.com  ');
-    if (['RECEIPT_UPLOADED', 'FINAL_RECEIPT_UPLOADED'].includes(type)) {
-      assert.equal(rows.length, 1, type);
-      assert.equal(rows[0].recipientRole, 'CUSTOMER', type);
-      assert.equal(rows[0].recipientEmail, 'maria@example.com', type);
-      assert.equal(rows[0].eventType, type);
-      assert.equal(rows[0].eventKey, `event:${type.toLowerCase()}:customer`);
-    } else {
-      assert.deepEqual(rows, [], type);
-      assert.deepEqual(queries, [], `${type} should not touch the notification queue`);
-    }
-  }
-});
-
-test('queue routing sends every supported lifecycle event to the seller when buyer email is unusable', async () => {
-  for (const email of ['', '   ', null, undefined]) {
+test('every authorized event queues only the seller, independently of buyer email', async () => {
+  for (const email of ['  maria@example.com  ', 'other@example.org', '', '   ', null, undefined]) {
     for (const type of notificationTypes) {
       const { rows } = await queuedRows(type, email);
       assert.equal(rows.length, 1, `${type} / ${String(email)}`);
@@ -109,6 +91,26 @@ test('queue routing sends every supported lifecycle event to the seller when buy
   }
 });
 
+test('unauthorized events never touch the notification queue, regardless of buyer email', async () => {
+  for (const email of ['maria@example.com', '', '   ', null]) {
+    for (const type of ['ORDER_RESERVATION_EXPIRING', 'ORDER_RESERVATION_EXPIRED',
+      'ORDER_CANCELLED', 'PICKUP_CANCELLED', 'PAYMENT_PROBLEM', 'ERROR', 'UNKNOWN']) {
+      const { rows, queries } = await queuedRows(type, email);
+      assert.deepEqual(rows, [], type);
+      assert.deepEqual(queries, [], type);
+    }
+  }
+});
+
+test('pickup events without a new slot never enqueue the cancellation template', async () => {
+  const client = { query() { throw new Error('Cancelled pickup must not query the queue'); } };
+  for (const type of ['PICKUP_SCHEDULED', 'PICKUP_CHANGED']) {
+    for (const slot of [null, undefined, '']) {
+      await queueOrderNotifications(client, { key: 'cancel', order: order(), type, details: { slot } });
+    }
+  }
+});
+
 test('queued rows preserve approved copy, tokenized links, subjects, and role-qualified idempotency keys', async () => {
   const receipt = (await queuedRows('RECEIPT_UPLOADED', 'maria@example.com')).rows[0];
   assert.equal(receipt.subject, 'Comprobante recibido · VM-2026-TEST');
@@ -116,7 +118,7 @@ test('queued rows preserve approved copy, tokenized links, subjects, and role-qu
   assert.match(receipt.message, /La carga del comprobante no confirma el pago automáticamente\./);
   assert.match(receipt.message, /https?:\/\/localhost:8888\/pedido\/VM-2026-TEST\?access=[0-9a-f]+/);
   assert.doesNotMatch(receipt.message, /admin/i);
-  assert.equal(receipt.eventKey, 'event:receipt_uploaded:customer');
+  assert.equal(receipt.eventKey, 'event:receipt_uploaded:seller');
 
   const created = (await queuedRows('ORDER_CREATED', '')).rows[0];
   assert.equal(created.subject, 'Pedido VM-2026-TEST recibido');

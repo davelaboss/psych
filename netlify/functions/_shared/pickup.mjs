@@ -117,7 +117,7 @@ export async function changePickup({ orderId, timingKey, slotKey, actor }, depen
       status=EXCLUDED.status,changed_by=EXCLUDED.changed_by,revision=pickup_appointments.revision+1,
       updated_at=clock_timestamp() RETURNING *`, [orderId, normalizedTimingKey, slotKey,
       slotKey ? 'SCHEDULED' : 'CANCELLED', actor])).rows[0];
-    await queueNotifications(client, {
+    if (slotKey) await queueNotifications(client, {
       key: `pickup:${orderId}:${normalizedTimingKey}:${row.revision}`, order,
       type: oldKey ? 'PICKUP_CHANGED' : 'PICKUP_SCHEDULED',
       details: { oldSlot: oldKey, slot: slotKey, actor,

@@ -142,5 +142,5 @@ test('scheduling and cancelling one timing key never alter the other appointment
   assert.equal(rows.get('IMMEDIATE').status, 'CANCELLED');
   assert.equal(rows.get(delayedKey).status, 'SCHEDULED');
   assert.match(notifications[0].key, /:IMMEDIATE:/);
-  assert.match(notifications[1].key, /:IMMEDIATE:/);
+  assert.equal(notifications.length, 1);
 });
