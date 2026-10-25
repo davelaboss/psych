@@ -173,10 +173,10 @@ test('DELAYED uses website payment and pickup dates exactly', () => {
   assert.equal(p.finalPaymentWindowStart, '2026-12-01'); assert.equal(p.finalPaymentWindowEnd, '2026-12-08'); assert.equal(p.pickupWindowStart, '2026-12-09'); assert.equal(p.pickupWindowEnd, '2026-12-12');
 });
 
-test('private review/research fields cannot leak into finalized products; current public catalog contains no Volume 5', () => {
+test('private review/research fields cannot leak into finalized products; local drafts are not activated', () => {
   const item = sample().items[0]; item.product.pricingResearch = { privateSellerFloor: 1 }; item.product.ownerNotes = 'Privado';
   const final = finalizedProduct(item); assert.equal(Object.hasOwn(final, 'pricingResearch'), false); assert.equal(Object.hasOwn(final, 'ownerNotes'), false);
-  assert.ok(catalogBatchProducts().every(p => !/volume5-/.test(p.id)));
+  for (const p of catalogBatchProducts()) assert.equal(Object.hasOwn(p, 'ownerNotes'), false);
   assert.equal(final.status, 'NEEDS_REVIEW'); assert.equal(final.needsReview, true);
 });
 

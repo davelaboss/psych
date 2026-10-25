@@ -7,7 +7,7 @@ import { projectPublicCatalog } from './commerce.mjs';
 import { catalogBatchProducts } from './volume2-public.mjs';
 
 const volume4PublicProducts = () => catalogBatchProducts()
-  .filter(product => product.itemNumber >= 327);
+  .filter(product => product.itemNumber >= 327 && product.itemNumber <= 509);
 const retiredIds = [342, 420, 437, 442, 444, 469, 507, 509];
 const bundleSellableUnits = new Map([
   [354, { price: 6_000, pieceCopy: /Dos separadores/ }],
@@ -53,7 +53,7 @@ test('Volume tags separate Volume 3 and Volume 4 at Item 327', () => {
   const products = catalogBatchProducts();
   assert.ok(products.filter(item => item.itemNumber >= 169 && item.itemNumber <= 326)
     .every(item => item.tags.includes('volumen 3') && !item.tags.includes('volumen 4')));
-  assert.ok(products.filter(item => item.itemNumber >= 327)
+  assert.ok(products.filter(item => item.itemNumber >= 327 && item.itemNumber <= 509)
     .every(item => item.tags.includes('volumen 4') && !item.tags.includes('volumen 3')));
 });
 

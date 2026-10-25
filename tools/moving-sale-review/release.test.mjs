@@ -4,6 +4,12 @@ import { active, applyTiming, approvedSelection, approvedHandoff, auditRoundTrip
 import { appendVolume5Batch, planAdditiveCatalog, releaseCandidate } from './release.mjs';
 import { catalogBatchProducts } from '../../netlify/functions/_shared/volume2-public.mjs';
 import { loadCatalog } from '../../netlify/functions/_shared/commerce.mjs';
+import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { activationPatch } from './release.mjs';
 
 const held = [512, 514, 604];
 function sample() {
@@ -61,9 +67,24 @@ test('projection preserves exact public fields, unit pricing, selected cover ord
   for (const row of result.projection) for (const key of ['ownerNotes', 'pricing', 'pricingDecision', 'confirmedFields', 'sourceGroupId', 'questions']) assert.equal(Object.hasOwn(row, key), false);
 });
 test('adding the candidate changes no previous batch product and never labels Volume 5 as Volume 4', () => {
-  const base = catalogBatchProducts(), candidate = releaseCandidate(sample(), []), after = catalogBatchProducts(candidate.products);
+  const base = catalogBatchProducts([]), candidate = releaseCandidate(sample(), []), after = catalogBatchProducts(candidate.products);
   for (const old of base) assert.deepEqual(after.find(p => p.id === old.id), old);
   assert.equal(after.length, base.length + 102); assert.ok(after.filter(p => p.itemNumber >= 510).every(p => p.tags.includes('volumen 5') && !p.tags.includes('volumen 4')));
+});
+
+test('candidate activation patch applies with standard git, including Windows line endings', async () => {
+  const original = await readFile(new URL('../../netlify/functions/_shared/volume2-public.mjs', import.meta.url), 'utf8');
+  const source = original.replace(/^import \{ VOLUME5_ITEMS \}.*\r?\n/m, '').replace('additionalVolume5Items = VOLUME5_ITEMS', 'additionalVolume5Items = []');
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'volume5-activation-'));
+  await mkdir(path.join(dir, 'netlify/functions/_shared'), { recursive: true });
+  await writeFile(path.join(dir, 'netlify/functions/_shared/volume2-public.mjs'), source);
+  await writeFile(path.join(dir, 'activation.patch'), activationPatch(source));
+  const run = promisify(execFile); await run('git', ['init', '--quiet'], { cwd: dir });
+  await run('git', ['config', 'core.autocrlf', 'true'], { cwd: dir });
+  await run('git', ['apply', '--check', 'activation.patch'], { cwd: dir });
+  await run('git', ['apply', 'activation.patch'], { cwd: dir });
+  const activated = await readFile(path.join(dir, 'netlify/functions/_shared/volume2-public.mjs'), 'utf8');
+  assert.match(activated, /import \{ VOLUME5_ITEMS \}/); assert.equal(activationPatch(activated), '');
 });
 test('dry run is additive and repeatable; live sold/reserved records, inventory and settings survive', async () => {
   const old = [{ id: 'legacy-1', itemNumber: 1, slug: 'legacy-1', status: 'SOLD', quantityTotal: 2, quantitySold: 2, quantityRemaining: 0, askingPricePYG: 18000 }];

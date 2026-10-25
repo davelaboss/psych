@@ -47,15 +47,17 @@ export function appendVolume5Batch(previous, additions) {
   return [...structuredClone(previous), ...structuredClone(additions)].sort((a, b) => a.itemNumber - b.itemNumber);
 }
 
-function activationPatch(source) {
+export function activationPatch(source) {
   const before = 'export function catalogBatchProducts(additionalVolume5Items = []) {';
   if (source.includes('export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS) {')) return '';
   assert(source.includes(before), 'Revise manualmente la integración actual del catálogo.');
-  const line = source.slice(0, source.indexOf(before)).split('\n').length;
+  const lines = source.replace(/\r\n/g, '\n').split('\n'), index = lines.indexOf(before), start = index - 3;
+  assert(start >= 0, 'Contexto insuficiente para la integración.');
+  const context = lines.slice(start, index + 3);
   return 'diff --git a/netlify/functions/_shared/volume2-public.mjs b/netlify/functions/_shared/volume2-public.mjs\n' +
     '--- a/netlify/functions/_shared/volume2-public.mjs\n+++ b/netlify/functions/_shared/volume2-public.mjs\n' +
     '@@ -1,3 +1,4 @@\n+import { VOLUME5_ITEMS } from \'../../../source/lib/volume5-batch.mjs\';\n import {\n   VOLUME2_BATCH_ITEMS,\n } from \'../../../source/lib/volume2-batch.ts\';\n' +
-    `@@ -${line} +${line + 1} @@\n-` + before + '\n+export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS) {\n';
+    `@@ -${start + 1},${context.length} +${start + 2},${context.length} @@\n` + context.map(line => line === before ? '-' + line + '\n+export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS) {\n' : ' ' + line + '\n').join('');
 }
 
 export async function prepareRelease({ root, outputDir, releaseDir, ...options }) {
@@ -66,6 +68,10 @@ export async function prepareRelease({ root, outputDir, releaseDir, ...options }
   return withLock(path.join(outputDir, 'owner-review-state.json'), async () => {
     const stateBytes = await readFile(path.join(outputDir, 'owner-review-state.json')), state = JSON.parse(stateBytes);
     assert(state.publicationAllowed === false, 'La preparación no cambia autorización de publicación.');
+    for (const originalDir of new Set(state.sources.map(s => path.dirname(path.resolve(s.originalPath))))) {
+      const relative = path.relative(originalDir, releaseDir);
+      assert(relative && (relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)), 'La entrega no puede escribirse junto a los originales.');
+    }
     const context = await stateContext(state, root), ledgerBytes = await readFile(context.ledgerPath);
     const workbookPath = path.join(outputDir, 'Moving_Sale_Inventory_Volume_5.xlsx'), workbookHash = hash(await readFile(workbookPath));
     const validation = await validateState(state, { ...context, outputDir });
