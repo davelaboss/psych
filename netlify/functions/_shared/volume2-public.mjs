@@ -1,3 +1,4 @@
+import { VOLUME5_ITEMS } from '../../../source/lib/volume5-batch.mjs';
 import {
   VOLUME2_BATCH_ITEMS,
 } from '../../../source/lib/volume2-batch.ts';
@@ -338,7 +339,7 @@ export function publicProduct(item) {
 }
 
 
-export function catalogBatchProducts(additionalVolume5Items = []) {
+export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS) {
   if (!Array.isArray(additionalVolume5Items) || additionalVolume5Items.some(item => item.id !== `real-202610-volume5-${item.itemNumber}` || item.itemNumber < 510)) throw new Error('Lote adicional de Volume 5 inválido.');
   // Admit only the specifically approved recovered Phase 2 items.
   // Keep approved copy verbatim; runtime Admin fields and media still win.
