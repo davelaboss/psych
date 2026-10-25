@@ -78,7 +78,7 @@ export async function prepareRelease({ root, outputDir, releaseDir, ...options }
     const baseline = await loadBaseCatalog('', { catalogRoot: root });
     const previousVolume5 = context.existing.filter(p => /^real-202610-volume5-\d+$/.test(p.id));
     const candidate = releaseCandidate(state, baseline, { ...options, publishedItemNumbers: previousVolume5.map(p => p.itemNumber) });
-    const currentBatch = catalogBatchProducts(), integrated = catalogBatchProducts(candidate.products);
+    const currentBatch = catalogBatchProducts(), integrated = catalogBatchProducts(appendVolume5Batch(previousVolume5, candidate.products));
     for (const p of currentBatch) assert(JSON.stringify(p) === JSON.stringify(integrated.find(q => q.id === p.id)), `Cambió un producto anterior: ${p.id}.`);
     const git = promisify(execFile);
     const [head, base] = await Promise.all([git('git', ['rev-parse', 'HEAD'], { cwd: root }), git('git', ['rev-parse', 'origin/main'], { cwd: root })]);
