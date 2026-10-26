@@ -8,8 +8,18 @@ async function database() {
 
 const resendKey = () => String(process.env.RESEND_API_KEY || '').trim()
   .replace(/^RESEND_API_KEY\s*=\s*/i, '');
-const configuredSellerEmail = () => String(process.env.SELLER_NOTIFICATION_TO || '').trim()
-  .replace(/^SELLER_NOTIFICATION_TO\s*=\s*/i, '');
+const configuredSellerEmail = () => {
+  const email = String(process.env.SELLER_NOTIFICATION_TO || '').trim()
+    .replace(/^SELLER_NOTIFICATION_TO\s*=\s*/i, '');
+  // Accept one bare mailbox only; never fall back to a stored or buyer address.
+  const [local, domain, ...extra] = email.split('@');
+  if (!local || local.length > 64 || !domain || extra.length || email.length > 254) return '';
+  const validLocal = /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/i.test(local);
+  const labels = domain.split('.');
+  const validDomain = labels.length > 1 && labels.every(label =>
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+  return validLocal && validDomain ? email : '';
+};
 
 const localDateTime = value => new Intl.DateTimeFormat('es-PY', {
   timeZone: 'America/Asuncion', dateStyle: 'long', timeStyle: 'short',
@@ -107,22 +117,22 @@ export function customerNotification({ order, type, details = {}, privateOrderLi
   }
 }
 
-const CUSTOMER_RECEIPT_NOTIFICATION_TYPES = new Set([
+const OPERATIONAL_NOTIFICATION_TYPES = new Set([
+  'ORDER_CREATED',
   'RECEIPT_UPLOADED',
   'FINAL_RECEIPT_UPLOADED',
+  'PAYMENT_CONFIRMED',
+  'PICKUP_SCHEDULED',
+  'PICKUP_CHANGED',
 ]);
 
-export function notificationRecipients({ type, customerEmail }) {
-  const normalizedCustomerEmail = String(customerEmail || '').trim();
-  if (!normalizedCustomerEmail) return [{ role: 'SELLER', email: null }];
-  if (CUSTOMER_RECEIPT_NOTIFICATION_TYPES.has(type)) {
-    return [{ role: 'CUSTOMER', email: normalizedCustomerEmail }];
-  }
-  return [];
+export function notificationRecipients({ type }) {
+  return OPERATIONAL_NOTIFICATION_TYPES.has(type) ? [{ role: 'SELLER', email: null }] : [];
 }
 
 export async function queueOrderNotifications(client, { key, order, type, details = {} }) {
-  const entries = notificationRecipients({ type, customerEmail: order.buyer?.email });
+  if (type.startsWith('PICKUP_') && !details.slot) return;
+  const entries = notificationRecipients({ type });
   if (!entries.length) return;
   const attempt = (await client.query('SELECT session_id FROM checkout_attempts WHERE order_id=$1', [order.id])).rows[0];
   if (!attempt?.session_id) throw new Error(`Missing checkout session for notification: ${order.id}`);
@@ -138,23 +148,35 @@ export async function queueOrderNotifications(client, { key, order, type, detail
   }
 }
 
-async function claim() {
+function authorizedDelivery(row) {
+  if (row.recipient_role !== 'SELLER' || !OPERATIONAL_NOTIFICATION_TYPES.has(row.event_type)) return false;
+  // Legacy PICKUP_CHANGED rows also represented cancellations. Only the existing
+  // scheduling subjects identify customer-ready appointment messages in that queue.
+  if (row.event_type === 'PICKUP_SCHEDULED') return row.subject === `Retiro agendado · ${row.order_id}`;
+  if (row.event_type === 'PICKUP_CHANGED') return row.subject === `Retiro modificado · ${row.order_id}`;
+  return true;
+}
+
+async function claim(sellerEmail) {
   const client = await (await database()).pool.connect();
   try {
     await client.query('BEGIN');
     const row = (await client.query(`SELECT * FROM seller_notifications
-      WHERE status='PENDING' OR (((status='RETRYABLE' OR status='SENDING') AND lease_until<clock_timestamp())
+      WHERE recipient_role='SELLER' AND event_type=ANY($1::text[])
+        AND (event_type NOT IN ('PICKUP_SCHEDULED','PICKUP_CHANGED')
+          OR (event_type='PICKUP_SCHEDULED' AND subject='Retiro agendado · ' || order_id)
+          OR (event_type='PICKUP_CHANGED' AND subject='Retiro modificado · ' || order_id))
+        AND (status='PENDING' OR (((status='RETRYABLE' OR status='SENDING') AND lease_until<clock_timestamp())
         AND (created_at>clock_timestamp()-interval '24 hours'
-          OR (status='RETRYABLE' AND last_error ~ '^provider_status_4[0-9][0-9]$' AND last_error<>'provider_status_409')))
-      ORDER BY created_at,event_key FOR UPDATE SKIP LOCKED LIMIT 1`)).rows[0];
+          OR (status='RETRYABLE' AND last_error ~ '^provider_status_4[0-9][0-9]$' AND last_error<>'provider_status_409'))))
+      ORDER BY created_at,event_key FOR UPDATE SKIP LOCKED LIMIT 1`, [[...OPERATIONAL_NOTIFICATION_TYPES]])).rows[0];
     if (!row) { await client.query('COMMIT'); return null; }
     const frozen = (await client.query(`UPDATE seller_notifications SET status='SENDING',attempts=attempts+1,
       lease_until=clock_timestamp()+interval '5 minutes',updated_at=clock_timestamp(),
       sender_email=COALESCE(sender_email,$2),
-      recipient_email=CASE WHEN recipient_role='SELLER' AND recipient_email LIKE 'SELLER_NOTIFICATION_TO = %'
-        THEN $3 ELSE COALESCE(recipient_email,$3) END
+      recipient_email=$3
       WHERE event_key=$1 RETURNING *`, [row.event_key, process.env.SELLER_NOTIFICATION_FROM,
-      row.recipient_role === 'SELLER' ? configuredSellerEmail() : row.recipient_email])).rows[0];
+      sellerEmail])).rows[0];
     await client.query('COMMIT');
     return frozen;
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
@@ -162,16 +184,18 @@ async function claim() {
 }
 
 export async function drainSellerNotifications(limit = 5) {
-  if (!resendKey() || !configuredSellerEmail() || !process.env.SELLER_NOTIFICATION_FROM) return;
+  const sellerEmail = configuredSellerEmail();
+  if (!resendKey() || !sellerEmail || !process.env.SELLER_NOTIFICATION_FROM) return;
   for (let i = 0; i < limit; i++) {
-    const row = await claim();
+    const row = await claim(sellerEmail);
     if (!row) return;
+    if (!authorizedDelivery(row)) continue;
     try {
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { authorization: `Bearer ${resendKey()}`, 'content-type': 'application/json',
           'Idempotency-Key': row.event_key },
-        body: JSON.stringify({ from: row.sender_email, to: [row.recipient_email],
+        body: JSON.stringify({ from: row.sender_email, to: [sellerEmail],
           subject: row.subject, text: row.message }),
         signal: AbortSignal.timeout(3000),
       });

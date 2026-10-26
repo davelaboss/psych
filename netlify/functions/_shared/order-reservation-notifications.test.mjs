@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { enqueueDueOrderReservationNotifications } from './order-reservation-notifications.mjs';
 
-function fixture(email) {
+function fixture(email, type = 'ORDER_RESERVATION_EXPIRING') {
   const expiresAt = new Date('2026-10-16T15:00:00Z');
   const event = {
     event_id: 'reservation-event',
     order_id: 'VM-RESERVATION',
-    event_type: 'ORDER_RESERVATION_EXPIRING',
+    event_type: type,
     reservation_expires_at: expiresAt,
   };
   const order = {
@@ -42,24 +42,18 @@ function fixture(email) {
 
 const dependencies = client => ({
   transaction: callback => callback(client),
-  now: () => Date.parse('2026-10-16T14:30:00Z'),
+  now: () => Date.parse('2026-10-16T15:00:00Z'),
 });
 
-test('scheduled reservation event with emailed buyer queues zero rows and is still processed', async () => {
-  const state = fixture('maria@example.com');
-  await enqueueDueOrderReservationNotifications(1, dependencies(state.client));
-  assert.deepEqual(state.inserted, []);
-  assert.equal(state.wasProcessed(), true);
-});
-
-test('same scheduled reservation event queues a seller row for a buyer without email', async () => {
-  const state = fixture('   ');
-  await enqueueDueOrderReservationNotifications(1, dependencies(state.client));
-  assert.deepEqual(state.inserted, [{
-    eventKey: 'reservation:reservation-event:seller',
-    eventType: 'ORDER_RESERVATION_EXPIRING',
-    role: 'SELLER',
-    email: null,
-  }]);
-  assert.equal(state.wasProcessed(), true);
+test('both reservation events are processed without email rows for every buyer-email case', async () => {
+  for (const type of ['ORDER_RESERVATION_EXPIRING', 'ORDER_RESERVATION_EXPIRED']) {
+    for (const email of ['maria@example.com', '', '   ', null]) {
+      const state = fixture(email, type);
+      const deps = dependencies(state.client);
+      if (type === 'ORDER_RESERVATION_EXPIRING') deps.now = () => Date.parse('2026-10-16T14:30:00Z');
+      await enqueueDueOrderReservationNotifications(1, deps);
+      assert.deepEqual(state.inserted, [], `${type} / ${email}`);
+      assert.equal(state.wasProcessed(), true);
+    }
+  }
 });
