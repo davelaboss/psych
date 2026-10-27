@@ -274,8 +274,11 @@ async function fetchLegacyInventory() {
 }
 
 
-async function fetchSalePulse() {
-  const data = await adminFetch('/api/admin/sale-pulse');
+async function fetchSalePulse({ prepareCampaign = false } = {}) {
+  const data = await adminFetch('/api/admin/sale-pulse', prepareCampaign ? {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'prepare', campaignId: 'regular-chatgpt-daily-v1' }),
+  } : {});
   return data.salePulse || null;
 }
 
@@ -1137,6 +1140,10 @@ function renderOverviewTab() {
     .querySelector('[data-copy-sale-pulse-chatgpt]')
     ?.addEventListener('click', copySalePulseForChatgpt);
 
+  target.querySelectorAll('[data-confirm-regular-campaign]').forEach(button => {
+    button.addEventListener('click', () => confirmRegularCampaign(button));
+  });
+
   target
     .querySelectorAll('[data-go-tab]')
     .forEach((button) => {
@@ -1180,10 +1187,21 @@ function renderOverviewTab() {
 const CHATGPT_MARKETING_DRIVE_URL = 'https://drive.google.com/drive/folders/13qE2dHUjJBr1TOBUX7omaWr7r1k2nfct';
 const CHATGPT_MARKETING_SITE_URL = 'https://thelabossieres.com';
 const CHATGPT_MOBILE_LIMIT = 18000;
-const CHATGPT_MOBILE_TARGET = 36;
 const CHATGPT_MOBILE_END = 'FIN DEL PAQUETE MOVIL';
 
 function mobileMarketingCandidates(packet) {
+  const campaign = packet.regularCampaign;
+  if (campaign?.status !== 'READY' || campaign.campaignId !== 'regular-chatgpt-daily-v1' ||
+      !campaign.cycleId || !campaign.batchId || !Number.isSafeInteger(campaign.revision) ||
+      !['FIRST_PASS', 'PHASE_2'].includes(campaign.phase) ||
+      !Array.isArray(campaign.selectedProductIds) || campaign.selectedProductIds.length > 10 ||
+      !campaign.selectedProductIds.length ||
+      new Set(campaign.selectedProductIds).size !== campaign.selectedProductIds.length ||
+      !Array.isArray(campaign.assignments?.David) || !Array.isArray(campaign.assignments?.Maria) ||
+      campaign.assignments.David.length > 5 || campaign.assignments.Maria.length > 5 ||
+      [...campaign.assignments.David, ...campaign.assignments.Maria].join('\0') !== campaign.selectedProductIds.join('\0')) {
+    throw new Error('Historial del ciclo activo no disponible o no fiable.');
+  }
   const seen = new Set();
   const seenItems = new Set();
   const products = packet.marketableProducts.filter((product) => {
@@ -1201,36 +1219,9 @@ function mobileMarketingCandidates(packet) {
     seenItems.add(Number(product.itemNumber));
     return true;
   });
-  const itemNumber = (product) => Number(product.itemNumber) || Number.MAX_SAFE_INTEGER;
-  const interest = (a, b) => Number(b.cartAdds || 0) - Number(a.cartAdds || 0) ||
-    Number(b.views || 0) - Number(a.views || 0) || itemNumber(a) - itemNumber(b);
-  const byInterest = [...products].sort(interest);
-  const byLowExposure = [...products].sort((a, b) => Number(a.views || 0) - Number(b.views || 0) ||
-    Number(a.cartAdds || 0) - Number(b.cartAdds || 0) || itemNumber(a) - itemNumber(b));
-  const byOldItem = [...products].sort((a, b) => itemNumber(a) - itemNumber(b));
-  const byNewItem = [...byOldItem].reverse();
-  const categories = new Map();
-  for (const product of byInterest) {
-    const category = product.category || 'Sin categoría';
-    if (!categories.has(category)) categories.set(category, product);
-  }
-  const lanes = [[...categories.values()], byInterest.filter((product) => Number(product.cartAdds || 0) > 0),
-    byInterest.filter((product) => Number(product.views || 0) > 0), byLowExposure, byOldItem, byNewItem];
-  const selected = [];
-  const selectedIds = new Set();
-  for (let index = 0; selected.length < Math.min(CHATGPT_MOBILE_TARGET, products.length); index += 1) {
-    let added = false;
-    for (const lane of lanes) {
-      const product = lane[index];
-      if (product && !selectedIds.has(product.productId)) {
-        selected.push(product);
-        selectedIds.add(product.productId);
-        added = true;
-        if (selected.length === CHATGPT_MOBILE_TARGET) break;
-      }
-    }
-    if (!added && index >= products.length) break;
-  }
+  const byId = new Map(products.map(product => [product.productId, product]));
+  const selected = campaign.selectedProductIds.map(id => byId.get(id));
+  if (selected.some(product => !product)) throw new Error('Faltan datos completos para la selección confirmada.');
   return selected.map((product) => ({
     itemNumber: product.itemNumber,
     productId: product.productId,
@@ -1250,13 +1241,13 @@ function mobileMarketingCandidates(packet) {
 
 function buildChatgptMarketingHandoff(packet) {
   const candidates = mobileMarketingCandidates(packet);
-  const minimum = Math.min(10, packet.marketableProducts.length);
+  const minimum = packet.regularCampaign.selectedProductIds.length;
   if (candidates.length < minimum || !packet.generatedAt) {
     throw new Error('Faltan datos completos para preparar el paquete móvil.');
   }
   const totalMarketable = packet.marketableProducts.length;
-  const limitation = totalMarketable < 10
-    ? `LIMITACIÓN ACTUAL: solo hay ${totalMarketable} Items comercializables; trabaja únicamente con ellos y explica que no alcanza para 5+5.\n`
+  const limitation = candidates.length < 10
+    ? `LIMITACIÓN ACTUAL: solo hay ${candidates.length} Items en esta selección del ciclo; usa únicamente estos, sin rellenar con repetidos para llegar a 5+5.\n`
     : '';
   const instructions = `Prepara marketing actual para la venta de mudanza de David y María en Paraguay. Escribe las instrucciones para ellos en inglés sencillo y todo texto para compradores en español claro, natural, breve y amable. David tiene la aprobación final.
 
@@ -1269,14 +1260,14 @@ DATOS ACTUALES: este JSON es un SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUA
 FUENTES Y AUTORIDAD
 - La consulta Sale Pulse recién copiada es la autoridad FINAL para disponibilidad, comercialización, precios, títulos y cantidades actuales. Elige exclusivamente del subconjunto JSON. No promociones Items vendidos, temporalmente reservados, pendientes de pago o no publicados. No crees carritos ni reservas para comprobar disponibilidad.
 - Si tienes acceso al Drive Personal de David, consulta el Marketing Production Desk: ${CHATGPT_MARKETING_DRIVE_URL}. Usa README, manifiesto, preflight y archivos Marketplace como contexto; este Sale Pulse prevalece. Si Drive no está disponible, usa estos datos y ${CHATGPT_MARKETING_SITE_URL}.
-- HISTORIAL NO INCLUIDO: PREPARED no es POSTED; POSTED exige publicación confirmada en esa campaña diaria regular, no aprobación, correo enviado ni visitas. Si no hay historial completo y fiable de esa campaña, detén la selección e informa el bloqueo a Governance. No deduzcas NEVER POSTED de la ausencia de datos. Los anuncios independientes de David o María no cuentan; no los registres ni pidas reportarlos. Esta advertencia no implementa la rotación automática.
+- La selección y asignación del JSON ya usan el historial fiable del ciclo activo de la campaña regular. Respétalas: no sustituyas Items ni uses visitas, anuncios independientes o interés para cambiarlas. PREPARED no es POSTED: solo la confirmación expresa de publicación real cuenta. El ciclo comienza en startedAt; lo anterior no conciliado es UNCONFIRMED en este ciclo, no históricamente NEVER POSTED. No detengas por incertidumbre anterior al ciclo. Los anuncios independientes de David o María no cuentan; no los registres ni pidas reportarlos.
 
 SELECCIÓN Y ENTREGABLES
-- Cuando haya suficientes productos adecuados, elige 10 Items únicos: 5 para David y 5 para María, sin repetir entre ambos. Si hay menos de 10, usa solo los comercializables disponibles y explica la limitación.
+- Usa exactamente la selección y assignments del JSON: hasta 10 Items únicos, 5 para David y 5 para María, sin repetir entre ambos. Si hay menos, conserva la asignación y explica la limitación; nunca rellenes.
 - Para David y María, prepara cinco Stories individuales por persona: un producto y una foto auténtica por Story, con un solo Link sticker al detalle de ese producto, src=story y texto VER ARTÍCULO. Da textos breves en español y referencias a las fotos auténticas.
 - Entrega un documento de texto de marketing por persona: sus cinco Stories, cinco WhatsApp Status de los mismos cinco productos y las entradas JW Group indicadas abajo.
 - Una hoja de contacto de cinco imágenes es opcional para revisión interna, no un archivo necesario para publicar. Evita imágenes adjuntas redundantes, instrucciones duplicadas y documentos intermedios innecesarios.
-- La campaña exige cero repeticiones antes de completar la primera pasada confirmada del catálogo elegible completo. Este subconjunto sin historial no permite verificarla. No afirmes cumplimiento ni rellenes con repetidos para llegar a diez.
+- FIRST_PASS excluye Items ya confirmados en este ciclo y prioriza los no preparados. PHASE_2 solo empieza con cobertura confirmada de todos los comercializables; prioriza precios altos. Los nuevos Items sin cobertura vuelven a FIRST_PASS.
 - Usa solo números, títulos, precios, cantidades, URLs e imágenes auténticas actuales. No inventes condición, especificaciones, accesorios, urgencia ni popularidad, ni alteres productos en imágenes.
 - Para Stories, Status y JW Group, usa nombre, precio, descripción breve y veraz, foto auténtica y enlace directo. Omite texto rutinario sobre plazos de pago, fechas o arreglos de retiro, ubicación, entrega, transporte, objetos ajenos visibles y otros avisos administrativos. Señala una limitación material inusual si omitirla puede engañar al comprador. Conserva sin cambios las condiciones, inclusiones, exclusiones y advertencias reales en el sitio y checkout.
 
@@ -1291,7 +1282,7 @@ ENLACES Y DATOS DE LA VENTA
 - Prepara borradores para aprobación de David. No publiques automáticamente, cambies precios, reserves artículos ni hagas compromisos en nombre del vendedor.`;
   while (candidates.length >= minimum) {
     const data = { generatedAt: packet.generatedAt, snapshotTotalMarketable: totalMarketable,
-      includedCandidates: candidates.length, candidates };
+      regularCampaign: packet.regularCampaign, includedCandidates: candidates.length, candidates };
     const text = `${instructions}${limitation}\nCANDIDATOS_JSON\n${JSON.stringify(data)}\nFIN_CANDIDATOS_JSON\n${detail}\n\n${CHATGPT_MOBILE_END}`;
     if (text.length <= CHATGPT_MOBILE_LIMIT) return text;
     candidates.pop();
@@ -1305,11 +1296,12 @@ async function copySalePulseForChatgpt(event) {
   button.textContent = 'ACTUALIZANDO Y COPIANDO…';
 
   // Start the write in the tap/click gesture; mobile Safari loses that gesture after fetch.
-  const prompt = fetchSalePulse().then((pulse) => {
+  const prompt = fetchSalePulse({ prepareCampaign: true }).then((pulse) => {
     if (!pulse?.marketingPacket || !Array.isArray(pulse.marketingPacket.marketableProducts)) {
       throw new Error('No hay un paquete Sale Pulse actual.');
     }
     ADMIN_STATE.salePulse = pulse;
+    renderRegularCampaignStatus();
     return buildChatgptMarketingHandoff(pulse.marketingPacket);
   });
 
@@ -1331,9 +1323,54 @@ async function copySalePulseForChatgpt(event) {
       button.textContent = error?.message?.startsWith('El paquete móvil')
         ? 'PAQUETE MÓVIL MUY GRANDE · NO COPIADO'
         : error?.message?.startsWith('Faltan datos completos')
-          ? 'DATOS INCOMPLETOS · NO COPIADO' : 'NO SE PUDO ACTUALIZAR · REINTENTAR';
+          ? 'DATOS INCOMPLETOS · NO COPIADO'
+          : error?.message?.startsWith('Historial') ? 'HISTORIAL NO FIABLE · NO COPIADO' : 'NO SE PUDO ACTUALIZAR · REINTENTAR';
     }
   } finally {
+    button.disabled = false;
+  }
+}
+
+function regularCampaignControls() {
+  const campaign = ADMIN_STATE.salePulse?.regularCampaign;
+  if (!campaign || campaign.status === 'UNINITIALIZED') return '<p>La primera copia inicia un ciclo de cobertura fechado; el historial anterior queda sin conciliar.</p>';
+  if (campaign.status !== 'READY') return '<p>Historial del ciclo no disponible. No se preparará una selección hasta recuperarlo.</p>';
+  return `<p>Ciclo desde ${adminEscape(salePulseDate(campaign.startedAt))}. Confirmá solo publicaciones reales de esta campaña regular; preparar, aprobar o descargar no cuenta. No informes anuncios independientes.</p>
+    ${(campaign.pendingBatches || []).map(batch => `<details><summary>Lote ${adminEscape(batch.date)}</summary>
+      ${['David', 'Maria'].filter(person => batch.assignments[person]?.length).map(person => `
+        <div data-regular-assignment>
+          <p>${person}: dejá marcados únicamente los Items realmente publicados. Para un lote completo basta confirmar una vez.</p>
+          ${batch.assignments[person].map(item => `<label><input type="checkbox" data-regular-product value="${adminEscape(item.productId)}" checked> Item ${String(item.itemNumber).padStart(3, '0')}</label>`).join(' ')}
+          <button type="button" class="secondary-action" data-confirm-regular-campaign data-batch="${adminEscape(batch.id)}" data-cycle="${adminEscape(campaign.cycleId)}" data-person="${person}">CONFIRMO PUBLICADOS — ${person}</button>
+        </div>`).join('')}
+      </details>`).join('') || '<p>No hay lotes pendientes de confirmación.</p>'}`;
+}
+
+function renderRegularCampaignStatus() {
+  const target = document.getElementById('regular-campaign-status');
+  if (!target) return;
+  target.innerHTML = '<h3>Publicación de la campaña regular</h3>' + regularCampaignControls();
+  target.querySelectorAll('[data-confirm-regular-campaign]').forEach(button => {
+    button.addEventListener('click', () => confirmRegularCampaign(button));
+  });
+}
+
+async function confirmRegularCampaign(button) {
+  const productIds = [...button.closest('[data-regular-assignment]')
+    .querySelectorAll('input[data-regular-product]:checked')].map(input => input.value);
+  if (!productIds.length) { button.textContent = 'SELECCIONÁ LOS ITEMS PUBLICADOS'; return; }
+  button.disabled = true;
+  try {
+    const data = await adminFetch('/api/admin/sale-pulse', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'confirm', campaignId: 'regular-chatgpt-daily-v1',
+        cycleId: button.getAttribute('data-cycle'), batchId: button.getAttribute('data-batch'),
+        person: button.getAttribute('data-person'), productIds, confirmation: 'PUBLISHED_REGULAR_CAMPAIGN' }),
+    });
+    ADMIN_STATE.salePulse.regularCampaign = data.campaign;
+    renderRegularCampaignStatus();
+  } catch {
+    button.textContent = 'NO SE PUDO CONFIRMAR · REINTENTAR';
     button.disabled = false;
   }
 }
@@ -1602,6 +1639,7 @@ function renderSalePulsePanel() {
         <button class="secondary-action" type="button" data-copy-sale-pulse-packet ${pulse.marketingPacket ? '' : 'disabled'}>COPIAR PAQUETE PARA MARKETING</button>
         <button class="secondary-action" type="button" data-copy-sale-pulse-chatgpt>COPIAR PARA CHATGPT</button>
       </div>
+      <section id="regular-campaign-status"><h3>Publicación de la campaña regular</h3>${regularCampaignControls()}</section>
     </section>`;
 }
 
@@ -7722,6 +7760,13 @@ function injectSalePulseStyles() {
     .sale-pulse-empty { margin: 0; color: #655f56; }
     .sale-pulse-copy { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px; padding-top: 4px; }
     .sale-pulse-copy p { margin: 0; max-width: 720px; color: #655f56; }
+    #regular-campaign-status { display: grid; gap: 12px; padding: 18px; border: 1px solid #ded8cd; border-radius: 14px; }
+    #regular-campaign-status summary { cursor: pointer; font-weight: 800; padding: 8px 0; }
+    #regular-campaign-status [data-regular-assignment] { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; }
+    #regular-campaign-status [data-regular-assignment] p { flex-basis: 100%; margin: 0; }
+    #regular-campaign-status label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; white-space: nowrap; }
+    #regular-campaign-status input { width: 20px; height: 20px; min-height: 0; margin: 0; }
+    #regular-campaign-status button { max-width: 100%; }
     .admin-overview-actions { display: grid; gap: 14px; margin-top: 24px; }
     .admin-overview-actions .admin-section-heading-v2 { margin-bottom: 0; }
     .admin-overview-actions .admin-section-heading-v2 h2 { margin-bottom: 0; }

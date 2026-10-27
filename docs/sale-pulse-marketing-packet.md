@@ -8,10 +8,11 @@ the existing text report.
 
 **COPIAR PARA CHATGPT** starts a new authenticated, uncached Sale Pulse request on
 every click and copies a self-contained Spanish handoff for an ordinary ChatGPT
-conversation. It includes a compact, complete JSON subset selected only from the
-fresh `marketableProducts` list, current product and main-image URLs, and the
-optional Personal Google Drive Marketing Production Desk folder. The subset aims
-for 36 varied candidates and fits within 18,000 characters. It states the
+conversation. It includes the exact server-selected regular-campaign batch (at most ten Items),
+current product and main-image URLs, and the optional Personal Google Drive
+Marketing Production Desk folder. Selection ranks the full fresh marketable
+catalog against trusted campaign history before serialization; no fixed
+36-product shortlist remains. The complete batch must fit within 18,000 characters. It states the
 snapshot time, total marketable count, included count, and that omitted Items
 are not thereby sold or unavailable. The ending marker `FIN DEL PAQUETE MOVIL`
 lets the receiving conversation detect paste truncation before recommending.
@@ -26,94 +27,120 @@ fails, the button permits another click. On supported mobile browsers, the
 clipboard write begins in the original tap gesture while the fresh request
 resolves.
 
-## October 27 clipboard correction — partial; rotation blocked
+## Regular ChatGPT campaign: coverage, preparation and publication
 
-The handoff now requests a marketing text document for each person with five
-individual Stories and five native WhatsApp Status entries using that person's
-same five Items, with no David/María overlap. Each document requests **only four
-JW Group product entries**, chosen from that person's five for likely sales
-potential, or fewer when fewer than four valid Items exist. No additional Item
-or fifth JW entry/photo is requested. Story/Status retain `src=story`; JW links
-retain `src=jw-group`, and the existing link-preview and phone instructions stay.
+The authenticated existing Sale Pulse endpoint now supports two explicit POST
+actions for campaignId regular-chatgpt-daily-v1: prepare and confirm. GET remains
+passive for campaign history. Only COPIAR PARA CHATGPT requests prepare; report,
+raw-packet copy, ordinary refresh and downloads do not confirm publication.
 
-Buyer-facing promotional copy requests name, price, a brief truthful description,
-authentic photo and direct link. Routine payment/pickup dates, location,
-pickup/delivery/transport arrangements, unrelated photo objects and administrative
-disclaimers are omitted. An unusual material limitation must still be disclosed
-when omission could mislead. Website/checkout terms, inclusions, exclusions and
-disclosures are unchanged. This changes the handoff instructions, not existing
-campaign assets or product records.
+### Minimal persistence and confirmation
 
-### Root cause and evidence
+Private Netlify Blobs files in mudanza-regular-chatgpt-marketing hold an immutable
+baseline-v1.json anchor and versioned history-v1.json ledger. This reuses the
+installed storage service and existing authenticated endpoint; no database,
+migration, separate service, new Admin tab or independent-ad interface is added.
+The browser cannot reliably read private synced Desk files and there is no actual
+automatic social-publication signal in the existing Desk. Keeping the authoritative
+ledger server-side permits dependable mobile/cross-device reads without Drive
+credentials or manual file uploads. Desk folders and scripts remain unchanged.
 
-`mobileMarketingCandidates()` takes the current marketable catalog, interleaves
-category/interest/low-exposure/Item-number lanes and stops at 36 (or fewer to fit
-the clipboard). It reads no campaign history. With unchanged inputs it produces
-the same shortlist on successive dates. The old prompt also permitted repeats
-with a new angle. Neither preparation nor confirmed publication removes an Item
-from those lanes. Marketable Items outside that shortlist can be omitted
-indefinitely. The selector remains unchanged in this partial correction.
+The existing Sale Pulse panel shows prepared batches and their David/María Item
+checkboxes. After actually posting, the seller clicks CONFIRMO PUBLICADOS once for
+that person's completed batch. For partial posting, uncheck unposted Items before
+confirming. Each request explicitly declares PUBLISHED_REGULAR_CAMPAIGN and must
+match campaign, cycle, batch, person and assigned product IDs. Preparation,
+approval, copying and downloading never set postedAt. No automatic publication or
+messages are performed. Confirmation records the seller's declaration, not a
+provider receipt; truthful confirmation is necessary.
 
-Read-only inspection of the existing Personal Drive Marketing Production Desk on
-October 27, 2026 found:
+The ledger retains stable product IDs, Item numbers, cycle identity, immutable
+batch assignments, preparation times and per-Item confirmation times. Conditional
+ETag writes and retry/re-read prevent lost concurrent updates. Repeated confirmation
+preserves the original timestamp; reopening today's incomplete batch is idempotent.
+A handoff preparation records PREPARED handoff evidence, not a claim that external
+Story images were generated or published. Failed clipboard writes leave a
+reopenable prepared batch and zero publication confirmations.
 
-- `Individual-Stories-2026-10-26-For-Approval` and
-  `Individual-Stories-2026-10-27-For-Approval` contain the five repeated prepared
-  Items: David 120/063 and María 007/144/195. The October 26 text files explicitly
-  say “NOT YET POSTED”; October 27 files require David's approval. These are
-  preparation evidence, not confirmed publication evidence.
-- `Current/manifest.json` has `status: NO_CURRENT_MARKETING_PACKAGE` and an empty
-  `selectedItems`. The separate dated Story folders are not represented there.
-- `Scripts/dmpd-core.mjs` validates selected Items, creates preparation manifests
-  (`PREPARED_REQUIRES_FINAL_SALE_PULSE`) and runs public availability preflight.
-  `Scripts/OPERATING-NOTES.txt` describes export/archive and availability checks,
-  not a regular-campaign publication-confirmation mechanism. The Logs folder
-  contains availability-preflight results, not publication receipts.
-- The website's `marketing_email_features` history is written after Resend
-  accepts an email, and `recentMarketingHistory()` reads only 45 days by default.
-  An email delivery is not a confirmed social publication and is a different
-  workflow. Sale Pulse views/cart additions also cannot prove publication or
-  distinguish independent advertisements.
+### Dated baseline and historical uncertainty
 
-No reliable, complete confirmed-publication history or Desk-to-Sale-Pulse history
-reader was found in these relevant systems. Do not interpret missing records as
-NEVER POSTED, a prepared asset as POSTED, or independent advertising as campaign
-history. Existing history and Desk files were not changed.
+The first successful prepare initializes an auditable active coverage cycle with
+its actual start timestamp and historicalCompleteness UNRECONCILED. Existing
+trusted ledger records are never reset or replaced on later preparation. No old
+POSTED records were found or invented. Items lacking confirmation are UNCONFIRMED
+in this cycle, not asserted to have historically NEVER POSTED.
 
-### Governance blocker and smallest required remedy
+Read-only inspection of the regular Desk campaign folders dated October 21–27
+provided 65 preparation references covering 51 stable Item IDs. The committed
+regular-campaign-seed.mjs preserves asset provenance and preparation dates only.
+These records put previously prepared/unconfirmed Items behind Items with no
+preparation evidence; they never satisfy coverage. The known October 26–27
+overlaps 120/063 and 007/144/195 are preparation evidence only. Historical coverage
+remains explicitly unreconciled, without halting the valid active cycle.
 
-**Strict first-pass rotation is not implemented or verified by this PR.** The
-clipboard explicitly discloses the missing history and instructs the receiving
-chat to stop selection when complete reliable regular-campaign history is
-unavailable. This is a disclosure/instruction safeguard, not algorithmic rotation
-enforcement. The 36-candidate coverage problem also remains unresolved.
+### Actual selection and clipboard integrity
 
-Before expanding implementation, Governance needs to approve a reliable
-publication-confirmation source within the regular campaign workflow and a
-readable connection to the selector. The smallest proposed remedy is to extend
-the existing Desk package/archive metadata, retaining campaign and product
-identity, preparation evidence and a separate actual-publication confirmation
-with timestamp/provenance. Reuse that history across all campaign dates; do not
-infer completion from approval, an email send, traffic or a folder name. Establish
-whether the historical baseline is complete before treating an absent Item as
-never posted. No independent-advertisement tracking or reporting is needed.
+On prepare the server reads fresh authoritative Sale Pulse marketability and
+the strong-consistency ledger. It ranks the entire eligible catalog, excluding
+all Items already confirmed in the active cycle while any eligible Item remains
+unconfirmed. Within first pass, Items without preparation evidence precede
+prepared/unconfirmed Items; older preparations precede newer ones. Take at most
+ten, assigned five to David then five to María, with no overlap. Fewer remaining
+first-pass Items produce fewer entries, never repeat fill. Same-day reopening
+returns only still-marketable, unconfirmed assigned Items; future dates advance
+through the catalog. Incomplete current product facts fail closed.
 
-Once that source and connection are authorized, selection must rank the **full**
-fresh Sale Pulse marketable catalog before applying any clipboard size reduction:
-never-posted before all repeats, unprepared first-pass before already-prepared
-first-pass, fewer than ten when necessary, and no repeat fill. Only after all
-currently eligible Items have confirmed regular-campaign publication may Phase 2
-rank repeats by descending current price, without an invented threshold or routine
-cheap repeats. Newly eligible never-posted Items immediately preempt Phase 2.
-Missing/incomplete history must block selection. Synthetic multi-day tests must
-prove that behavior, full-catalog coverage, PREPARED/POSTED separation and complete
-exclusion of independent advertisements before claiming strict enforcement.
+Only when every then-marketable Item has confirmation does Phase 2 select by
+descending current asking price, without an invented threshold. It excludes Items
+already prepared that day. Newly marketable unconfirmed Items immediately restore
+first-pass priority, including over a prepared Phase 2 handoff. Sold/held/unlisted
+Items never enter selection; confirmation of a genuinely earlier publication is
+still allowed if the Item subsequently sold or became unavailable.
 
-No new database, Admin interface, tracking subsystem, production integration or
-manual reporting requirement was added. Rotation acceptance tests remain blocked;
-the automated tests here verify clipboard copy requirements, availability gates,
-link/phone safeguards, truncation/privacy limits, retry behavior and honest
-history disclosure. No real campaign or image is generated for validation.
+The browser follows the exact server product IDs and person assignments. It no
+longer ranks popularity/category lanes or trims away selected Items to fit a
+shortlist. The complete selected batch, active-cycle metadata and unchanged
+FIN DEL PAQUETE MOVIL marker must fit the 18,000-character limit; otherwise nothing
+is copied. The regular ledger reads neither independent advertisements, email
+delivery history nor Sale Pulse traffic/cart metrics. No independent-post action,
+import field or reporting requirement exists.
+
+### Preserved copy policy
+
+Each person's marketing text document requests five Stories and five native
+WhatsApp Status entries using their same five assigned Items (or fewer when the
+batch is short), and only four JW Group product entries chosen from that person's
+five for likely sales potential, or fewer when necessary. No additional product
+or fifth JW entry/photo. Preserve src=story for Stories/Status and src=jw-group for
+JW, authentic photographs, preview-cache safeguards, phone/Marketplace workflows
+and David's publication approval.
+
+Promotional text focuses on name, price, a brief truthful description, authentic
+photo and direct link. Routine payment/pickup dates, location, delivery/transport,
+unrelated photo objects and administrative disclaimers are omitted. Retain unusual
+material limitations when omission could mislead. Website/checkout sale terms,
+inclusions, exclusions, disclosures and all product records remain unchanged.
+
+### Failure and deployment boundaries
+
+Storage errors, malformed active history, mismatched cycle anchors or missing
+history after initialization stop preparation; there is no stale/stateless
+fallback or silent cycle reset. Other Sale Pulse metrics remain readable. If a
+first initialization is interrupted after writing the baseline anchor but before
+writing history, recovery of the campaign files is required; subsequent requests
+fail closed rather than invent an empty replacement. Retain these files when
+backing up the site; never restore old history over newer confirmations. Campaign
+history is separate from Desk assets and from all operational business records.
+
+Code and tests alone do not initialize a production cycle. This PR makes no
+production writes, real campaigns/images, emails, merge or deployment. After
+separate deployment authorization, the first normal clipboard preparation starts
+the baseline; the seller must confirm actual regular-campaign publications.
+
+Verification uses synthetic catalog/history and an isolated conditional-write
+store, covering multi-day full-catalog coverage, partial publication, PREPARED
+versus POSTED, baseline uncertainty, Phase 2/new arrivals, concurrency, independent
+input rejection, availability, copy instructions and mobile clipboard integrity.
 
 ## Authority and safety
 
@@ -145,8 +172,9 @@ products from packet records and candidates. Delivered zero-stock products are
 never marketable.
 
 Sale Pulse never claims/updates a cart lease, creates a checkout, writes inventory
-reservations, extends a hold, or releases another buyer's reservation. Its only
-write remains the existing analytics-retention DELETE. Reservation durations,
+reservations, extends a hold, or releases another buyer's reservation. The existing
+analytics-retention DELETE is preserved; explicit campaign POSTs write only the
+separate campaign files described above. Reservation durations,
 transactions, checkout and orders are unchanged. No migration is needed.
 
 ## States
