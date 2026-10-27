@@ -13,7 +13,7 @@ function memoryStore() {
   const files = new Map(), writes = [];
   let serial = 0;
   return {
-    files, writes, failRead: false, beforeSet: null,
+    files, writes, failRead: false, beforeSet: null, afterSet: null,
     async getWithMetadata(key, options) {
       assert.equal(options.consistency, 'strong');
       if (this.failRead) throw Error('synthetic storage failure');
@@ -25,12 +25,13 @@ function memoryStore() {
       return clone(files.get(key)?.data || null);
     },
     async setJSON(key, data, options) {
-      if (this.beforeSet) await this.beforeSet(key);
+      if (this.beforeSet) await this.beforeSet(key, data, options);
       const old = files.get(key);
       if ((options.onlyIfNew && old) || (options.onlyIfMatch && old?.etag !== options.onlyIfMatch)) return { modified: false };
       assert.ok(options.onlyIfNew === true || typeof options.onlyIfMatch === 'string', 'No unconditional history writes');
       const etag = `version-${++serial}`;
       files.set(key, { data: clone(data), etag }); writes.push({ key, options, data: clone(data) });
+      if (this.afterSet) await this.afterSet(key, data, options);
       return { modified: true, etag };
     },
   };
@@ -237,14 +238,153 @@ test('preparation evidence keeps the most recent date regardless of archive list
   assert.deepEqual(selected(next).slice(0,2),['product-2','product-1']);
 });
 
-test('interrupted initial creation does not silently reset the anchored cycle', async () => {
+test('failure after baseline creation is recoverable with the original cycle and passive GETs', async () => {
   const h=harness();
-  h.store.beforeSet=async key=>{if(key===LEDGER_KEY)throw Error('interrupted write');};
+  h.store.beforeSet=async (key,data)=>{
+    if(key===LEDGER_KEY && data.initialization==='ESTABLISHED')throw Error('interrupted write');
+  };
   await assert.rejects(h.prepare(),/interrupted write/);
-  assert.ok(h.store.files.has(BASELINE_KEY));
+  const provisional=h.history(), baseline=clone(h.store.files.get(BASELINE_KEY).data);
+  assert.equal(provisional.initialization,'PROVISIONAL');
+  assert.equal(provisional.cycleId,baseline.cycleId);
+  assert.equal(h.store.writes.length,2);
+  const before=clone(h.store.files);
+  assert.equal((await readCampaignPanel({store:h.store})).status,'UNINITIALIZED');
+  assert.deepEqual(h.store.files,before);
+  assert.equal(h.store.writes.length,2,'GET cannot finish initialization');
+  await assert.rejects(h.run({action:'confirm',cycleId:provisional.cycleId,batchId:provisional.batches[0].id,
+    person:'David',productIds:['product-1'],confirmation:'PUBLISHED_REGULAR_CAMPAIGN'}), /todavía no está completa/);
   h.store.beforeSet=null;
-  await assert.rejects(h.prepare(),/Falta el historial del ciclo activo/);
+  const recovered=await h.prepare();
+  assert.equal(recovered.campaign.cycleId,baseline.cycleId);
+  assert.equal(recovered.campaign.startedAt,baseline.startedAt);
+  assert.deepEqual(h.history(),{...provisional,initialization:'ESTABLISHED'});
+  assert.equal(h.store.writes.length,3);
+  assert.ok(h.store.writes[2].options.onlyIfMatch);
+  assert.deepEqual(selected(recovered),Array.from({length:10},(_,i)=>`product-${i+1}`));
+});
+
+test('concurrent first initialization converges on one cycle, anchor and initial batch', async () => {
+  const h=harness();
+  const results=await Promise.all(Array.from({length:8},()=>h.prepare()));
+  const history=h.history();
+  assert.equal(history.initialization,'ESTABLISHED');
+  assert.equal(history.batches.length,1);
+  assert.ok(results.every(r=>r.campaign.cycleId===history.cycleId && r.packet.regularCampaign.batchId===history.batches[0].id));
+  assert.ok(results.every(r=>JSON.stringify(selected(r))===JSON.stringify(selected(results[0]))));
+  assert.equal(h.store.writes.length,3);
+  assert.ok(h.store.writes.every(w=>w.data.cycleId===history.cycleId));
+  assert.equal(h.store.writes.filter(w=>w.key===BASELINE_KEY).length,1);
+});
+
+test('repeated failures during initialization recovery remain safely retryable', async () => {
+  const h=harness();
+  h.store.beforeSet=async (key,data)=>{
+    if(key===LEDGER_KEY && data.initialization==='ESTABLISHED')throw Error('temporary activation failure');
+  };
+  await assert.rejects(h.prepare(),/temporary activation failure/);
+  const initial=clone(h.store.files), identity=h.history().cycleId;
+  await assert.rejects(h.prepare(),/temporary activation failure/);
+  assert.deepEqual(h.store.files,initial);
+  assert.equal(h.store.writes.length,2);
+  h.store.beforeSet=null;
+  const recovered=await h.prepare();
+  assert.equal(recovered.campaign.cycleId,identity);
+  assert.equal(h.history().revision,1);
+  assert.ok(h.history().batches[0].assignments.David.every(p=>p.postedAt===null));
+});
+
+test('failure before anchor creation is recoverable without replacing provisional history', async () => {
+  const h=harness();
+  h.store.beforeSet=async key=>{if(key===BASELINE_KEY)throw Error('anchor unavailable');};
+  await assert.rejects(h.prepare(),/anchor unavailable/);
+  const provisional=h.history();
+  assert.equal(provisional.initialization,'PROVISIONAL');
+  assert.equal(h.store.files.has(BASELINE_KEY),false);
+  assert.equal((await readCampaignPanel({store:h.store})).status,'UNINITIALIZED');
   assert.equal(h.store.writes.length,1);
+  h.store.beforeSet=null;
+  await h.prepare();
+  assert.deepEqual(h.history(),{...provisional,initialization:'ESTABLISHED'});
+});
+
+test('an uncertain successful activation is not replayed over later publication confirmations', async () => {
+  const h=harness();
+  h.store.afterSet=async (key,data)=>{
+    if(key===LEDGER_KEY && data.initialization==='ESTABLISHED')throw Error('response lost after commit');
+  };
+  await assert.rejects(h.prepare(),/response lost after commit/);
+  const established=h.history();
+  assert.equal(established.initialization,'ESTABLISHED');
+  h.store.afterSet=null;
+  const recovered=await h.prepare();
+  assert.equal(recovered.campaign.cycleId,established.cycleId);
+  await h.confirm(recovered,'David',['product-1']);
+  const confirmed=h.history(), writes=h.store.writes.length;
+  const retry=await h.prepare();
+  assert.ok(!selected(retry).includes('product-1'));
+  assert.deepEqual(h.history(),confirmed);
+  assert.equal(h.store.writes.length,writes);
+});
+
+for(const loseHistory of [false,true]) test(`stale activation cannot ${loseHistory?'recreate missing established history':'overwrite established confirmations'}`,{timeout:5000},async()=>{
+  const h=harness();
+  let release, reached, paused=false;
+  const gate=new Promise(resolve=>{release=resolve;}), waiting=new Promise(resolve=>{reached=resolve;});
+  h.store.beforeSet=async(key,data)=>{
+    if(key===LEDGER_KEY && data.initialization==='ESTABLISHED' && !paused) {
+      paused=true; reached(); await gate;
+    }
+  };
+  const slow=h.prepare();
+  await waiting;
+  const fast=await h.prepare();
+  await h.confirm(fast,'David',['product-1']);
+  const confirmed=h.history(), writes=h.store.writes.length;
+  if(loseHistory)h.store.files.delete(LEDGER_KEY);
+  release();
+  if(loseHistory) {
+    await assert.rejects(slow,/Falta el historial del ciclo activo/);
+    assert.equal(h.store.files.has(LEDGER_KEY),false);
+  } else {
+    assert.ok(!selected(await slow).includes('product-1'));
+    assert.deepEqual(h.history(),confirmed);
+  }
+  assert.equal(h.store.writes.length,writes);
+});
+
+test('legacy established histories stay intact; loss, corruption and ambiguous baseline-only state fail closed', async () => {
+  const h=harness(), prepared=await h.prepare();
+  await h.confirm(prepared,'David',['product-1']);
+  delete h.store.files.get(LEDGER_KEY).data.initialization;
+  const legacy=clone(h.store.files.get(LEDGER_KEY)), writes=h.store.writes.length;
+  assert.ok(!selected(await h.prepare()).includes('product-1'));
+  assert.deepEqual(h.store.files.get(LEDGER_KEY),legacy);
+  h.store.files.get(LEDGER_KEY).data.initialization='PROVISIONAL';
+  await assert.rejects(h.prepare(),/no fiable/);
+  h.store.files.set(LEDGER_KEY,clone(legacy));
+  h.store.files.get(LEDGER_KEY).data.batches[0].assignments.David[0].postedAt='corrupted';
+  await assert.rejects(h.prepare(),/no fiable/);
+  h.store.files.delete(LEDGER_KEY);
+  await assert.rejects(h.prepare(),/Falta el historial del ciclo activo/);
+  await assert.rejects(readCampaignPanel({store:h.store}),/Falta el historial del ciclo activo/);
+  assert.equal(h.store.files.has(LEDGER_KEY),false);
+  assert.equal(h.store.writes.length,writes);
+});
+
+test('recovered preparation still revalidates current marketability without changing the original cycle', async () => {
+  const h=harness();
+  h.store.beforeSet=async(key,data)=>{
+    if(key===LEDGER_KEY && data.initialization==='ESTABLISHED')throw Error('interrupted');
+  };
+  await assert.rejects(h.prepare(),/interrupted/);
+  const cycle=h.history().cycleId, packet=h.packet();
+  packet.marketableProducts[0].marketabilityStatus='TEMPORARILY_RESERVED';
+  h.setPacket(packet); h.store.beforeSet=null;
+  const recovered=await h.prepare();
+  assert.equal(recovered.campaign.cycleId,cycle);
+  assert.ok(!selected(recovered).includes('product-1'));
+  assert.equal(selected(recovered).length,9);
 });
 
 test('incomplete current marketable data cannot silently declare coverage complete or enter Phase 2', async () => {

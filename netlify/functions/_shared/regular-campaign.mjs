@@ -18,12 +18,15 @@ function campaignStore() {
   return getStore({ name: 'mudanza-regular-chatgpt-marketing', consistency: 'strong' });
 }
 
-export function validateCampaignHistory(history) {
+export function validateCampaignHistory(history, { allowProvisional = false } = {}) {
   if (!history || history.schemaVersion !== 1 || history.campaignId !== REGULAR_CAMPAIGN ||
       !validId(history.cycleId) || !validDate(history.startedAt) ||
       history.historicalCompleteness !== 'UNRECONCILED' ||
       !Number.isSafeInteger(history.revision) || history.revision < 1 ||
-      !Array.isArray(history.preparationEvidence) || !Array.isArray(history.batches)) {
+      !Array.isArray(history.preparationEvidence) || !Array.isArray(history.batches) ||
+      ![undefined, 'PROVISIONAL', 'ESTABLISHED'].includes(history.initialization) ||
+      (history.initialization === 'PROVISIONAL' && (!allowProvisional || history.revision !== 1 ||
+        history.batches.length !== 1))) {
     throw fail('Historial de campaña no fiable. No se preparó una selección.');
   }
   for (const evidence of history.preparationEvidence) {
@@ -47,7 +50,7 @@ export function validateCampaignHistory(history) {
       if (!Array.isArray(batch.assignments[person]) || batch.assignments[person].length > 5) throw fail('Asignación no válida.');
       for (const item of batch.assignments[person]) {
         if (!validId(item.productId) || ids.has(item.productId) || numbers.has(item.itemNumber) || !Number.isSafeInteger(item.itemNumber) ||
-            item.itemNumber < 1 || !(item.postedAt === null ||
+            item.itemNumber < 1 || (history.initialization === 'PROVISIONAL' && item.postedAt !== null) || !(item.postedAt === null ||
               (validDate(item.postedAt) && Date.parse(item.postedAt) >= Date.parse(batch.preparedAt) && item.confirmedBy === 'SELLER_ADMIN'))) {
           throw fail('Confirmación de campaña no fiable.');
         }
@@ -126,23 +129,41 @@ export function campaignPanel(history) {
 }
 
 async function readHistory(store) {
-  const row = await store.getWithMetadata(LEDGER_KEY, { type: 'json', consistency: 'strong' });
+  const readRow = () => store.getWithMetadata(LEDGER_KEY, { type: 'json', consistency: 'strong' });
+  let row = await readRow();
+  const baseline = await store.get(BASELINE_KEY, { type: 'json', consistency: 'strong' });
+  // Another initializer may have created both files between these strong reads.
+  if (!row && baseline) row = await readRow();
   if (row) {
     if (!row.etag) throw fail('No se puede verificar la versión del historial.');
-    validateCampaignHistory(row.data);
+    validateCampaignHistory(row.data, { allowProvisional: true });
   }
-  const baseline = await store.get(BASELINE_KEY, { type: 'json', consistency: 'strong' });
-  if (row && (!baseline || baseline.campaignId !== REGULAR_CAMPAIGN ||
-      baseline.cycleId !== row.data.cycleId || baseline.startedAt !== row.data.startedAt)) {
+  if (row && ((!baseline && row.data.initialization !== 'PROVISIONAL') ||
+      (baseline && (baseline.campaignId !== REGULAR_CAMPAIGN ||
+        baseline.cycleId !== row.data.cycleId || baseline.startedAt !== row.data.startedAt)))) {
     throw fail('La base del ciclo no coincide con el historial.');
   }
   if (!row && baseline) throw fail('Falta el historial del ciclo activo; restaurá su copia antes de continuar.');
   return row;
 }
 
+async function finishInitialization(store, history) {
+  const baseline = { campaignId: REGULAR_CAMPAIGN, cycleId: history.cycleId, startedAt: history.startedAt,
+    historicalCompleteness: history.historicalCompleteness };
+  await store.setJSON(BASELINE_KEY, baseline, { onlyIfNew: true });
+  // Verify the winning anchor and re-read history before attempting activation.
+  const current = await readHistory(store);
+  if (current?.data.initialization === 'PROVISIONAL') {
+    await store.setJSON(LEDGER_KEY, { ...current.data, initialization: 'ESTABLISHED' },
+      { onlyIfMatch: current.etag });
+  }
+  // The caller re-reads even after an unsuccessful CAS; never return a stale batch.
+}
+
 export async function readCampaignPanel({ store = campaignStore() } = {}) {
   const row = await readHistory(store);
-  return row ? campaignPanel(row.data) : { status: 'UNINITIALIZED', campaignId: REGULAR_CAMPAIGN };
+  return row && row.data.initialization !== 'PROVISIONAL'
+    ? campaignPanel(row.data) : { status: 'UNINITIALIZED', campaignId: REGULAR_CAMPAIGN };
 }
 
 function handoffCampaign(packet, history, batch) {
@@ -168,10 +189,16 @@ export async function updateRegularCampaign({ body, loadPacket, store = campaign
       Object.keys(body).some(key => !['action', 'campaignId', 'cycleId', 'batchId', 'person', 'productIds', 'confirmation'].includes(key))) {
     throw fail('Acción exclusiva de la campaña regular no válida.', 400);
   }
+  if (body.action === 'prepare' && Object.keys(body).length !== 2) throw fail('La selección se calcula en el servidor.', 400);
   for (let attempt = 0; attempt < 6; attempt++) {
     const instant = now();
     if (!validDate(instant)) throw fail('Fecha de campaña no válida.');
     const row = await readHistory(store);
+    if (row?.data.initialization === 'PROVISIONAL') {
+      if (body.action !== 'prepare') throw fail('La inicialización de la campaña todavía no está completa.');
+      await finishInitialization(store, row.data);
+      continue;
+    }
     let history = row ? structuredClone(row.data) : null;
     if (!history) {
       if (body.action !== 'prepare') throw fail('No existe un ciclo activo.');
@@ -181,7 +208,6 @@ export async function updateRegularCampaign({ body, loadPacket, store = campaign
     }
     let batch, packet, changed = false;
     if (body.action === 'prepare') {
-      if (Object.keys(body).length !== 2) throw fail('La selección se calcula en el servidor.', 400);
       packet = await loadPacket();
       const selected = selectRegularCampaign(packet, history, instant);
       // Reopening today's incomplete handoff is a retry, not a new preparation.
@@ -213,12 +239,12 @@ export async function updateRegularCampaign({ body, loadPacket, store = campaign
       if (row) history.revision++;
       validateCampaignHistory(history);
       if (!row) {
-        const baseline = { campaignId: REGULAR_CAMPAIGN, cycleId: history.cycleId, startedAt: history.startedAt,
-          historicalCompleteness: 'UNRECONCILED' };
-        const created = await store.setJSON(BASELINE_KEY, baseline, { onlyIfNew: true });
-        if (!created.modified) continue;
+        // Only the winning provisional record chooses the cycle and initial batch.
+        // Activation later uses its ETag, so stale recovery cannot recreate lost history.
+        await store.setJSON(LEDGER_KEY, { ...history, initialization: 'PROVISIONAL' }, { onlyIfNew: true });
+        continue;
       }
-      const saved = await store.setJSON(LEDGER_KEY, history, row ? { onlyIfMatch: row.etag } : { onlyIfNew: true });
+      const saved = await store.setJSON(LEDGER_KEY, history, { onlyIfMatch: row.etag });
       if (!saved.modified) continue;
     }
     return { campaign: campaignPanel(history), packet: packet ? handoffCampaign(packet, history, batch) : undefined };

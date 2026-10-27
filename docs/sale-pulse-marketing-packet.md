@@ -126,11 +126,26 @@ inclusions, exclusions, disclosures and all product records remain unchanged.
 Storage errors, malformed active history, mismatched cycle anchors or missing
 history after initialization stop preparation; there is no stale/stateless
 fallback or silent cycle reset. Other Sale Pulse metrics remain readable. If a
-first initialization is interrupted after writing the baseline anchor but before
-writing history, recovery of the campaign files is required; subsequent requests
-fail closed rather than invent an empty replacement. Retain these files when
-backing up the site; never restore old history over newer confirmations. Campaign
-history is separate from Desk assets and from all operational business records.
+first initialization is interrupted, the next prepare can resume its provisional
+history record with the original cycle ID, start time, preparation evidence and
+initial batch. Initialization conditionally creates history-v1.json marked
+PROVISIONAL, creates its matching immutable baseline anchor, then activates that
+same history record as ESTABLISHED using its ETag. Concurrent requests adopt the
+winning provisional record; a conflicting anchor is rejected. No handoff or
+publication confirmation is allowed before activation. Ordinary GETs stay passive
+and report setup as uninitialized until activation completes.
+
+Recovery re-reads both strongly consistent files and never overwrites existing
+history unconditionally. Failed writes, conditional-write conflicts and uncertain
+activation responses can be retried. Activation uses onlyIfMatch, so a stale
+recovery cannot recreate missing established history or replace newer POSTED
+records. Established histories from the earlier format, without an initialization
+marker, remain supported unchanged when their anchor matches. A missing/corrupt
+established history, or a legacy baseline-only state with no trustworthy
+provisional record, still requires recovery from verified records: neither is
+silently recreated. Retain these files when backing up the site; never restore old
+history over newer confirmations. Campaign history is separate from Desk assets
+and from all operational business records.
 
 Code and tests alone do not initialize a production cycle. This PR makes no
 production writes, real campaigns/images, emails, merge or deployment. After
