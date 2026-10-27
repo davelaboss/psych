@@ -6,6 +6,8 @@ const ADMIN_STATE = {
   orders: [],
   buyerGroups: [],
   fulfillmentBatches: [],
+  fulfillmentFilter: 'OPEN',
+  fulfillmentPreparing: false,
   inventory: [],
   batches: [],
   stats: {},
@@ -4306,11 +4308,121 @@ function renderBatchesTab() {
 }
 
 
-function renderBuyerSheetsTab() {
-  const target = document.getElementById('admin-tab-content');
-  const printable = ADMIN_STATE.fulfillmentBatches.filter(
+function printableFulfillmentBatches() {
+  return ADMIN_STATE.fulfillmentBatches.filter(
     (batch) => !batch.mergedIntoBatchId && batch.items.length > 0
   );
+}
+
+
+function fulfillmentBatchesForFilter(filter = ADMIN_STATE.fulfillmentFilter) {
+  return printableFulfillmentBatches().filter((batch) => filter === 'ALL' || (
+    filter === 'UNDELIVERED'
+      ? ['OPEN', 'PREPARED', 'LEGACY_FROZEN'].includes(batch.status)
+      : batch.status === filter
+  ));
+}
+
+
+function renderFulfillmentBatchSheet(batch, printable = printableFulfillmentBatches()) {
+  const combineTargets = printable.filter((candidate) =>
+    candidate.fulfillmentBatchId !== batch.fulfillmentBatchId &&
+    candidate.buyerGroupId === batch.buyerGroupId &&
+    candidate.timingKey === batch.timingKey &&
+    candidate.status !== 'DELIVERED'
+  );
+  const hasDifferentTimingForBuyer = printable.some(candidate =>
+    candidate.fulfillmentBatchId !== batch.fulfillmentBatchId &&
+    candidate.buyerGroupId === batch.buyerGroupId &&
+    candidate.timingKey !== batch.timingKey &&
+    candidate.status !== 'DELIVERED');
+  return `
+  <article class="buyer-sheet" data-fulfillment-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
+    <header>
+      <span>COMPRADOR</span>
+      <h2>${adminEscape(batch.displayName)}</h2>
+      <strong>${adminEscape(batch.displayPhone || 'Sin teléfono')}</strong>
+      <small>Identidad ${adminEscape(batch.buyerGroupId)}</small>
+      <small>Lote ${adminEscape(batch.fulfillmentBatchId)} · revisión ${Number(batch.revision)}</small>
+    </header>
+
+    <div class="fulfillment-batch-meta">
+      <strong>${adminEscape(batch.timingLabel)}</strong>
+      <span class="fulfillment-status is-${adminEscapeAttribute(batch.status.toLowerCase())}">${adminEscape(fulfillmentStatusLabel(batch.status))}</span>
+    </div>
+
+    <table>
+      <thead><tr><th>Artículo</th><th>Descripción</th><th>Cantidad</th><th>Pedido</th><th>Control</th></tr></thead>
+      <tbody>
+        ${batch.items.map((item) => `
+          <tr>
+            <td>${adminEscape(adminFormatItem(item.itemNumber))}</td>
+            <td>${adminEscape(item.title)}</td>
+            <td>${item.quantity == null ? 'Sin dato' : Number(item.quantity)}</td>
+            <td>${adminEscape(item.orderId)}</td>
+            <td class="buyer-sheet-checks">
+              <span>☐ Preparado</span>
+              <span>☐ Entregado</span>
+              <button class="text-action fulfillment-item-action" type="button"
+                data-separate-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}"
+                data-separate-order="${adminEscapeAttribute(item.orderId)}"
+                data-separate-product="${adminEscapeAttribute(item.productId)}">
+                Separar artículo
+              </button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <div class="fulfillment-batch-actions">
+      ${batch.status === 'OPEN' ? `
+        <button class="primary-action" type="button" data-prepare-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
+          Preparar e imprimir
+        </button>
+      ` : `
+        <button class="primary-action" type="button" data-reprint-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
+          Imprimir nuevamente
+        </button>
+      `}
+      ${['PREPARED', 'LEGACY_FROZEN'].includes(batch.status) ? `
+        <button class="secondary-action" type="button" data-deliver-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
+          Marcar entregado
+        </button>
+      ` : ''}
+      ${['PREPARED', 'LEGACY_FROZEN'].includes(batch.status) ? `
+        <button class="secondary-action" type="button" data-reopen-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
+          Reabrir lote
+        </button>
+      ` : ''}
+      ${batch.status !== 'DELIVERED' && combineTargets.length ? `
+        <label class="fulfillment-combine-control">
+          <span>Combinar con</span>
+          <select data-combine-target="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
+            <option value="">Seleccionar lote…</option>
+            ${combineTargets.map((candidate) => `
+              <option value="${adminEscapeAttribute(candidate.fulfillmentBatchId)}">
+                ${adminEscape(candidate.fulfillmentBatchId)} · ${adminEscape(fulfillmentStatusLabel(candidate.status))}
+              </option>
+            `).join('')}
+          </select>
+        </label>
+        <button class="secondary-action" type="button" data-combine-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
+          Combinar lotes
+        </button>
+      ` : batch.status !== 'DELIVERED' ? `<p class="fulfillment-combine-explanation">${hasDifferentTimingForBuyer
+        ? 'Los otros artículos de este comprador tienen un tipo de retiro diferente.'
+        : 'No hay otra planilla compatible para este comprador y tipo de retiro.'}</p>` : ''}
+    </div>
+  </article>
+  `;
+}
+
+
+function renderBuyerSheetsTab() {
+  const target = document.getElementById('admin-tab-content');
+  const printable = printableFulfillmentBatches();
+  const matching = fulfillmentBatchesForFilter();
 
   target.innerHTML = `
     <section class="admin-content-v2 buyer-sheets-view">
@@ -4320,106 +4432,40 @@ function renderBuyerSheetsTab() {
           <h2>Lotes de preparación por comprador</h2>
           <p>Cada planilla representa un lote persistido. Preparar congela sus artículos antes de imprimir.</p>
         </div>
-        <strong>${printable.length} planilla${printable.length === 1 ? '' : 's'}</strong>
+        <strong aria-live="polite">${matching.length} planilla${matching.length === 1 ? '' : 's'}</strong>
+      </div>
+
+      <div class="fulfillment-batch-actions">
+        <label class="fulfillment-combine-control">
+          <span>Estado de las planillas</span>
+          <select data-fulfillment-filter>
+            ${[
+              ['OPEN', 'Abiertos'], ['UNDELIVERED', 'Sin entregar'],
+              ['PREPARED', 'Preparados'], ['DELIVERED', 'Entregados'], ['ALL', 'Todos'],
+            ].map(([value, label]) => `<option value="${value}" ${ADMIN_STATE.fulfillmentFilter === value ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </label>
+        ${ADMIN_STATE.fulfillmentFilter === 'OPEN' ? `
+          <button class="primary-action" type="button" data-print-all-batches ${matching.length ? '' : 'disabled'}>
+            ${ADMIN_STATE.fulfillmentPreparing ? 'Preparando…' : 'Imprimir todos'}
+          </button>
+        ` : ''}
       </div>
 
       <div class="buyer-sheet-list">
-        ${printable.length ? printable.map((batch) => {
-          const combineTargets = printable.filter((candidate) =>
-            candidate.fulfillmentBatchId !== batch.fulfillmentBatchId &&
-            candidate.buyerGroupId === batch.buyerGroupId &&
-            candidate.timingKey === batch.timingKey &&
-            candidate.status !== 'DELIVERED'
-          );
-          const hasDifferentTimingForBuyer = printable.some(candidate =>
-            candidate.fulfillmentBatchId !== batch.fulfillmentBatchId &&
-            candidate.buyerGroupId === batch.buyerGroupId &&
-            candidate.timingKey !== batch.timingKey &&
-            candidate.status !== 'DELIVERED');
-          return `
-          <article class="buyer-sheet" data-fulfillment-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
-            <header>
-              <span>COMPRADOR</span>
-              <h2>${adminEscape(batch.displayName)}</h2>
-              <strong>${adminEscape(batch.displayPhone || 'Sin teléfono')}</strong>
-              <small>Identidad ${adminEscape(batch.buyerGroupId)}</small>
-              <small>Lote ${adminEscape(batch.fulfillmentBatchId)} · revisión ${Number(batch.revision)}</small>
-            </header>
-
-            <div class="fulfillment-batch-meta">
-              <strong>${adminEscape(batch.timingLabel)}</strong>
-              <span class="fulfillment-status is-${adminEscapeAttribute(batch.status.toLowerCase())}">${adminEscape(fulfillmentStatusLabel(batch.status))}</span>
-            </div>
-
-            <table>
-              <thead><tr><th>Artículo</th><th>Descripción</th><th>Cantidad</th><th>Pedido</th><th>Control</th></tr></thead>
-              <tbody>
-                ${batch.items.map((item) => `
-                  <tr>
-                    <td>${adminEscape(adminFormatItem(item.itemNumber))}</td>
-                    <td>${adminEscape(item.title)}</td>
-                    <td>${item.quantity == null ? 'Sin dato' : Number(item.quantity)}</td>
-                    <td>${adminEscape(item.orderId)}</td>
-                    <td class="buyer-sheet-checks">
-                      <span>☐ Preparado</span>
-                      <span>☐ Entregado</span>
-                      <button class="text-action fulfillment-item-action" type="button"
-                        data-separate-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}"
-                        data-separate-order="${adminEscapeAttribute(item.orderId)}"
-                        data-separate-product="${adminEscapeAttribute(item.productId)}">
-                        Separar artículo
-                      </button>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-
-            <div class="fulfillment-batch-actions">
-              ${batch.status === 'OPEN' ? `
-                <button class="primary-action" type="button" data-prepare-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
-                  Preparar e imprimir
-                </button>
-              ` : `
-                <button class="primary-action" type="button" data-reprint-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
-                  Imprimir nuevamente
-                </button>
-              `}
-              ${['PREPARED', 'LEGACY_FROZEN'].includes(batch.status) ? `
-                <button class="secondary-action" type="button" data-deliver-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
-                  Marcar entregado
-                </button>
-              ` : ''}
-              ${['PREPARED', 'LEGACY_FROZEN'].includes(batch.status) ? `
-                <button class="secondary-action" type="button" data-reopen-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
-                  Reabrir lote
-                </button>
-              ` : ''}
-              ${batch.status !== 'DELIVERED' && combineTargets.length ? `
-                <label class="fulfillment-combine-control">
-                  <span>Combinar con</span>
-                  <select data-combine-target="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
-                    <option value="">Seleccionar lote…</option>
-                    ${combineTargets.map((candidate) => `
-                      <option value="${adminEscapeAttribute(candidate.fulfillmentBatchId)}">
-                        ${adminEscape(candidate.fulfillmentBatchId)} · ${adminEscape(fulfillmentStatusLabel(candidate.status))}
-                      </option>
-                    `).join('')}
-                  </select>
-                </label>
-                <button class="secondary-action" type="button" data-combine-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
-                  Combinar lotes
-                </button>
-              ` : batch.status !== 'DELIVERED' ? `<p class="fulfillment-combine-explanation">${hasDifferentTimingForBuyer
-                ? 'Los otros artículos de este comprador tienen un tipo de retiro diferente.'
-                : 'No hay otra planilla compatible para este comprador y tipo de retiro.'}</p>` : ''}
-            </div>
-          </article>
-        `; }).join('') : '<div class="admin-empty-v2">Todavía no hay artículos confirmados para preparar.</div>'}
+        ${matching.length ? matching.map((batch) => renderFulfillmentBatchSheet(batch, printable)).join('') : '<div class="admin-empty-v2">No hay planillas para este filtro.</div>'}
       </div>
     </section>
   `;
 
+  target.querySelector('[data-fulfillment-filter]').addEventListener('change', (event) => {
+    ADMIN_STATE.fulfillmentFilter = event.target.value;
+    renderBuyerSheetsTab();
+  });
+  target.querySelector('[data-print-all-batches]')?.addEventListener('click', prepareAndPrintAllFulfillmentBatches);
+  if (ADMIN_STATE.fulfillmentPreparing) {
+    target.querySelectorAll('button, select').forEach((control) => { control.disabled = true; });
+  }
   target.querySelectorAll('[data-prepare-batch]').forEach((button) => {
     button.addEventListener('click', () => prepareAndPrintFulfillmentBatch(
       button.getAttribute('data-prepare-batch')
@@ -4497,7 +4543,9 @@ async function updateFulfillmentBatch(payload) {
 
 async function prepareAndPrintFulfillmentBatch(batchId) {
   const batch = fulfillmentBatchById(batchId);
-  if (!batch || !window.confirm('Preparar congela esta planilla antes de imprimir. ¿Continuar?')) return;
+  if (ADMIN_STATE.fulfillmentPreparing || !batch || !window.confirm('Preparar congela esta planilla antes de imprimir. ¿Continuar?')) return;
+  ADMIN_STATE.fulfillmentPreparing = true;
+  renderBuyerSheetsTab();
   try {
     await updateFulfillmentBatch({
       action: 'PREPARE',
@@ -4507,6 +4555,60 @@ async function prepareAndPrintFulfillmentBatch(batchId) {
     printFulfillmentBatch(batchId);
   } catch (error) {
     alert(error instanceof Error ? error.message : 'No se pudo preparar el lote.');
+  } finally {
+    ADMIN_STATE.fulfillmentPreparing = false;
+    renderBuyerSheetsTab();
+  }
+}
+
+
+async function prepareAndPrintAllFulfillmentBatches() {
+  if (ADMIN_STATE.fulfillmentPreparing || ADMIN_STATE.fulfillmentFilter !== 'OPEN') return;
+  // Keep the selected revisions fixed throughout this job, even as PREPARE rerenders the list.
+  const selected = fulfillmentBatchesForFilter('OPEN').map(({ fulfillmentBatchId, revision }) => ({
+    fulfillmentBatchId, revision,
+  }));
+  if (!selected.length || !window.confirm(
+    `Preparar e imprimir ${selected.length} planillas abiertas. Se congelarán sus artículos. ¿Continuar?`
+  )) return;
+  const prepared = [];
+  ADMIN_STATE.fulfillmentPreparing = true;
+  renderBuyerSheetsTab();
+  try {
+    for (const batch of selected) {
+      const result = await updateFulfillmentBatch({
+        action: 'PREPARE',
+        batchId: batch.fulfillmentBatchId,
+        expectedRevision: batch.revision,
+      });
+      const snapshot = result.changedBatches?.find((changed) =>
+        changed.fulfillmentBatchId === batch.fulfillmentBatchId && changed.status === 'PREPARED'
+      );
+      if (!snapshot) throw new Error('La respuesta no confirmó la preparación. Actualizá para verificar el lote.');
+      prepared.push(snapshot);
+    }
+  } catch (error) {
+    const failed = selected[prepared.length];
+    alert([
+      'Se detuvo la preparación.',
+      `Preparados (${prepared.length}): ${prepared.map((batch) => batch.fulfillmentBatchId).join(', ') || 'ninguno'}.`,
+      `Sin preparación confirmada: ${failed.fulfillmentBatchId}. Verificá su estado antes de reintentar.`,
+      `No intentados: ${selected.slice(prepared.length + 1).map((batch) => batch.fulfillmentBatchId).join(', ') || 'ninguno'}.`,
+      error instanceof Error ? error.message : 'No se pudo preparar el lote.',
+      prepared.length ? 'Los lotes preparados se conservan y se imprimirán juntos.' : 'No hay lotes preparados confirmados para imprimir.',
+      'No se revirtió ninguna preparación.',
+    ].join('\n'));
+  } finally {
+    ADMIN_STATE.fulfillmentPreparing = false;
+    renderBuyerSheetsTab();
+  }
+  if (prepared.length) {
+    try {
+      printFulfillmentBatches(prepared);
+    } catch (error) {
+      alert('Los lotes siguen preparados. Usá el filtro Preparados para volver a imprimir. ' +
+        (error instanceof Error ? error.message : 'No se pudo abrir la impresión.'));
+    }
   }
 }
 
@@ -4585,25 +4687,35 @@ async function separateFulfillmentItem({ batchId, orderId, productId }) {
 
 
 function printFulfillmentBatch(batchId) {
-  const sheet = document.querySelector(
-    `[data-fulfillment-batch="${CSS.escape(batchId)}"]`
-  );
-  if (!sheet) return;
+  const batch = fulfillmentBatchById(batchId);
+  if (batch) printFulfillmentBatches([batch]);
+}
+
+
+function printFulfillmentBatches(batches) {
+  if (!batches.length) return;
   document.getElementById('buyer-sheet-print-root')?.remove();
   const printRoot = document.createElement('div');
   printRoot.id = 'buyer-sheet-print-root';
-  const printable = sheet.cloneNode(true);
-  printable.querySelectorAll('.fulfillment-batch-actions, .fulfillment-item-action').forEach(
+  // Render persisted snapshots independently of the selected filter and live Admin DOM.
+  printRoot.innerHTML = batches.map((batch) => renderFulfillmentBatchSheet(batch, [])).join('');
+  printRoot.querySelectorAll('.fulfillment-batch-actions, .fulfillment-item-action').forEach(
     (element) => element.remove()
   );
-  printRoot.append(printable);
   document.body.append(printRoot);
   document.body.classList.add('printing-buyer-sheet');
-  window.addEventListener('afterprint', () => {
+  const cleanup = () => {
     document.body.classList.remove('printing-buyer-sheet');
     printRoot.remove();
-  }, { once: true });
-  window.print();
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  try {
+    window.print();
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
 }
 
 
@@ -7126,6 +7238,12 @@ function injectAdminStyles() {
         width: 100%;
         border: 0;
         padding: 0;
+        margin: 0;
+      }
+
+      body.printing-buyer-sheet #buyer-sheet-print-root .buyer-sheet + .buyer-sheet {
+        break-before: page;
+        page-break-before: always;
       }
 
       body.printing-buyer-sheet #buyer-sheet-print-root .buyer-sheet-print {
@@ -7362,51 +7480,53 @@ function injectAdminStyles() {
         display: grid;
       }
 
-      .buyer-sheet {
-        padding: 16px;
-        overflow: hidden;
-      }
+      @media screen {
+        .buyer-sheet {
+          padding: 16px;
+          overflow: hidden;
+        }
 
-      .buyer-sheet table,
-      .buyer-sheet tbody,
-      .buyer-sheet tr,
-      .buyer-sheet td {
-        display: block;
-        width: 100%;
-      }
+        .buyer-sheet table,
+        .buyer-sheet tbody,
+        .buyer-sheet tr,
+        .buyer-sheet td {
+          display: block;
+          width: 100%;
+        }
 
-      .buyer-sheet thead {
-        display: none;
-      }
+        .buyer-sheet thead {
+          display: none;
+        }
 
-      .buyer-sheet tr {
-        border-bottom: 1px solid var(--line);
-        padding: 10px 0;
-      }
+        .buyer-sheet tr {
+          border-bottom: 1px solid var(--line);
+          padding: 10px 0;
+        }
 
-      .buyer-sheet td {
-        border: 0;
-        padding: 4px 0;
-        overflow-wrap: anywhere;
-      }
+        .buyer-sheet td {
+          border: 0;
+          padding: 4px 0;
+          overflow-wrap: anywhere;
+        }
 
-      .buyer-sheet td::before {
-        display: inline-block;
-        width: 92px;
-        color: var(--muted);
-        font-size: 10px;
-        font-weight: 800;
-        text-transform: uppercase;
-      }
+        .buyer-sheet td::before {
+          display: inline-block;
+          width: 92px;
+          color: var(--muted);
+          font-size: 10px;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
 
-      .buyer-sheet td:nth-child(1)::before { content: 'Artículo'; }
-      .buyer-sheet td:nth-child(2)::before { content: 'Descripción'; }
-      .buyer-sheet td:nth-child(3)::before { content: 'Cantidad'; }
-      .buyer-sheet td:nth-child(4)::before { content: 'Pedido'; }
-      .buyer-sheet td:nth-child(5)::before { content: 'Control'; }
+        .buyer-sheet td:nth-child(1)::before { content: 'Artículo'; }
+        .buyer-sheet td:nth-child(2)::before { content: 'Descripción'; }
+        .buyer-sheet td:nth-child(3)::before { content: 'Cantidad'; }
+        .buyer-sheet td:nth-child(4)::before { content: 'Pedido'; }
+        .buyer-sheet td:nth-child(5)::before { content: 'Control'; }
 
-      .buyer-sheet-checks {
-        min-width: 0;
+        .buyer-sheet-checks {
+          min-width: 0;
+        }
       }
 
       .fulfillment-batch-actions {
