@@ -1214,6 +1214,7 @@ async function setupPickupScheduler(order, access) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los horarios.');
     target.innerHTML = `<h2>Retiro</h2>
+      <p>Hora de Paraguay. Nuevos turnos de una hora.</p>
       <div class="pickup-fulfillment-list">
         ${(data.fulfillments || []).map((part, index) => {
           const appointment = part.appointment?.status === 'SCHEDULED' ? part.appointment : null;
@@ -1228,7 +1229,7 @@ async function setupPickupScheduler(order, access) {
                 <select name="slotKey" required>
                   <option value="">Seleccioná fecha y horario</option>
                   ${(part.slots || []).filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
-                    `<option value="${escapeHtml(slot.key)}">${escapeHtml(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}
+                    `<option value="${escapeHtml(slot.key)}"${slot.selected ? ' selected' : ''}>${escapeHtml(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}
                 </select>
               </label>
               <button class="primary-action" type="submit">${appointment ? 'Cambiar retiro' : 'Agendar retiro'}</button>
@@ -1244,6 +1245,7 @@ async function setupPickupScheduler(order, access) {
         event.preventDefault();
         const button = form.querySelector('button[type="submit"]');
         const error = form.querySelector('.form-error');
+        if (button.disabled) return;
         button.disabled = true;
         error.hidden = true;
         try {

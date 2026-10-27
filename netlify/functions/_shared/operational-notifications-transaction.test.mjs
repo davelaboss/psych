@@ -7,7 +7,7 @@ import {
   claimCartLease, getCartLeaseStatus, transitionCartLeaseToOrder, recordOrderReceipt,
   confirmOrderPayment, cancelOrder, refreshOrderReservation, setInventoryDatabaseClientForTests,
 } from './inventory-database.mjs';
-import { changePickup } from './pickup.mjs';
+import { changePickup, pickupAvailability, pickupFulfillments, listUpcomingPickups } from './pickup.mjs';
 import { attachOrderReceipt } from './receipt-upload.mjs';
 import { enqueueDueOrderReservationNotifications } from './order-reservation-notifications.mjs';
 import {
@@ -229,14 +229,17 @@ test('pickup scheduling/rescheduling enqueue once; unchanged and cancelled appoi
   assert.equal(appointment.status, 'CANCELLED');
   assert.equal(appointment.slot_key, null);
   const pickups = await rows("SELECT * FROM seller_notifications WHERE event_type LIKE 'PICKUP_%' ORDER BY created_at");
-  assert.deepEqual(pickups.map(row => row.event_type), ['PICKUP_SCHEDULED', 'PICKUP_CHANGED']);
-  for (const row of pickups) {
+  assert.deepEqual(pickups.map(row => row.event_type), ['PICKUP_SCHEDULED', 'PICKUP_SCHEDULED',
+    'PICKUP_CHANGED', 'PICKUP_CHANGED']);
+  for (const row of pickups.filter(row => !row.payload.kind)) {
     assert.equal(row.recipient_role, 'SELLER');
     assert.match(row.message, /Hola María\./);
     assert.match(row.message, /Fecha:\n[0-9]+ de diciembre de 2026\n\nHora:\n08:00 a 12:00/);
     assert.ok(row.message.includes(`/pedido/${order.id}?access=`));
     assert.doesNotMatch(row.message, /canceló|administrativ/);
   }
+  assert.ok(pickups.filter(row => row.payload.kind).every(row => row.recipient_role === 'SELLER'
+    && row.message === null && row.payload.appointmentRevision > 0));
 });
 
 test('order cancellation and reservation expiration keep business behavior without emails', async () => {
@@ -368,7 +371,7 @@ test('delivery failures preserve committed order/payment/pickup state and retrie
   const committed = await state();
   const failed = mockProvider(500);
   await drainSellerNotifications(20);
-  assert.equal(failed.length, 4);
+  assert.equal(failed.length, 5);
   assert.ok((await rows()).every(row => row.status === 'RETRYABLE' && row.attempts === 1));
   assert.deepEqual(await state(), committed);
   await db.exec("UPDATE seller_notifications SET lease_until=clock_timestamp()-interval '1 minute'");
@@ -381,7 +384,7 @@ test('delivery failures preserve committed order/payment/pickup state and retrie
   assert.deepEqual(await state(), committed);
   assert.equal((await rows('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1', [order.id]))[0].order_snapshot.paymentState, 'FULLY_PAID');
   await drainSellerNotifications(20);
-  assert.equal(retried.length, 4);
+  assert.equal(retried.length, 5);
 });
 
 test('claim preserves retry age, active-lease, uncertain and success restrictions', async () => {
@@ -415,4 +418,249 @@ test('queue conflict is idempotent and safe dispatch catches infrastructure fail
   query = () => { throw new Error('Synthetic database outage'); };
   await dispatchSellerNotificationsSafely();
   assert.deepEqual(await rows('SELECT * FROM checkout_attempts'), committed);
+});
+
+async function fixturePickup(slotKey, { timingKey = 'IMMEDIATE', buyer, items } = {}) {
+  const { order } = await created();
+  const paid = (await pay(order.id, 100_000)).order;
+  const snapshot = { ...paid, buyer: buyer || paid.buyer, items: items || paid.items };
+  await db.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',
+    [order.id, JSON.stringify(snapshot)]);
+  await db.query('INSERT INTO pickup_windows(slot_key) VALUES($1) ON CONFLICT DO NOTHING', [slotKey]);
+  await db.query(`INSERT INTO pickup_appointments(order_id,timing_key,slot_key,status,changed_by)
+    VALUES($1,$2,$3,'SCHEDULED','CUSTOMER')`, [order.id, timingKey, slotKey]);
+  return snapshot;
+}
+
+test('reading and retaining a legacy half-day appointment never changes it or queues mail', async () => {
+  const legacy = await fixturePickup('2026-11-02|08:00-12:00');
+  const before = await rows('SELECT * FROM pickup_appointments');
+  const notices = await rows();
+  const [part] = await pickupFulfillments(legacy);
+  assert.equal(part.appointment.slotKey, '2026-11-02|08:00-12:00');
+  assert.ok(!part.slots.some(slot => slot.key === part.appointment.slotKey));
+  assert.equal((await listUpcomingPickups()).find(p => p.orderId === legacy.id).slotKey,
+    '2026-11-02|08:00-12:00');
+  await changePickup({ orderId: legacy.id, timingKey: 'IMMEDIATE',
+    slotKey: part.appointment.slotKey, actor: 'CUSTOMER' });
+  assert.deepEqual(await rows('SELECT * FROM pickup_appointments'), before);
+  assert.deepEqual(await rows(), notices);
+});
+
+test('availability counts legacy overlap, respects touching endpoints and ignores cancelled rows', async () => {
+  for (let i = 0; i < 3; i++) await fixturePickup('2026-11-02|08:00-12:00');
+  await fixturePickup('2026-11-02|10:00-11:00');
+  const cancelled = await fixturePickup('2026-11-02|10:00-11:00');
+  await db.query("UPDATE pickup_appointments SET status='CANCELLED',slot_key=NULL WHERE order_id=$1", [cancelled.id]);
+  const { order } = await created();
+  const buyer = (await pay(order.id, 100_000)).order;
+  const available = new Map((await pickupAvailability(buyer, 'IMMEDIATE')).map(s => [s.key, s.remaining]));
+  assert.equal(available.get('2026-11-02|08:00-09:00'), 1);
+  assert.equal(available.get('2026-11-02|09:00-10:00'), 1);
+  assert.equal(available.get('2026-11-02|10:00-11:00'), 0);
+  assert.equal(available.get('2026-11-02|11:00-12:00'), 1);
+  assert.equal(available.get('2026-11-02|12:00-13:00'), 4);
+  await assert.rejects(changePickup({ orderId: buyer.id, timingKey: 'IMMEDIATE',
+    slotKey: '2026-11-02|10:00-11:00', actor: 'ADMIN' }), /completo/);
+});
+
+test('a full legacy window permits its own replacement; failed replacement retains the appointment', async () => {
+  const legacy = [];
+  for (let i = 0; i < 4; i++) legacy.push(await fixturePickup('2026-11-02|08:00-12:00'));
+  for (let i = 0; i < 4; i++) await fixturePickup('2026-11-03|13:00-14:00');
+  const before = await rows('SELECT * FROM pickup_appointments WHERE order_id=$1', [legacy[0].id]);
+  const notices = await rows();
+  await assert.rejects(changePickup({ orderId: legacy[0].id, timingKey: 'IMMEDIATE',
+    slotKey: '2026-11-03|13:00-14:00', actor: 'CUSTOMER' }), /completo/);
+  assert.deepEqual(await rows('SELECT * FROM pickup_appointments WHERE order_id=$1', [legacy[0].id]), before);
+  assert.deepEqual(await rows(), notices);
+  const available = await pickupAvailability(legacy[0], 'IMMEDIATE', { status: 'SCHEDULED', slotKey: before[0].slot_key });
+  assert.equal(available.find(s => s.key === '2026-11-02|10:00-11:00').remaining, 1);
+  const result = await changePickup({ orderId: legacy[0].id, timingKey: 'IMMEDIATE',
+    slotKey: '2026-11-02|10:00-11:00', actor: 'CUSTOMER' });
+  assert.equal(result.slotKey, '2026-11-02|10:00-11:00');
+  assert.equal(result.revision, 2);
+});
+
+test('failure to enqueue either pickup message rolls back the replacement and both outbox rows', async () => {
+  for (const failAgenda of [false, true]) {
+    const legacy = await fixturePickup('2026-11-02|08:00-12:00');
+    const before = await rows();
+    query = (sql, params = []) => {
+      if (sql.includes('INSERT INTO seller_notifications') && params[0].endsWith(failAgenda ? ':agenda' : ':seller')) {
+        throw new Error('Synthetic pickup outbox failure');
+      }
+      return db.query(sql, params);
+    };
+    await assert.rejects(changePickup({ orderId: legacy.id, timingKey: 'IMMEDIATE',
+      slotKey: '2026-11-02|10:00-11:00', actor: 'ADMIN' }), /outbox failure/);
+    assert.equal((await rows('SELECT slot_key FROM pickup_appointments WHERE order_id=$1', [legacy.id]))[0].slot_key,
+      '2026-11-02|08:00-12:00');
+    assert.deepEqual(await rows(), before);
+    query = (sql, params = []) => db.query(sql, params);
+  }
+});
+
+test('upcoming schedule excludes finished and cancelled appointments using Paraguay end times', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-02T11:30:00-03:00') });
+  const past = await fixturePickup('2026-11-01|19:00-20:00');
+  const ended = await fixturePickup('2026-11-02|10:00-11:00');
+  const ongoing = await fixturePickup('2026-11-02|08:00-12:00');
+  const next = await fixturePickup('2026-11-02|12:00-13:00');
+  const cancelled = await fixturePickup('2026-11-02|13:00-14:00');
+  await db.query("UPDATE pickup_appointments SET status='CANCELLED',slot_key=NULL WHERE order_id=$1", [cancelled.id]);
+  const agenda = await listUpcomingPickups();
+  assert.deepEqual(agenda.map(p => p.orderId), [ongoing.id, next.id]);
+  assert.ok(agenda.every(p => ![past.id, ended.id, cancelled.id].includes(p.orderId)));
+  assert.deepEqual(await listUpcomingPickups({ now: new Date('2026-11-02T13:00:00-03:00') }), []);
+});
+
+test('first agenda dispatch reads all committed changes chronologically with buyer, type, item IDs and quantities', async () => {
+  const late = await fixturePickup('2026-12-10|15:00-16:00', {
+    timingKey: 'DELAYED:2026-12-09:2026-12-12', buyer: { name: 'Zulma', phone: '+595 333' },
+    items: [{ productId: 'delayed-product', itemNumber: 474, quantity: 2, saleMode: 'DELAYED',
+      pickupWindowStart: '2026-12-09', pickupWindowEnd: '2026-12-12' }],
+  });
+  const { order, change } = await scheduledOrder();
+  await change(slots[0]);
+  // This different order commits after the notification was queued. It must
+  // appear on the first dispatch; the changed order must show its latest slot.
+  const early = await fixturePickup('2026-11-02|08:00-12:00', {
+    buyer: { name: 'Ana <synthetic>', phone: '+595 111' },
+    items: [{ productId: 'legacy-product', itemNumber: 381, quantity: 3, saleMode: 'IMMEDIATE' }],
+  });
+  await change(slots[1]);
+  const calls = mockProvider();
+  await drainSellerNotifications(100);
+  const agendas = calls.filter(c => c.key.endsWith(':agenda'));
+  assert.equal(agendas.length, 2);
+  for (const agenda of agendas) {
+    assert.match(agenda.subject, /Agenda administrativa.*solo vendedor/);
+    assert.deepEqual(agenda.to, ['seller@example.com']);
+    assert.match(agenda.text, /SOLO VENDEDOR.*No compartir/);
+    assert.match(agenda.text, /Generada: .*America\/Asuncion \(Paraguay\)/);
+    const schedule = agenda.text.split('Agenda completa')[1];
+    assert.ok(schedule.indexOf(early.id) < schedule.indexOf(order.id));
+    assert.ok(schedule.indexOf(order.id) < schedule.indexOf(late.id));
+    assert.match(schedule, /Ana <synthetic>.*Teléfono: \+595 111/);
+    assert.match(schedule, /08:00 a 12:00/);
+    assert.match(schedule, /#381 · ID legacy-product · cantidad 3/);
+    assert.match(schedule, /Zulma.*Teléfono: \+595 333/);
+    assert.match(schedule, /#474 · ID delayed-product · cantidad 2/);
+    assert.match(schedule, /Retiro inmediato/);
+    assert.match(schedule, /Retiro posterior/);
+    assert.ok(schedule.includes('10 de diciembre de 2026'));
+    assert.ok(!schedule.includes('9 de diciembre de 2026'));
+  }
+  assert.match(agendas[0].text, /Cambio: Retiro creado/);
+  assert.match(agendas[1].text, /Cambio: Retiro reprogramado/);
+  const ready = calls.filter(c => c.key.startsWith(`pickup:${order.id}:`) && !c.key.endsWith(':agenda'));
+  assert.equal(ready.length, 2);
+  for (const email of ready) assert.doesNotMatch(email.text, /Zulma|Ana <synthetic>|Agenda completa/);
+});
+
+test('uncertain delivery retries freeze both pickup bodies and keys while newer changes get a fresh agenda', async () => {
+  const { order, change } = await scheduledOrder();
+  await change(slots[0]);
+  await db.exec("DELETE FROM seller_notifications WHERE event_type NOT LIKE 'PICKUP_%'");
+  const failed = [];
+  globalThis.fetch = async (_url, options) => {
+    failed.push({ ...JSON.parse(options.body), key: options.headers['Idempotency-Key'] });
+    throw new Error('Synthetic provider timeout after possible acceptance');
+  };
+  await drainSellerNotifications(20);
+  assert.equal(failed.length, 2);
+  await change(slots[1]);
+  await db.exec("UPDATE seller_notifications SET lease_until=clock_timestamp()-interval '1 minute' WHERE status='RETRYABLE'");
+  const delivered = mockProvider();
+  await drainSellerNotifications(20);
+  for (const attempt of failed) {
+    const retried = delivered.find(c => c.key === attempt.key);
+    assert.deepEqual(retried, attempt);
+  }
+  const newAgenda = delivered.find(c => c.key.endsWith(':2:seller:agenda'));
+  assert.ok(newAgenda.text.split('Agenda completa')[1].includes('10 de diciembre de 2026'));
+  assert.equal((await rows('SELECT slot_key FROM pickup_appointments WHERE order_id=$1', [order.id]))[0].slot_key, slots[1]);
+  await drainSellerNotifications(20);
+  assert.equal(delivered.length, 4);
+});
+
+test('agenda generation failure releases its claim and leaves both durable messages recoverable', async () => {
+  const { change } = await scheduledOrder();
+  await change(slots[0]);
+  await db.exec("DELETE FROM seller_notifications WHERE event_type NOT LIKE 'PICKUP_%'");
+  query = (sql, params = []) => {
+    if (sql.includes('FROM pickup_appointments a JOIN checkout_attempts')) throw new Error('Synthetic agenda read failure');
+    return db.query(sql, params);
+  };
+  const calls = mockProvider();
+  await dispatchSellerNotificationsSafely();
+  const [agenda] = await rows("SELECT * FROM seller_notifications WHERE event_key LIKE '%:agenda'");
+  assert.equal(agenda.status, 'PENDING');
+  assert.equal(agenda.attempts, 0);
+  assert.equal(calls.length, 1);
+  query = (sql, params = []) => db.query(sql, params);
+  await drainSellerNotifications(20);
+  assert.equal(calls.length, 2);
+  assert.ok((await rows()).every(r => r.status === 'SENT'));
+});
+
+test('administrative-looking historical rows without the complete new envelope remain untouched', async () => {
+  const { order } = await created();
+  await db.exec('DELETE FROM seller_notifications');
+  for (const status of ['PENDING', 'RETRYABLE', 'SENDING']) {
+    for (const role of ['SELLER', 'CUSTOMER']) {
+      await historical(order.id, { type: 'PICKUP_CHANGED', role, status,
+        subject: `Agenda administrativa de retiros (solo vendedor) · ${order.id}` });
+    }
+  }
+  const before = await rows();
+  const calls = mockProvider();
+  await drainSellerNotifications(100);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(await rows(), before);
+});
+
+test('each pickup email retries independently when only its provider request fails', async () => {
+  for (const failAgenda of [false, true]) {
+    await db.exec('TRUNCATE cart_sessions,operational_inventory RESTART IDENTITY CASCADE');
+    const { change } = await scheduledOrder();
+    await change(slots[0]);
+    await db.exec("DELETE FROM seller_notifications WHERE event_type NOT LIKE 'PICKUP_%'");
+    const first = [];
+    globalThis.fetch = async (_url, options) => {
+      const key = options.headers['Idempotency-Key'];
+      first.push(key);
+      return new Response(JSON.stringify({ id: 'mock-id' }), {
+        status: key.endsWith(':agenda') === failAgenda ? 503 : 200 });
+    };
+    await drainSellerNotifications(20);
+    assert.equal(first.length, 2);
+    assert.equal((await rows()).filter(r => r.status === 'SENT').length, 1);
+    const [retry] = (await rows()).filter(r => r.status === 'RETRYABLE');
+    assert.equal(retry.event_key.endsWith(':agenda'), failAgenda);
+    await db.exec("UPDATE seller_notifications SET lease_until=clock_timestamp()-interval '1 minute' WHERE status='RETRYABLE'");
+    const retried = mockProvider();
+    await drainSellerNotifications(20);
+    assert.deepEqual(retried.map(c => c.key), [retry.event_key]);
+    assert.ok((await rows()).every(r => r.status === 'SENT'));
+    assert.equal((await rows('SELECT status FROM pickup_appointments'))[0].status, 'SCHEDULED');
+  }
+});
+
+test('a slot that starts while waiting for the day lock is rejected without losing the old appointment', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-02T11:59:00-03:00') });
+  const legacy = await fixturePickup('2026-11-02|08:00-12:00');
+  const before = await rows();
+  query = (sql, params = []) => {
+    if (sql.includes('SELECT slot_key FROM pickup_windows')) {
+      t.mock.timers.setTime(Date.parse('2026-11-02T12:00:00-03:00'));
+    }
+    return db.query(sql, params);
+  };
+  await assert.rejects(changePickup({ orderId: legacy.id, timingKey: 'IMMEDIATE',
+    slotKey: '2026-11-02|12:00-13:00', actor: 'CUSTOMER' }), /no está disponible/);
+  assert.deepEqual(await rows(), before);
+  assert.equal((await rows('SELECT slot_key FROM pickup_appointments WHERE order_id=$1', [legacy.id]))[0].slot_key,
+    '2026-11-02|08:00-12:00');
 });

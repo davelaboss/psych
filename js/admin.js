@@ -5885,7 +5885,7 @@ async function setupAdminPickup(order) {
   if (!target) return;
   try {
     const data = await adminFetch(`/api/admin/pickup?id=${encodeURIComponent(order.id)}`);
-    target.innerHTML = `<h3>5. Retiros</h3><div class="admin-pickup-parts">
+    target.innerHTML = `<h3>5. Retiros</h3><p>Hora de Paraguay. Nuevos turnos de una hora.</p><div class="admin-pickup-parts">
       ${(data.fulfillments || []).map(part => {
         const appointment = part.appointment?.status === 'SCHEDULED' ? part.appointment : null;
         return `<article class="admin-pickup-part" data-admin-pickup-part="${adminEscapeAttribute(part.timingKey)}">
@@ -5898,7 +5898,7 @@ async function setupAdminPickup(order) {
           ${part.slots.length ? `<form data-admin-pickup-form>
             <label>Horario <select name="slotKey" required><option value="">Seleccioná fecha y horario</option>
               ${part.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
-                `<option value="${adminEscapeAttribute(slot.key)}">${adminEscape(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}</select></label>
+                `<option value="${adminEscapeAttribute(slot.key)}"${slot.selected ? ' selected' : ''}>${adminEscape(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}</select></label>
             <button class="primary-action" type="submit">${appointment ? 'Cambiar este retiro' : 'Agendar este retiro'}</button>
           </form>` : ''}
           ${appointment ? '<button class="secondary-action" type="button" data-admin-cancel-pickup>Cancelar este retiro</button>' : ''}
@@ -5907,7 +5907,12 @@ async function setupAdminPickup(order) {
       }).join('')}</div>`;
     target.querySelectorAll('[data-admin-pickup-part]').forEach(partElement => {
       const timingKey = partElement.dataset.adminPickupPart;
+      let saving = false;
       const save = async slotKey => {
+        if (saving) return;
+        saving = true;
+        const controls = partElement.querySelectorAll('button, select');
+        controls.forEach(control => { control.disabled = true; });
         const error = partElement.querySelector('[data-admin-pickup-error]');
         error.hidden = true;
         try {
@@ -5917,6 +5922,7 @@ async function setupAdminPickup(order) {
           await setupAdminPickup(order);
           await loadUpcomingPickups();
         } catch (problem) { error.textContent = problem.message; error.hidden = false; }
+        finally { saving = false; controls.forEach(control => { control.disabled = false; }); }
       };
       partElement.querySelector('form')?.addEventListener('submit', event => {
         event.preventDefault();

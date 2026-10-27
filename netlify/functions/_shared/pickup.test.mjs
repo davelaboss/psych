@@ -144,3 +144,62 @@ test('scheduling and cancelling one timing key never alter the other appointment
   assert.match(notifications[0].key, /:IMMEDIATE:/);
   assert.equal(notifications.length, 1);
 });
+
+const paidImmediate = () => order([confirmed('full', 2_000_000, { type: 'FULL' })], {
+  status: 'PAYMENT_CONFIRMED', items: [{ saleMode: 'IMMEDIATE' }],
+});
+const hourly = (from, to) => Array.from({ length: to - from }, (_, i) =>
+  `${String(from + i).padStart(2, '0')}:00-${String(from + i + 1).padStart(2, '0')}:00`);
+
+for (const [weekday, day, expected] of [
+  ['Monday', '2026-11-02', hourly(8, 20)],
+  ['Tuesday', '2026-11-03', [...hourly(8, 12), ...hourly(13, 16)]],
+  ['Wednesday', '2026-11-04', hourly(8, 20)],
+  ['Thursday', '2026-11-05', hourly(8, 20)],
+  ['Friday', '2026-11-06', hourly(8, 20)],
+  ['Saturday', '2026-11-07', hourly(14, 17)],
+  ['Sunday', '2026-11-08', hourly(8, 20)],
+]) test(`${weekday} offers exactly the authorized contiguous hourly ranges`, () => {
+  const keys = pickupSlotKeys(paidImmediate(), 'IMMEDIATE', '2026-10-01', '00:00');
+  assert.deepEqual(keys.filter(key => key.startsWith(`${day}|`)), expected.map(time => `${day}|${time}`));
+});
+
+test('December 8 exception and immediate end date remain unchanged', () => {
+  const keys = pickupSlotKeys(paidImmediate(), 'IMMEDIATE', '2026-12-08', '00:00');
+  assert.deepEqual(keys, hourly(13, 17).map(time => `2026-12-08|${time}`));
+  assert.deepEqual(pickupSlotKeys(paidImmediate(), 'IMMEDIATE', '2026-12-09', '00:00'), []);
+});
+
+test('delayed eligibility and order-specific date boundaries remain unchanged', () => {
+  const delayed = order([confirmed('full', 2_000_000, { type: 'FULL' })]);
+  const key = 'DELAYED:UNSET:UNSET';
+  const keys = pickupSlotKeys(delayed, key, '2026-10-01', '00:00');
+  assert.deepEqual([...new Set(keys.map(slot => slot.split('|')[0]))],
+    ['2026-12-09', '2026-12-10', '2026-12-11', '2026-12-12']);
+  assert.deepEqual(keys.filter(slot => slot.startsWith('2026-12-12|')),
+    hourly(14, 17).map(time => `2026-12-12|${time}`));
+  const narrow = { ...delayed, items: [{ saleMode: 'DELAYED',
+    pickupWindowStart: '2026-12-10', pickupWindowEnd: '2026-12-11' }] };
+  assert.deepEqual([...new Set(pickupSlotKeys(narrow, 'DELAYED:2026-12-10:2026-12-11',
+    '2026-10-01', '00:00').map(slot => slot.split('|')[0]))], ['2026-12-10', '2026-12-11']);
+  assert.deepEqual(pickupSlotKeys(order([confirmed('deposit', 500_000)]), key, '2026-10-01'), []);
+});
+
+test('current-day slots exclude started hours, exact boundaries and previous dates', () => {
+  const keys = pickupSlotKeys(paidImmediate(), 'IMMEDIATE', '2026-11-02', '11:30');
+  assert.ok(keys.every(key => key.split('|')[0] >= '2026-11-02'));
+  assert.deepEqual(keys.filter(key => key.startsWith('2026-11-02|')),
+    hourly(12, 20).map(time => `2026-11-02|${time}`));
+  assert.equal(pickupSlotKeys(paidImmediate(), 'IMMEDIATE', '2026-11-02', '12:00')[0],
+    '2026-11-02|13:00-14:00');
+  assert.equal(pickupSlotKeys(paidImmediate(), 'IMMEDIATE', '2026-11-02', '20:00')[0],
+    '2026-11-03|08:00-09:00');
+});
+
+test('local day and time use Paraguay even across UTC midnight', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-03T00:30:00Z') });
+  const keys = pickupSlotKeys(paidImmediate(), 'IMMEDIATE');
+  assert.equal(keys[0], '2026-11-03|08:00-09:00');
+  t.mock.timers.setTime(Date.parse('2026-11-03T14:30:00Z'));
+  assert.equal(pickupSlotKeys(paidImmediate(), 'IMMEDIATE')[0], '2026-11-03|13:00-14:00');
+});

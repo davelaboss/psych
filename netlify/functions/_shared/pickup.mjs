@@ -5,10 +5,10 @@ import { queueOrderNotifications } from './seller-notifications.mjs';
 
 const conflict = message => Object.assign(new Error(message), { status: 409 });
 const windows = PICKUP_RULES.mainPickup;
-const todayLocal = () => new Intl.DateTimeFormat('en-CA', { timeZone: PICKUP_RULES.timezone,
-  year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-const timeLocal = () => new Intl.DateTimeFormat('en-GB', { timeZone: PICKUP_RULES.timezone,
-  hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+const todayLocal = (now = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: PICKUP_RULES.timezone,
+  year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+const timeLocal = (now = new Date()) => new Intl.DateTimeFormat('en-GB', { timeZone: PICKUP_RULES.timezone,
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
 const dateAt = value => new Date(`${value}T12:00:00Z`);
 const addDay = value => new Date(dateAt(value).getTime() + 86400000).toISOString().slice(0, 10);
 
@@ -26,7 +26,10 @@ export function pickupEligible(order, timingKey) {
   return parts.length > 0 && parts.every(part => part.eligible);
 }
 
-export function pickupSlotKeys(order, timingKey, today = todayLocal()) {
+export function pickupSlotKeys(order, timingKey, today, currentTime) {
+  const now = new Date();
+  today ??= todayLocal(now);
+  currentTime ??= timeLocal(now);
   const part = orderFulfillmentPart(order, timingKey);
   if (!part?.eligible) return [];
   const delayed = timingKey !== 'IMMEDIATE';
@@ -37,14 +40,17 @@ export function pickupSlotKeys(order, timingKey, today = todayLocal()) {
     ? part.pickupWindow?.endDate || PICKUP_RULES.delayedPickup.endDate
     : windows.endDate;
   const result = [];
-  const currentTime = timeLocal();
   for (let day = start; day <= end; day = addDay(day)) {
     if (day < today) continue;
     const weekday = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dateAt(day).getUTCDay()];
     const times = PICKUP_RULES.exceptions[day] || windows[weekday] || [];
     for (const [from, to] of times) {
-      if (day === today && from <= currentTime) continue;
-      result.push(`${day}|${from}-${to}`);
+      for (let hour = Number(from.slice(0, 2)); hour < Number(to.slice(0, 2)); hour++) {
+        const startTime = `${String(hour).padStart(2, '0')}:00`;
+        const endTime = `${String(hour + 1).padStart(2, '0')}:00`;
+        if (day === today && startTime <= currentTime) continue;
+        result.push(`${day}|${startTime}-${endTime}`);
+      }
     }
   }
   return result;
@@ -53,8 +59,16 @@ export function pickupSlotKeys(order, timingKey, today = todayLocal()) {
 export async function pickupAvailability(order, timingKey, appointment = null) {
   const keys = pickupSlotKeys(order, timingKey);
   if (!keys.length) return [];
-  const { rows } = await database().pool.query(`SELECT slot_key, count(*)::int AS occupied
-    FROM pickup_appointments WHERE status='SCHEDULED' AND slot_key=ANY($1::text[]) GROUP BY slot_key`, [keys]);
+  // Half-day appointments occupy every hourly slot they overlap. Excluding this
+  // timing part also lets its buyer replace a legacy window when it is full.
+  const { rows } = await database().pool.query(`SELECT candidate.slot_key, count(a.order_id)::int AS occupied
+    FROM unnest($1::text[]) AS candidate(slot_key)
+    LEFT JOIN pickup_appointments a ON a.status='SCHEDULED'
+      AND split_part(a.slot_key,'|',1)=split_part(candidate.slot_key,'|',1)
+      AND split_part(split_part(a.slot_key,'|',2),'-',1)<split_part(split_part(candidate.slot_key,'|',2),'-',2)
+      AND split_part(split_part(a.slot_key,'|',2),'-',2)>split_part(split_part(candidate.slot_key,'|',2),'-',1)
+      AND NOT (a.order_id=$2 AND a.timing_key=$3)
+    GROUP BY candidate.slot_key`, [keys, order.id, timingKey]);
   const counts = new Map(rows.map(row => [row.slot_key, Number(row.occupied)]));
   return keys.map(key => ({ key, remaining: Math.max(0, PICKUP_RULES.defaultCapacityPerWindow - (counts.get(key) || 0)),
     selected: appointment?.status === 'SCHEDULED' && appointment.slotKey === key }));
@@ -101,15 +115,29 @@ export async function changePickup({ orderId, timingKey, slotKey, actor }, depen
         ? 'El retiro inmediato requiere que se complete el importe exigible ahora.'
         : 'El retiro posterior requiere el pago total confirmado por el vendedor.');
     }
-    if (slotKey != null && !allowedSlotKeys(order, normalizedTimingKey).includes(slotKey)) {
+    if (slotKey != null && (typeof slotKey !== 'string' || !slotKey)) {
       throw conflict('El horario de retiro no está disponible para esta parte del pedido.');
     }
     if (slotKey == null && !oldKey) return existing ? appointmentJson(existing) : null;
+    // Every mutation on a date shares one row lock, even when the slot keys
+    // differ or a legacy half-day range overlaps several new hourly ranges.
+    // Sort source/destination dates to keep moves between dates deadlock-safe.
+    const days = [...new Set([oldKey, slotKey].filter(Boolean).map(key => key.split('|')[0]))].sort();
+    for (const day of days) {
+      await client.query('INSERT INTO pickup_windows(slot_key) VALUES($1) ON CONFLICT DO NOTHING', [day]);
+      await client.query('SELECT slot_key FROM pickup_windows WHERE slot_key=$1 FOR UPDATE', [day]);
+    }
     if (slotKey) {
+      // Recheck the current time after any wait for a shared date lock.
+      if (!allowedSlotKeys(order, normalizedTimingKey).includes(slotKey)) {
+        throw conflict('El horario de retiro no está disponible para esta parte del pedido.');
+      }
       await client.query('INSERT INTO pickup_windows(slot_key) VALUES($1) ON CONFLICT DO NOTHING', [slotKey]);
-      await client.query('SELECT slot_key FROM pickup_windows WHERE slot_key=$1 FOR UPDATE', [slotKey]);
       const occupied = Number((await client.query(`SELECT count(*)::int AS count FROM pickup_appointments
-        WHERE slot_key=$1 AND status='SCHEDULED'`, [slotKey])).rows[0].count);
+        WHERE status='SCHEDULED' AND split_part(slot_key,'|',1)=split_part($1,'|',1)
+          AND split_part(split_part(slot_key,'|',2),'-',1)<split_part(split_part($1,'|',2),'-',2)
+          AND split_part(split_part(slot_key,'|',2),'-',2)>split_part(split_part($1,'|',2),'-',1)
+          AND NOT (order_id=$2 AND timing_key=$3)`, [slotKey, orderId, normalizedTimingKey])).rows[0].count);
       if (occupied >= PICKUP_RULES.defaultCapacityPerWindow) throw conflict('Este horario ya está completo. Elegí otro.');
     }
     const row = (await client.query(`INSERT INTO pickup_appointments(order_id,timing_key,slot_key,status,changed_by)
@@ -121,22 +149,26 @@ export async function changePickup({ orderId, timingKey, slotKey, actor }, depen
       key: `pickup:${orderId}:${normalizedTimingKey}:${row.revision}`, order,
       type: oldKey ? 'PICKUP_CHANGED' : 'PICKUP_SCHEDULED',
       details: { oldSlot: oldKey, slot: slotKey, actor,
-        timingKey: normalizedTimingKey, timingLabel: part.timingLabel },
+        timingKey: normalizedTimingKey, timingLabel: part.timingLabel, appointmentRevision: row.revision },
     });
     return appointmentJson(row);
   });
 }
 
-export async function listUpcomingPickups() {
-  const { rows } = await database().pool.query(`SELECT a.slot_key, a.order_id, a.timing_key, c.order_snapshot
+export async function listUpcomingPickups({ client = database().pool, now = new Date() } = {}) {
+  const { rows } = await client.query(`SELECT a.slot_key, a.order_id, a.timing_key, c.order_snapshot
     FROM pickup_appointments a JOIN checkout_attempts c ON c.order_id=a.order_id
-    WHERE a.status='SCHEDULED' AND split_part(a.slot_key,'|',1) >= $1
-    ORDER BY a.slot_key, a.order_id, a.timing_key`, [todayLocal()]);
+    WHERE a.status='SCHEDULED' AND (split_part(a.slot_key,'|',1)>$1
+      OR (split_part(a.slot_key,'|',1)=$1 AND split_part(split_part(a.slot_key,'|',2),'-',2)>$2))
+    ORDER BY a.slot_key, a.order_id, a.timing_key`, [todayLocal(now), timeLocal(now)]);
   return rows.map(row => {
     const part = orderFulfillmentPart(row.order_snapshot, row.timing_key);
     return { slotKey: row.slot_key, orderId: row.order_id, timingKey: row.timing_key,
       timingLabel: part?.timingLabel || row.timing_key,
       buyer: row.order_snapshot.buyer?.name || '',
+      buyerPhone: row.order_snapshot.buyer?.phone || '',
+      items: (part?.items || []).map(item => ({ productId: item.productId,
+        itemNumber: item.itemNumber, quantity: item.quantity })),
       itemNumbers: part?.items.map(item => item.itemNumber) || [] };
   });
 }
