@@ -10,6 +10,7 @@ import {
 import { changePickup, pickupAvailability, pickupFulfillments, listUpcomingPickups } from './pickup.mjs';
 import { attachOrderReceipt } from './receipt-upload.mjs';
 import { enqueueDueOrderReservationNotifications } from './order-reservation-notifications.mjs';
+import scheduledNotificationRetry, { config as notificationRetryConfig } from '../seller-notification-retry.mjs';
 import {
   customerNotification, notificationLinks, queueOrderNotifications,
   drainSellerNotifications, dispatchSellerNotificationsSafely,
@@ -663,4 +664,104 @@ test('a slot that starts while waiting for the day lock is rejected without losi
   assert.deepEqual(await rows(), before);
   assert.equal((await rows('SELECT slot_key FROM pickup_appointments WHERE order_id=$1', [legacy.id]))[0].slot_key,
     '2026-11-02|08:00-12:00');
+});
+
+async function pickupBehindBacklog(count, { reschedule = false } = {}) {
+  const { order, change } = await scheduledOrder();
+  await db.exec('DELETE FROM seller_notifications');
+  for (let i = 0; i < count; i++) {
+    await queueOrderNotifications({ query }, { key: `backlog:${i}`, order, type: 'ORDER_CREATED' });
+    await db.query(`UPDATE seller_notifications SET created_at=clock_timestamp()-interval '1 hour'
+      +$2::int*interval '1 second' WHERE event_key=$1`, [`backlog:${i}:seller`, i]);
+  }
+  await change(slots[0]);
+  if (reschedule) await change(slots[1]);
+  return order;
+}
+
+test('scheduled backlog worker delivers both new and rescheduled pickup pairs across bounded runs without user action', async () => {
+  assert.equal(notificationRetryConfig.schedule, '*/5 * * * *');
+  await pickupBehindBacklog(45, { reschedule: true });
+  const calls = mockProvider();
+  await dispatchSellerNotificationsSafely(); // The originating request handles older messages only.
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(c => c.key.startsWith('backlog:')));
+  const pending = await rows("SELECT * FROM seller_notifications WHERE event_type LIKE 'PICKUP_%'");
+  assert.equal(pending.length, 4);
+  assert.ok(pending.every(r => r.status === 'PENDING' && r.attempts === 0));
+  // Only the actual scheduled handler runs from here; no order/pickup/UI action.
+  for (const expected of [22, 42, 49]) {
+    assert.equal((await scheduledNotificationRetry()).status, 200);
+    assert.equal(calls.length, expected);
+  }
+  const delivered = await rows();
+  assert.ok(delivered.every(r => r.status === 'SENT' && r.attempts === 1));
+  const pickups = delivered.filter(r => r.event_type.startsWith('PICKUP_'));
+  assert.deepEqual(pickups.map(r => r.event_type),
+    ['PICKUP_SCHEDULED', 'PICKUP_SCHEDULED', 'PICKUP_CHANGED', 'PICKUP_CHANGED']);
+  assert.equal(pickups.filter(r => r.event_key.endsWith(':agenda')).length, 2);
+  assert.ok(calls.every(c => c.to.length === 1 && c.to[0] === 'seller@example.com'));
+  assert.equal(new Set(calls.map(c => c.key)).size, 49);
+  await scheduledNotificationRetry();
+  assert.equal(calls.length, 49);
+});
+
+test('scheduled backlog worker advances past failed older messages and retries both pickup emails autonomously', async () => {
+  await pickupBehindBacklog(23, { reschedule: true });
+  const state = async () => ({ orders: await rows('SELECT * FROM checkout_attempts'),
+    stock: await rows('SELECT * FROM operational_inventory'),
+    reservations: await rows('SELECT * FROM inventory_reservations'),
+    pickups: await rows('SELECT * FROM pickup_appointments') });
+  const committed = await state();
+  const failed = [];
+  globalThis.fetch = async (_url, options) => {
+    const attempt = { ...JSON.parse(options.body), key: options.headers['Idempotency-Key'] };
+    failed.push(attempt);
+    if (attempt.key.endsWith(':agenda')) throw new Error('Synthetic uncertain provider timeout');
+    return new Response(JSON.stringify({ id: 'mock-id' }), {
+      status: attempt.key === 'backlog:0:seller' || attempt.key.startsWith('pickup:') ? 503 : 200 });
+  };
+  await dispatchSellerNotificationsSafely();
+  await scheduledNotificationRetry();
+  await scheduledNotificationRetry();
+  assert.equal(failed.length, 27);
+  assert.equal((await rows()).filter(r => r.status === 'SENT').length, 22);
+  const retryable = (await rows()).filter(r => r.status === 'RETRYABLE');
+  assert.equal(retryable.length, 5); // One older message and all four pickup messages.
+  assert.ok(retryable.every(r => r.attempts === 1 && r.lease_until));
+  await scheduledNotificationRetry();
+  assert.equal(failed.length, 27); // Active retry leases prevent premature sending.
+  await db.exec("UPDATE seller_notifications SET lease_until=clock_timestamp()-interval '1 second' WHERE status='RETRYABLE'");
+  const retried = mockProvider();
+  await scheduledNotificationRetry();
+  assert.deepEqual(retried.map(c => c.key).sort(), retryable.map(r => r.event_key).sort());
+  for (const attempt of retried) assert.deepEqual(attempt, failed.find(c => c.key === attempt.key));
+  assert.ok((await rows()).every(r => r.status === 'SENT'));
+  assert.deepEqual(await state(), committed);
+  await scheduledNotificationRetry();
+  assert.equal(retried.length, 5);
+});
+
+test('scheduled backlog worker recovers durable pickup messages after a transient database failure', async () => {
+  for (const failurePoint of ['FROM order_reservation_events', 'SELECT * FROM seller_notifications']) {
+    await db.exec('TRUNCATE cart_sessions,operational_inventory RESTART IDENTITY CASCADE');
+    await pickupBehindBacklog(3);
+    const calls = mockProvider();
+    await dispatchSellerNotificationsSafely();
+    assert.equal(calls.length, 2);
+    const before = await rows();
+    query = (sql, params = []) => {
+      if (sql.includes(failurePoint)) throw new Error('Synthetic temporary worker database failure');
+      return db.query(sql, params);
+    };
+    await assert.rejects(scheduledNotificationRetry(), /temporary worker database failure/);
+    assert.deepEqual(await rows(), before);
+    query = (sql, params = []) => db.query(sql, params);
+    await scheduledNotificationRetry();
+    assert.equal(calls.length, 5);
+    assert.equal(calls.filter(c => c.key.startsWith('pickup:')).length, 2);
+    assert.ok((await rows()).every(r => r.status === 'SENT' && r.attempts === 1));
+    await scheduledNotificationRetry();
+    assert.equal(calls.length, 5);
+  }
 });
