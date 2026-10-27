@@ -130,6 +130,51 @@ export function notificationRecipients({ type }) {
   return OPERATIONAL_NOTIFICATION_TYPES.has(type) ? [{ role: 'SELLER', email: null }] : [];
 }
 
+const PICKUP_AGENDA = 'PICKUP_AGENDA_V1';
+const agendaSubject = orderId => `Agenda administrativa de retiros (solo vendedor) · ${orderId}`;
+
+function isPickupAgenda(row) {
+  const payload = row.payload;
+  return ['PICKUP_SCHEDULED', 'PICKUP_CHANGED'].includes(row.event_type)
+    && payload?.kind === PICKUP_AGENDA && payload.orderId === row.order_id
+    && typeof payload.timingKey === 'string' && payload.timingKey.length > 0
+    && Number.isSafeInteger(payload.appointmentRevision) && payload.appointmentRevision > 0
+    && typeof payload.slot === 'string' && /^\d{4}-\d{2}-\d{2}\|\d{2}:\d{2}-\d{2}:\d{2}$/.test(payload.slot)
+    && row.event_key === `pickup:${row.order_id}:${payload.timingKey}:${payload.appointmentRevision}:seller:agenda`
+    && row.subject === agendaSubject(row.order_id);
+}
+
+export function sellerPickupScheduleNotification(row, upcoming, generatedAt) {
+  const change = row.payload;
+  const changed = slotParts(change.slot);
+  const previous = slotParts(change.oldSlot);
+  const timestamp = new Intl.DateTimeFormat('es-PY', { timeZone: 'America/Asuncion',
+    dateStyle: 'long', timeStyle: 'medium' }).format(new Date(generatedAt));
+  const lines = ['SOLO VENDEDOR — AGENDA ADMINISTRATIVA. No compartir con compradores.',
+    `Generada: ${timestamp} · America/Asuncion (Paraguay)`, '',
+    `Cambio: ${row.event_type === 'PICKUP_SCHEDULED' ? 'Retiro creado' : 'Retiro reprogramado'}`,
+    `Pedido: ${row.order_id}`, `Tipo: ${change.timingLabel || change.timingKey}`,
+    `Cita registrada: ${changed.date} · ${changed.time}`,
+    ...(change.oldSlot ? [`Cita anterior: ${previous.date} · ${previous.time}`] : []), '',
+    'Agenda completa de retiros próximos (SCHEDULED):'];
+  let lastDay;
+  for (const pickup of upcoming) {
+    const day = pickup.slotKey.split('|')[0];
+    const { date, time } = slotParts(pickup.slotKey);
+    if (day !== lastDay) { lines.push('', date); lastDay = day; }
+    const items = pickup.items.map(item => [
+      item.itemNumber != null ? `#${String(item.itemNumber).padStart(3, '0')}` : '',
+      item.productId ? `ID ${item.productId}` : '',
+      item.quantity != null ? `cantidad ${item.quantity}` : '',
+    ].filter(Boolean).join(' · ')).filter(Boolean).join('; ');
+    lines.push(`${time} · ${pickup.timingLabel} · Pedido ${pickup.orderId}`,
+      `Comprador: ${pickup.buyer || '(sin nombre)'} · Teléfono: ${pickup.buyerPhone || '(no registrado)'}`,
+      `Artículos: ${items || '(sin detalle)'}`);
+  }
+  if (!upcoming.length) lines.push('No hay retiros próximos.');
+  return lines.join('\n');
+}
+
 export async function queueOrderNotifications(client, { key, order, type, details = {} }) {
   if (type.startsWith('PICKUP_') && !details.slot) return;
   const entries = notificationRecipients({ type });
@@ -146,10 +191,24 @@ export async function queueOrderNotifications(client, { key, order, type, detail
       JSON.stringify({ orderId: order.id }), entry.role, entry.email, subject, text,
     ]);
   }
+  // Only the appointment mutation supplies a committed revision. Both messages
+  // enter the same transactional outbox; there is no historical replay/backfill.
+  if (['PICKUP_SCHEDULED', 'PICKUP_CHANGED'].includes(type) && details.timingKey
+      && Number.isSafeInteger(details.appointmentRevision) && details.appointmentRevision > 0) {
+    await client.query(`INSERT INTO seller_notifications
+      (event_key,order_id,event_type,payload,recipient_role,subject)
+      VALUES($1,$2,$3,$4,'SELLER',$5) ON CONFLICT(event_key) DO NOTHING`, [
+      `${key}:seller:agenda`, order.id, type, JSON.stringify({ kind: PICKUP_AGENDA,
+        orderId: order.id, timingKey: details.timingKey, timingLabel: details.timingLabel,
+        appointmentRevision: details.appointmentRevision, slot: details.slot, oldSlot: details.oldSlot }),
+      agendaSubject(order.id),
+    ]);
+  }
 }
 
 function authorizedDelivery(row) {
   if (row.recipient_role !== 'SELLER' || !OPERATIONAL_NOTIFICATION_TYPES.has(row.event_type)) return false;
+  if (row.payload?.kind === PICKUP_AGENDA) return isPickupAgenda(row);
   // Legacy PICKUP_CHANGED rows also represented cancellations. Only the existing
   // scheduling subjects identify customer-ready appointment messages in that queue.
   if (row.event_type === 'PICKUP_SCHEDULED') return row.subject === `Retiro agendado · ${row.order_id}`;
@@ -165,18 +224,38 @@ async function claim(sellerEmail) {
       WHERE recipient_role='SELLER' AND event_type=ANY($1::text[])
         AND (event_type NOT IN ('PICKUP_SCHEDULED','PICKUP_CHANGED')
           OR (event_type='PICKUP_SCHEDULED' AND subject='Retiro agendado · ' || order_id)
-          OR (event_type='PICKUP_CHANGED' AND subject='Retiro modificado · ' || order_id))
+          OR (event_type='PICKUP_CHANGED' AND subject='Retiro modificado · ' || order_id)
+          OR (event_type IN ('PICKUP_SCHEDULED','PICKUP_CHANGED')
+            AND subject='Agenda administrativa de retiros (solo vendedor) · ' || order_id
+            AND payload->>'kind'='PICKUP_AGENDA_V1' AND payload->>'orderId'=order_id
+            AND jsonb_typeof(payload->'timingKey')='string' AND length(payload->>'timingKey')>0
+            AND jsonb_typeof(payload->'appointmentRevision')='number'
+            AND payload->>'appointmentRevision' ~ '^[1-9][0-9]{0,9}$'
+            AND payload->>'slot' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[|][0-9]{2}:[0-9]{2}-[0-9]{2}:[0-9]{2}$'
+            AND event_key='pickup:' || order_id || ':' || (payload->>'timingKey') || ':'
+              || (payload->>'appointmentRevision') || ':seller:agenda'))
         AND (status='PENDING' OR (((status='RETRYABLE' OR status='SENDING') AND lease_until<clock_timestamp())
         AND (created_at>clock_timestamp()-interval '24 hours'
           OR (status='RETRYABLE' AND last_error ~ '^provider_status_4[0-9][0-9]$' AND last_error<>'provider_status_409'))))
       ORDER BY created_at,event_key FOR UPDATE SKIP LOCKED LIMIT 1`, [[...OPERATIONAL_NOTIFICATION_TYPES]])).rows[0];
     if (!row) { await client.query('COMMIT'); return null; }
+    let message = row.message;
+    if (isPickupAgenda(row) && message == null) {
+      // Read the authoritative committed schedule at first dispatch, including
+      // changes that committed after this event was queued. Freeze that dated
+      // snapshot before contacting the provider so uncertain retries reuse an
+      // identical body and idempotency key, even if appointments change again.
+      const { listUpcomingPickups } = await import('./pickup.mjs');
+      const generatedAt = new Date();
+      const upcoming = await listUpcomingPickups({ client, now: generatedAt });
+      message = sellerPickupScheduleNotification(row, upcoming, generatedAt);
+    }
     const frozen = (await client.query(`UPDATE seller_notifications SET status='SENDING',attempts=attempts+1,
       lease_until=clock_timestamp()+interval '5 minutes',updated_at=clock_timestamp(),
       sender_email=COALESCE(sender_email,$2),
-      recipient_email=$3
+      recipient_email=$3,message=$4
       WHERE event_key=$1 RETURNING *`, [row.event_key, process.env.SELLER_NOTIFICATION_FROM,
-      sellerEmail])).rows[0];
+      sellerEmail, message])).rows[0];
     await client.query('COMMIT');
     return frozen;
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
