@@ -70,7 +70,8 @@ function overviewScenario({
       return {
         ok: true,
         headers: new Headers({ 'content-type': 'application/json' }),
-        json: async () => ({ salePulse: value }),
+        json: async () => options.method === 'POST' && JSON.parse(options.body).action === 'confirm'
+          ? { campaign: value.regularCampaign } : { salePulse: value },
       };
     },
     navigator: { clipboard: {
@@ -85,7 +86,7 @@ function overviewScenario({
       constructor(data) { this.data = data; }
     };
   }
-  runInNewContext(`${adminSource}\n;globalThis.__adminOverview = { ADMIN_STATE, renderOverviewTab };`, context);
+  runInNewContext(`${adminSource}\n;globalThis.__adminOverview = { ADMIN_STATE, renderOverviewTab, confirmRegularCampaign };`, context);
   Object.assign(context.__adminOverview.ADMIN_STATE, {
     stats: {
       totalProducts: 305,
@@ -105,7 +106,8 @@ function overviewScenario({
     token: 'secret-admin-token',
   });
   context.__adminOverview.renderOverviewTab();
-  return { html: target.innerHTML, listeners, state: context.__adminOverview.ADMIN_STATE };
+  return { html: target.innerHTML, listeners, state: context.__adminOverview.ADMIN_STATE,
+    confirmRegularCampaign: context.__adminOverview.confirmRegularCampaign };
 }
 
 test('Resumen puts Sale Pulse before collapsed technical information', () => {
@@ -226,6 +228,15 @@ const handoffPacket = {
   signalLists: { hotUnsold: ['product-34'] },
 };
 
+function trustedSelection(products, overrides = {}) {
+  const ids = products.slice(0, 10).map(p => p.productId);
+  return { status: 'READY', campaignId: 'regular-chatgpt-daily-v1', cycleId: 'synthetic-cycle',
+    batchId: 'synthetic-batch', startedAt: '2026-10-20T15:00:00Z', revision: 1,
+    historicalCompleteness: 'UNRECONCILED', phase: 'FIRST_PASS',
+    selectedProductIds: ids, assignments: { David: ids.slice(0, 5), Maria: ids.slice(5) }, ...overrides };
+}
+handoffPacket.regularCampaign = trustedSelection(handoffPacket.marketableProducts);
+
 function chatgptButton(listeners) {
   return listeners.find(({ selector }) => selector === '[data-copy-sale-pulse-chatgpt]').listener;
 }
@@ -262,6 +273,7 @@ function largePacket() {
     schemaVersion: 1, generatedAt: '2026-10-20T15:00:00Z',
     marketabilitySummary: { marketable: 310, sold: 28 },
     products: [...marketableProducts, ...unavailable], marketableProducts,
+    regularCampaign: trustedSelection([...marketableProducts.slice(0, 6), ...marketableProducts.slice(-4)]),
   };
 }
 
@@ -289,25 +301,21 @@ test('ChatGPT handoff fetches fresh authenticated Sale Pulse and copies complete
   assert.equal(requests[0].url, '/api/admin/sale-pulse');
   assert.equal(requests[0].options.cache, 'no-store');
   assert.equal(requests[0].options.headers.get('x-admin-token'), 'secret-admin-token');
+  assert.deepEqual(JSON.parse(requests[0].options.body), { action: 'prepare', campaignId: 'regular-chatgpt-daily-v1' });
   assert.equal(state.salePulse, fresh);
   assert.equal(copied.length, 1);
   assert.doesNotMatch(copied[0], /STALE PRODUCT|secret-admin-token|x-admin-token|cookie|session ID|receipt|bank/i);
   assert.match(copied[0], /drive\.google\.com\/drive\/folders\/13qE2dHUjJBr1TOBUX7omaWr7r1k2nfct/);
   assert.match(copied[0], /autoridad FINAL/);
   assert.match(copied[0], /SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUALES/);
-  assert.match(copied[0], /10 Items únicos: 5 para David y 5 para María/);
+  assert.match(copied[0], /hasta 10 Items únicos, 5 para David y 5 para María/);
   assert.match(copied[0], /cinco Stories individuales por persona: un producto y una foto auténtica por Story/);
   assert.match(copied[0], /un solo Link sticker al detalle de ese producto, src=story y texto VER ARTÍCULO/);
   assert.doesNotMatch(copied[0], /propone un collage de 3 productos|crear collages/);
-  assert.match(copied[0], /San Lorenzo, Barrio Santo Tomás, Paraguay/);
-  assert.match(copied[0], /Sin entrega/);
-  assert.match(copied[0], /1 al 8 de diciembre de 2026/);
-  assert.match(copied[0], /9 al 12 de diciembre de 2026/);
   assert.match(copied[0], /Instagram Stories: cada foto lleva su propio Link sticker directo con src=story/);
-  assert.match(copied[0], /WhatsApp Status\/Updates: publica entradas nativas individuales con nombre, precio, retiro y URL directa clicable con src=story/);
+  assert.match(copied[0], /WhatsApp Status\/Updates: prepara entradas nativas individuales con URL directa clicable con src=story/);
   assert.match(copied[0], /ni supongas que el Link sticker de Instagram sigue siendo clicable/);
   assert.match(copied[0], /Grupo de WhatsApp Compras\/Ventas\/Servicios: añade o actualiza src=jw-group/);
-  assert.match(copied[0], /Si hacen falta fotos, indica envíos de cuatro y una/);
   assert.match(copied[0], /Select Multiple > fotos numeradas > Next > Separate/);
   assert.match(copied[0], /Marketplace > Sell > Create listing > One item > Add photos/);
   assert.match(copied[0], /More > Send a copy > Save image/);
@@ -325,7 +333,7 @@ test('ChatGPT handoff fetches fresh authenticated Sale Pulse and copies complete
   assert.equal(button.disabled, false);
 });
 
-test('420-product snapshot produces a complete, varied mobile handoff within the budget', async () => {
+test('420-product snapshot copies exactly the authoritative ten including Items beyond the former shortlist', async () => {
   const packet = largePacket();
   const copied = [];
   const { listeners } = overviewScenario({
@@ -338,7 +346,8 @@ test('420-product snapshot produces a complete, varied mobile handoff within the
   const data = handoffData(copied[0]);
   assert.equal(data.snapshotTotalMarketable, 310);
   assert.equal(data.includedCandidates, data.candidates.length);
-  assert.ok(data.candidates.length >= 30 && data.candidates.length <= 40);
+  assert.equal(data.candidates.length, 10);
+  assert.deepEqual(data.candidates.map(p => p.productId), packet.regularCampaign.selectedProductIds);
   assert.equal(new Set(data.candidates.map((product) => product.productId)).size, data.candidates.length);
   assert.ok(new Set(data.candidates.map((product) => product.category)).size >= 6);
   assert.ok(data.candidates.some((product) => product.views7d === 0));
@@ -362,9 +371,67 @@ test('420-product snapshot produces a complete, varied mobile handoff within the
   assert.match(copied[0], /Si falta, no hagas recomendaciones de productos/);
 });
 
+test('handoff caps each person at four JW entries from their own five products', async () => {
+  const copied = [];
+  const { listeners } = overviewScenario({
+    fetchSalePulse: async () => pulse({ marketingPacket: largePacket() }),
+    writeClipboard: async (text) => copied.push(text),
+  });
+  await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
+  const text = copied[0];
+  assert.match(text, /hasta 10 Items únicos, 5 para David y 5 para María, sin repetir entre ambos/);
+  assert.match(text, /documento de texto de marketing por persona: sus cinco Stories, cinco WhatsApp Status de los mismos cinco productos/);
+  assert.match(text, /solo cuatro entradas de productos por persona, elegidas entre sus cinco por probable potencial de venta/);
+  assert.match(text, /si hay menos de cuatro válidos, usa solo esos/);
+  assert.match(text, /No agregues productos ni una quinta entrada o foto de JW Group/);
+  assert.match(text, /Grupo de WhatsApp[\s\S]*?src=jw-group[\s\S]*?No agregues productos ni una quinta entrada o foto de JW Group/);
+  assert.doesNotMatch(text, /envíos de cuatro y una|la quinta por separado|luego la quinta/);
+});
+
+test('promotional copy excludes routine logistics while preserving material disclosures and preview safeguards', async () => {
+  const copied = [];
+  const { listeners } = overviewScenario({
+    fetchSalePulse: async () => pulse({ marketingPacket: handoffPacket }),
+    writeClipboard: async (text) => copied.push(text),
+  });
+  await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
+  const text = copied[0];
+  assert.match(text, /Stories, Status y JW Group, usa nombre, precio, descripción breve y veraz, foto auténtica y enlace directo/);
+  assert.match(text, /Omite texto rutinario sobre plazos de pago, fechas o arreglos de retiro, ubicación, entrega, transporte, objetos ajenos visibles y otros avisos administrativos/);
+  assert.match(text, /Señala una limitación material inusual si omitirla puede engañar al comprador/);
+  assert.match(text, /Conserva sin cambios las condiciones, inclusiones, exclusiones y advertencias reales en el sitio y checkout/);
+  assert.doesNotMatch(text, /precio, retiro y URL|Ubicación: San Lorenzo|Sin entrega|1 al 8 de diciembre|9 al 12 de diciembre|Menciona estos plazos/);
+  assert.match(text, /parámetro nuevo de caché[\s\S]*?conservando src y los demás parámetros[\s\S]*?No añadas src a mainImageUrl/);
+  assert.match(text, /Prepara borradores para aprobación de David/);
+  assert.ok(text.length <= 18000);
+  handoffData(text);
+});
+
+test('unreconciled older history allows an active-cycle handoff and independent data is not exported', async () => {
+  const copied = [];
+  const packet = { ...handoffPacket, history: [
+    { productId: 'product-34', status: 'PREPARED', campaign: 'regular' },
+    { productId: 'product-34', status: 'POSTED', campaign: 'independent' },
+  ] };
+  const { listeners } = overviewScenario({
+    fetchSalePulse: async () => pulse({ marketingPacket: packet }),
+    writeClipboard: async (text) => copied.push(text),
+  });
+  await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
+  const text = copied[0];
+  assert.match(text, /PREPARED no es POSTED/);
+  assert.match(text, /No detengas por incertidumbre anterior al ciclo/);
+  assert.match(text, /UNCONFIRMED en este ciclo, no históricamente NEVER POSTED/);
+  assert.match(text, /anuncios independientes de David o María no cuentan; no los registres ni pidas reportarlos/);
+  assert.equal(handoffData(text).regularCampaign.historicalCompleteness, 'UNRECONCILED');
+  assert.doesNotMatch(JSON.stringify(handoffData(text)), /"history"|"POSTED"|"PREPARED"/);
+  assert.doesNotMatch(text, /Evita repeticiones sin ángulo nuevo/);
+});
+
 test('under ten marketable Items includes every eligible candidate and states the limit', async () => {
   const packet = largePacket();
   packet.marketableProducts = packet.marketableProducts.slice(0, 7);
+  packet.regularCampaign = trustedSelection(packet.marketableProducts);
   const copied = [];
   const { listeners } = overviewScenario({
     fetchSalePulse: async () => pulse({ marketingPacket: packet }),
@@ -372,8 +439,8 @@ test('under ten marketable Items includes every eligible candidate and states th
   });
   await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
   assert.equal(handoffData(copied[0]).includedCandidates, 7);
-  assert.match(copied[0], /LIMITACIÓN ACTUAL: solo hay 7 Items comercializables/);
-  assert.match(copied[0], /Si hay menos de 10, usa solo los comercializables disponibles y explica la limitación/);
+  assert.match(copied[0], /LIMITACIÓN ACTUAL: solo hay 7 Items en esta selección del ciclo/);
+  assert.match(copied[0], /sin rellenar con repetidos para llegar a 5\+5/);
 });
 
 test('inconsistent marketable input cannot select sold, held, unlisted, or duplicate Items', async () => {
@@ -387,6 +454,7 @@ test('inconsistent marketable input cannot select sold, held, unlisted, or dupli
     { ...valid[0], productId: 'no-photo', mainImage: null },
     { ...valid[0], itemNumber: 999 },
   ];
+  packet.regularCampaign = trustedSelection(valid);
   const copied = [];
   const { listeners } = overviewScenario({
     fetchSalePulse: async () => pulse({ marketingPacket: packet }),
@@ -394,7 +462,7 @@ test('inconsistent marketable input cannot select sold, held, unlisted, or dupli
   });
   await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
   const candidates = handoffData(copied[0]).candidates;
-  assert.equal(candidates.length, 16);
+  assert.equal(candidates.length, 10);
   assert.ok(candidates.every((candidate) => valid.some((product) => product.productId === candidate.productId)));
 });
 
@@ -403,6 +471,7 @@ test('oversized mandatory candidate data never writes a partial clipboard result
   packet.marketableProducts = packet.marketableProducts.slice(0, 10).map((product) => ({
     ...product, title: `Item ${product.itemNumber} ${'L'.repeat(1900)}`,
   }));
+  packet.regularCampaign = trustedSelection(packet.marketableProducts);
   let copies = 0;
   const { listeners } = overviewScenario({
     fetchSalePulse: async () => pulse({ marketingPacket: packet }),
@@ -524,4 +593,66 @@ test('clipboard failure permits a fresh retry, including writeText fallback', as
   assert.equal(calls, 2);
   assert.equal(writes, 2);
   assert.equal(button.textContent, 'PROMPT COPIADO PARA CHATGPT');
+});
+
+test('clipboard fails closed on missing active history or an unavailable authoritative selection', async () => {
+  for (const regularCampaign of [undefined,
+    {...handoffPacket.regularCampaign, status:'UNAVAILABLE'},
+    {...handoffPacket.regularCampaign, selectedProductIds:['sold-product'], assignments:{David:['sold-product'],Maria:[]}},
+    {...handoffPacket.regularCampaign, assignments:{David:['product-34'],Maria:['product-34']}},
+  ]) {
+    const copied=[];
+    const {listeners}=overviewScenario({fetchSalePulse:async()=>pulse({marketingPacket:{...handoffPacket,regularCampaign}}),
+      writeClipboard:async text=>copied.push(text)});
+    const button={disabled:false,textContent:''};
+    await chatgptButton(listeners)({currentTarget:button});
+    assert.equal(copied.length,0);
+    assert.match(button.textContent,/HISTORIAL NO FIABLE|DATOS INCOMPLETOS/);
+  }
+});
+
+test('short first pass remains short even when the full marketable catalog contains hundreds of repeats', async () => {
+  const packet=largePacket();
+  packet.regularCampaign=trustedSelection(packet.marketableProducts.slice(-2));
+  const copied=[];
+  const {listeners}=overviewScenario({fetchSalePulse:async()=>pulse({marketingPacket:packet}),writeClipboard:async text=>copied.push(text)});
+  await chatgptButton(listeners)({currentTarget:{disabled:false,textContent:''}});
+  const data=handoffData(copied[0]);
+  assert.equal(data.snapshotTotalMarketable,310);
+  assert.equal(data.includedCandidates,2);
+  assert.deepEqual(data.candidates.map(p=>p.productId),['product-309','product-310']);
+  assert.match(copied[0],/solo hay 2 Items en esta selección del ciclo/);
+});
+
+test('one person-batch confirmation submits only checked published Items and preserves the regular campaign identity', async () => {
+  const requests=[];
+  const current={status:'READY',campaignId:'regular-chatgpt-daily-v1',cycleId:'cycle-1',startedAt:'2026-10-28T15:00:00Z',pendingBatches:[
+    {id:'batch-1',date:'2026-10-28',phase:'FIRST_PASS',assignments:{David:[{productId:'product-1',itemNumber:1},{productId:'product-2',itemNumber:2}],Maria:[]}},
+  ]};
+  const updated={...current,pendingBatches:[]};
+  const {html,state,confirmRegularCampaign}=overviewScenario({salePulse:pulse({regularCampaign:current}),
+    fetchSalePulse:async(url,options)=>{requests.push({url,options});return pulse({regularCampaign:updated});}});
+  assert.match(html,/CONFIRMO PUBLICADOS — David/);
+  assert.match(html,/dejá marcados únicamente los Items realmente publicados/);
+  assert.doesNotMatch(html,/CONFIRMO PUBLICADOS — Maria/);
+  const attributes={'data-cycle':'cycle-1','data-batch':'batch-1','data-person':'David'};
+  const button={disabled:false,textContent:'',getAttribute:name=>attributes[name],
+    closest:()=>({querySelectorAll:()=>[{value:'product-2'}]})};
+  await confirmRegularCampaign(button);
+  assert.equal(requests.length,1);
+  assert.deepEqual(JSON.parse(requests[0].options.body),{action:'confirm',campaignId:'regular-chatgpt-daily-v1',
+    cycleId:'cycle-1',batchId:'batch-1',person:'David',productIds:['product-2'],confirmation:'PUBLISHED_REGULAR_CAMPAIGN'});
+  assert.equal(requests[0].options.headers.get('x-admin-token'),'secret-admin-token');
+  assert.equal(state.salePulse.regularCampaign,updated);
+});
+
+test('failed publication confirmation is retryable and never updates the displayed history optimistically', async () => {
+  const original={status:'READY',pendingBatches:[]};
+  const {state,confirmRegularCampaign}=overviewScenario({salePulse:pulse({regularCampaign:original}),
+    fetchSalePulse:async()=>{throw Error('offline');}});
+  const button={disabled:false,textContent:'',getAttribute:()=> 'synthetic',closest:()=>({querySelectorAll:()=>[{value:'product-1'}]})};
+  await confirmRegularCampaign(button);
+  assert.equal(state.salePulse.regularCampaign,original);
+  assert.equal(button.disabled,false);
+  assert.match(button.textContent,/NO SE PUDO CONFIRMAR/);
 });

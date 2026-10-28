@@ -5,6 +5,7 @@ import {
 } from './_shared/commerce.mjs';
 import { database, readPurchasableInventory } from './_shared/inventory-database.mjs';
 import { deriveOrderFulfillmentParts } from './_shared/order-fulfillments.mjs';
+import { readCampaignPanel, updateRegularCampaign } from './_shared/regular-campaign.mjs';
 import {
   ANALYTICS_RETENTION_DAYS,
   buildSalePulseSnapshot,
@@ -106,23 +107,43 @@ export async function loadSalePulseSnapshot(origin, dependencies = {}) {
 export function createAdminSalePulseHandler({
   authorized = adminAuthorized,
   loadSnapshot = loadSalePulseSnapshot,
+  loadCampaign = readCampaignPanel,
+  updateCampaign = updateRegularCampaign,
 } = {}) {
   return async function handler(request) {
     if (!authorized(request)) {
       return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
     }
-    if (request.method !== 'GET') {
+    if (!['GET', 'POST'].includes(request.method)) {
       return jsonResponse({ error: 'Método no permitido.' }, 405);
     }
     try {
+      const origin = new URL(request.url).origin;
+      if (request.method === 'POST') {
+        const text = await request.text();
+        if (text.length > 4096) return jsonResponse({ error: 'Solicitud demasiado grande.' }, 400);
+        let body;
+        try { body = JSON.parse(text); } catch { return jsonResponse({ error: 'Solicitud no válida.' }, 400); }
+        let snapshot;
+        const result = await updateCampaign({ body, loadPacket: async () => {
+          snapshot = await loadSnapshot(origin);
+          return snapshot.marketingPacket;
+        } });
+        return jsonResponse({ ok: true, campaign: result.campaign,
+          ...(result.packet ? { salePulse: { ...snapshot, marketingPacket: result.packet, regularCampaign: result.campaign } } : {}) });
+      }
+      const snapshot = await loadSnapshot(origin);
+      // A failed campaign read must not disable inventory/analytics or authorize selection.
+      try { snapshot.regularCampaign = await loadCampaign(); }
+      catch { snapshot.regularCampaign = { status: 'UNAVAILABLE' }; }
       return jsonResponse({
         ok: true,
-        salePulse: await loadSnapshot(new URL(request.url).origin),
+        salePulse: snapshot,
       });
     } catch (error) {
       return jsonResponse({
         error: error instanceof Error ? error.message : 'No se pudo generar el pulso de venta.',
-      }, 500);
+      }, Number(error?.status || 500));
     }
   };
 }
