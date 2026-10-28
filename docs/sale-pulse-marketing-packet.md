@@ -147,6 +147,30 @@ silently recreated. Retain these files when backing up the site; never restore o
 history over newer confirmations. Campaign history is separate from Desk assets
 and from all operational business records.
 
+All campaign conditional writes use an independently verified safeguard while
+the dependency remains locked to @netlify/blobs 11.1.0. That SDK can incorrectly
+return modified:true with an empty ETag after a rejected write. The campaign path
+requires a valid nonempty strong write ETag and an authoritative strong-consistency
+readback before acknowledging a change. Missing, blank, weak, wildcard or malformed
+ETags fail safely; modified:true alone never advances or acknowledges history.
+
+Baseline readback must match the immutable anchor. Ledger readback must retain the
+same cycle and immutable metadata, every intended batch/assignment and every
+intended POSTED timestamp/provenance, at an equal or higher revision. Additional
+legitimate batches or confirmations are allowed; exact ETag equality is not
+required after concurrent updates. Responses use the verified persisted ledger,
+so another session's valid confirmations are retained. A newer revision alone
+does not prove that the requested publication was recorded.
+
+The SDK's modified:false result remains a genuine HTTP 412 precondition conflict
+and follows the existing re-read/CAS retry path. Provider/transport failures and
+unverifiable success fail the request instead of being interpreted as a conflict
+or publication success. An uncertain write may actually have committed: its data
+is never rolled back or cleared, and a retry can acknowledge it only from verified
+durable history. These checks cover provisional history creation, baseline,
+activation, preparation and publication confirmation. Real locked-SDK tests inject
+HTTP responses without network access, including all six exhausted 503 attempts.
+
 Code and tests alone do not initialize a production cycle. This PR makes no
 production writes, real campaigns/images, emails, merge or deployment. After
 separate deployment authorization, the first normal clipboard preparation starts

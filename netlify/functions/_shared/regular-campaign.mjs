@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { getStore } from '@netlify/blobs';
 import { PREPARATION_EVIDENCE } from './regular-campaign-seed.mjs';
 
@@ -9,6 +10,9 @@ const people = ['David', 'Maria'];
 const fail = (message, status = 409) => Object.assign(new Error(message), { status });
 const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(value);
+const validEtag = value => typeof value === 'string' && value !== '*' && !/^W\//i.test(value) &&
+  /^(?:"[^"\s\x00-\x1f\x7f]+"|[^"\s\x00-\x1f\x7f]+)$/.test(value);
+const uncertainWrite = () => fail('No se pudo verificar la escritura del historial. Reintentá con datos actuales.', 503);
 const dateInParaguay = now => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Asuncion', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date(now));
@@ -16,6 +20,39 @@ const dateInParaguay = now => new Intl.DateTimeFormat('en-CA', {
 function campaignStore() {
   // Separate marketing files in the existing storage service; never product/order stores.
   return getStore({ name: 'mudanza-regular-chatgpt-marketing', consistency: 'strong' });
+}
+
+function includesHistoryWrite(actual, expected) {
+  const { revision, batches, initialization, ...fixed } = expected;
+  const { revision: currentRevision, batches: currentBatches, initialization: currentInitialization, ...currentFixed } = actual;
+  if (currentRevision < revision || !isDeepStrictEqual(currentFixed, fixed) ||
+      !(initialization === 'PROVISIONAL' ? ['PROVISIONAL', 'ESTABLISHED'] :
+        initialization === 'ESTABLISHED' ? ['ESTABLISHED'] : [undefined, 'ESTABLISHED']).includes(currentInitialization)) return false;
+  const immutableBatch = batch => ({ ...batch, assignments: Object.fromEntries(people.map(person =>
+    [person, batch.assignments[person].map(({ postedAt, confirmedBy, ...item }) => item)])) });
+  return batches.every(batch => {
+    const current = currentBatches.find(candidate => candidate.id === batch.id);
+    return current && isDeepStrictEqual(immutableBatch(current), immutableBatch(batch)) && people.every(person =>
+      batch.assignments[person].every((item, index) => item.postedAt === null ||
+        (current.assignments[person][index].postedAt === item.postedAt &&
+          current.assignments[person][index].confirmedBy === item.confirmedBy)));
+  });
+}
+
+async function writeCampaignFile(store, key, data, conditions) {
+  const result = await store.setJSON(key, data, conditions);
+  // The locked SDK reports non-412 provider failures as modified:true with an empty ETag.
+  // Only a real 412 result is a retryable CAS conflict; uncertain writes fail safely.
+  if (result?.modified === false) return result;
+  if (result?.modified !== true || !validEtag(result.etag)) throw uncertainWrite();
+  const readback = key === LEDGER_KEY
+    ? await readHistory(store)
+    : await store.getWithMetadata(key, { type: 'json', consistency: 'strong' });
+  if (!readback || !validEtag(readback.etag) || !(key === LEDGER_KEY
+    ? includesHistoryWrite(readback.data, data)
+    : isDeepStrictEqual(readback.data, data))) throw uncertainWrite();
+  // The read ETag may be newer than the write ETag after a legitimate concurrent update.
+  return { ...result, readback: readback.data };
 }
 
 export function validateCampaignHistory(history, { allowProvisional = false } = {}) {
@@ -135,7 +172,7 @@ async function readHistory(store) {
   // Another initializer may have created both files between these strong reads.
   if (!row && baseline) row = await readRow();
   if (row) {
-    if (!row.etag) throw fail('No se puede verificar la versión del historial.');
+    if (!validEtag(row.etag)) throw fail('No se puede verificar la versión del historial.');
     validateCampaignHistory(row.data, { allowProvisional: true });
   }
   if (row && ((!baseline && row.data.initialization !== 'PROVISIONAL') ||
@@ -150,11 +187,11 @@ async function readHistory(store) {
 async function finishInitialization(store, history) {
   const baseline = { campaignId: REGULAR_CAMPAIGN, cycleId: history.cycleId, startedAt: history.startedAt,
     historicalCompleteness: history.historicalCompleteness };
-  await store.setJSON(BASELINE_KEY, baseline, { onlyIfNew: true });
+  await writeCampaignFile(store, BASELINE_KEY, baseline, { onlyIfNew: true });
   // Verify the winning anchor and re-read history before attempting activation.
   const current = await readHistory(store);
   if (current?.data.initialization === 'PROVISIONAL') {
-    await store.setJSON(LEDGER_KEY, { ...current.data, initialization: 'ESTABLISHED' },
+    await writeCampaignFile(store, LEDGER_KEY, { ...current.data, initialization: 'ESTABLISHED' },
       { onlyIfMatch: current.etag });
   }
   // The caller re-reads even after an unsuccessful CAS; never return a stale batch.
@@ -241,11 +278,13 @@ export async function updateRegularCampaign({ body, loadPacket, store = campaign
       if (!row) {
         // Only the winning provisional record chooses the cycle and initial batch.
         // Activation later uses its ETag, so stale recovery cannot recreate lost history.
-        await store.setJSON(LEDGER_KEY, { ...history, initialization: 'PROVISIONAL' }, { onlyIfNew: true });
+        await writeCampaignFile(store, LEDGER_KEY, { ...history, initialization: 'PROVISIONAL' }, { onlyIfNew: true });
         continue;
       }
-      const saved = await store.setJSON(LEDGER_KEY, history, { onlyIfMatch: row.etag });
+      const saved = await writeCampaignFile(store, LEDGER_KEY, history, { onlyIfMatch: row.etag });
       if (!saved.modified) continue;
+      history = saved.readback;
+      batch = history.batches.find(candidate => candidate.id === batch.id);
     }
     return { campaign: campaignPanel(history), packet: packet ? handoffCampaign(packet, history, batch) : undefined };
   }
