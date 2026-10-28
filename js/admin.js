@@ -4,6 +4,9 @@ const ADMIN_STATE = {
   token: '',
   activeTab: 'overview',
   orders: [],
+  ordersRequest: null,
+  ordersUpdatedAt: null,
+  ordersError: '',
   buyerGroups: [],
   fulfillmentBatches: [],
   fulfillmentFilter: 'OPEN',
@@ -15,7 +18,7 @@ const ADMIN_STATE = {
   orderSearch: '',
   inventorySearch: '',
   inventoryBatch: 'ALL',
-  inventoryStatus: 'ALL',
+  inventoryStatus: 'ACTIVE',
   reviewSearch: '',
   pricingSearch: '',
   marketingPacket: null,
@@ -223,31 +226,88 @@ async function adminFetch(
 async function fetchAdminOrders(
   token = ADMIN_STATE.token
 ) {
-  const response =
-    await fetch(
-      '/api/admin/orders',
-      {
-        headers: {
-          'x-admin-token':
-            token,
-        },
-
-        cache:
-          'no-store',
-      }
-    );
-
-  const data =
-    await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.error ||
-      'No se pudieron cargar los pedidos.'
-    );
+  // Existing callers reload after order actions and need a new snapshot.
+  // Ordinary tab/button refreshes share pending work in refreshAdminOrders instead.
+  while (ADMIN_STATE.ordersRequest?.token === token) {
+    await ADMIN_STATE.ordersRequest.promise.catch(() => {});
   }
 
-  return data.orders || [];
+  const request = { token, promise: null };
+  ADMIN_STATE.ordersRequest = request;
+  ADMIN_STATE.ordersError = '';
+  updateOrdersRefreshStatus();
+
+  request.promise = (async () => {
+    try {
+      const response = await fetch('/api/admin/orders', {
+        headers: { 'x-admin-token': token },
+        cache: 'no-store',
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudieron cargar los pedidos.');
+      }
+      if (!Array.isArray(data.orders)) throw new Error('Respuesta de pedidos inválida.');
+      const orders = data.orders;
+      if (token === ADMIN_STATE.token) {
+        const stats = buildAdminStats(orders, ADMIN_STATE.inventory);
+        ADMIN_STATE.orders = orders;
+        ADMIN_STATE.ordersUpdatedAt = Date.now();
+        ADMIN_STATE.stats = stats;
+        const count = document.querySelector('[data-admin-tab="orders"] span');
+        if (count) count.textContent = ADMIN_STATE.stats.awaitingPayment;
+      }
+      return orders;
+    } catch (error) {
+      if (token === ADMIN_STATE.token) {
+        ADMIN_STATE.ordersError = 'No se pudieron actualizar los pedidos. Intentá nuevamente.';
+      }
+      throw error;
+    } finally {
+      if (ADMIN_STATE.ordersRequest === request) ADMIN_STATE.ordersRequest = null;
+      updateOrdersRefreshStatus();
+    }
+  })();
+  return request.promise;
+}
+
+
+async function refreshAdminOrders({ ifStale = false } = {}) {
+  if (ADMIN_STATE.ordersRequest?.token === ADMIN_STATE.token) {
+    return ADMIN_STATE.ordersRequest.promise.catch(() => {});
+  }
+  // A recent dashboard/action load also counts; this check schedules no work.
+  if (ifStale && !ADMIN_STATE.ordersError && ADMIN_STATE.ordersUpdatedAt !== null &&
+      Date.now() - ADMIN_STATE.ordersUpdatedAt < 30000) return;
+
+  try {
+    await fetchAdminOrders();
+    if (ADMIN_STATE.activeTab === 'orders') renderOrdersTab({ preserveDetails: true });
+  } catch {
+    // The fetch keeps the last successful list and timestamp and exposes a retryable error.
+  }
+}
+
+
+function updateOrdersRefreshStatus() {
+  const button = document.getElementById('admin-refresh-orders');
+  if (button) {
+    button.disabled = Boolean(ADMIN_STATE.ordersRequest);
+    button.textContent = button.disabled ? 'Actualizando pedidos…' : 'Actualizar pedidos';
+  }
+  const timestamp = document.getElementById('admin-orders-updated');
+  if (timestamp) {
+    timestamp.textContent = ADMIN_STATE.ordersUpdatedAt === null
+      ? 'Sin actualización exitosa todavía.'
+      : `Última actualización: ${new Date(ADMIN_STATE.ordersUpdatedAt).toLocaleString('es-PY', {
+          timeZone: 'America/Asuncion', hourCycle: 'h23',
+        })} (hora de Paraguay)`;
+  }
+  const error = document.getElementById('admin-orders-refresh-error');
+  if (error) {
+    error.textContent = ADMIN_STATE.ordersError;
+    error.hidden = !ADMIN_STATE.ordersError;
+  }
 }
 
 
@@ -705,6 +765,7 @@ function renderAdminTab() {
     'orders'
   ) {
     renderOrdersTab();
+    refreshAdminOrders({ ifStale: true });
     return;
   }
 
@@ -1880,6 +1941,12 @@ function renderInventoryTab() {
             return false;
           }
 
+          if (ADMIN_STATE.inventoryStatus === 'ACTIVE' &&
+              (!product.published || product.live?.status !== 'AVAILABLE' ||
+               !(Number(product.live?.quantityRemaining) > 0))) {
+            return false;
+          }
+
           if (
             ADMIN_STATE
               .inventoryStatus ===
@@ -2006,6 +2073,10 @@ function renderInventoryTab() {
           <select
             id="inventory-status"
           >
+            <option value="ACTIVE" ${ADMIN_STATE.inventoryStatus === 'ACTIVE' ? 'selected' : ''}>
+              Activos
+            </option>
+
             <option
               value="ALL"
               ${
@@ -4762,11 +4833,18 @@ function printFulfillmentBatches(batches) {
 let ADMIN_LEGACY_REVIEW_SUCCESS = '';
 
 
-function renderOrdersTab() {
+function renderOrdersTab({ preserveDetails = false } = {}) {
   const target =
     document.getElementById(
       'admin-tab-content'
     );
+
+  const openDetail = preserveDetails
+    ? target.querySelector('[data-admin-detail]:not([hidden])') : null;
+  const reconciliation = preserveDetails
+    ? document.getElementById('admin-legacy-reconciliation-review') : null;
+  const pickups = preserveDetails
+    ? document.getElementById('admin-upcoming-pickups') : null;
 
   const normalizedSearch = adminNormalizeSearch(
     ADMIN_STATE.orderSearch
@@ -4913,6 +4991,12 @@ function renderOrdersTab() {
         </strong>
       </div>
 
+      <div class="admin-order-tools-v2">
+        <button id="admin-refresh-orders" class="secondary-action" type="button">Actualizar pedidos</button>
+        <p id="admin-orders-updated" role="status"></p>
+        <p id="admin-orders-refresh-error" class="form-error" role="alert" hidden></p>
+      </div>
+
       <section class="admin-content-v2" id="admin-legacy-reconciliation-review">
         <h3>Reconciliación histórica revisada</h3>
         <p>Cargando pagos aprobados…</p>
@@ -4965,8 +5049,27 @@ function renderOrdersTab() {
     </section>
   `;
 
-  loadLegacyReconciliationReviewQueue();
-  loadUpcomingPickups();
+  if (reconciliation) {
+    document.getElementById('admin-legacy-reconciliation-review').replaceWith(reconciliation);
+  } else {
+    loadLegacyReconciliationReviewQueue();
+  }
+  if (pickups) {
+    document.getElementById('admin-upcoming-pickups').replaceWith(pickups);
+  } else {
+    loadUpcomingPickups();
+  }
+  if (openDetail) {
+    const orderId = CSS.escape(openDetail.getAttribute('data-admin-detail'));
+    target.querySelector(`[data-admin-detail="${orderId}"]`)?.replaceWith(openDetail);
+    const button = target.querySelector(`[data-admin-open="${orderId}"]`);
+    if (button) {
+      button.setAttribute('aria-expanded', 'true');
+      button.textContent = 'Cerrar pedido';
+    }
+  }
+  updateOrdersRefreshStatus();
+  target.querySelector('#admin-refresh-orders')?.addEventListener('click', () => refreshAdminOrders());
 
   target
     .querySelectorAll(
