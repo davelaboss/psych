@@ -1915,7 +1915,7 @@ function renderReviewTab() {
 }
 
 
-function renderInventoryTab() {
+function renderInventoryTab(resultsOnly = false) {
   const target =
     document.getElementById(
       'admin-tab-content'
@@ -1983,6 +1983,20 @@ function renderInventoryTab() {
         compareItemNumbers
       );
 
+  const resultsHTML = products.length
+    ? `<div class="legacy-review-list">${products.map(renderLegacyProductRow).join('')}</div>`
+    : `<div class="admin-empty-v2">No encontramos artículos con esos filtros.</div>`;
+
+  if (resultsOnly) {
+    // Keep the native input intact, including selection and active composition.
+    target.querySelector('#inventory-count').textContent =
+      `${products.length} de ${ADMIN_STATE.inventory.length}`;
+    const results = target.querySelector('#inventory-results');
+    results.innerHTML = resultsHTML;
+    wireLegacyAccordions(results);
+    return;
+  }
+
   target.innerHTML = `
     <section class="admin-content-v2">
       <div class="admin-section-heading-v2">
@@ -2000,7 +2014,7 @@ function renderInventoryTab() {
           </p>
         </div>
 
-        <strong>
+        <strong id="inventory-count">
           ${products.length}
           de
           ${ADMIN_STATE.inventory.length}
@@ -2119,23 +2133,7 @@ function renderInventoryTab() {
         </label>
       </div>
 
-      ${
-        products.length
-          ? `
-            <div class="legacy-review-list">
-              ${products
-                .map(
-                  renderLegacyProductRow
-                )
-                .join('')}
-            </div>
-          `
-          : `
-            <div class="admin-empty-v2">
-              No encontramos artículos con esos filtros.
-            </div>
-          `
-      }
+      <div id="inventory-results">${resultsHTML}</div>
     </section>
   `;
 
@@ -2150,7 +2148,7 @@ function renderInventoryTab() {
           .inventorySearch =
           event.target.value;
 
-        renderInventoryTab();
+        renderInventoryTab(true);
       }
     );
 

@@ -19,18 +19,23 @@ function scenario() {
   const calls = [];
   let respond = async () => json({ orders: [order('NEW')] });
   let nodes = [];
+  let activeElement = null;
   const makeNode = (attrs = {}) => ({
     attrs, hidden: 'hidden' in attrs, disabled: false, textContent: '', innerHTML: '',
     value: attrs.value || '', listeners: {},
-    classList: { toggle() {} }, focus() {}, setSelectionRange() {},
+    classList: { toggle() {} },
+    focus() { activeElement = this; },
+    setSelectionRange(start, end, direction = 'none') {
+      this.selectionStart = start; this.selectionEnd = end; this.selectionDirection = direction;
+    },
     getAttribute(name) { return this.attrs[name] ?? null; },
     setAttribute(name, value) { this.attrs[name] = value; },
     addEventListener(type, listener) { this.listeners[type] = listener; },
     querySelector() { return null; }, querySelectorAll() { return []; },
     replaceWith(other) { nodes[nodes.indexOf(this)] = other; },
-    fire(type, value = this.value) {
+    fire(type, value = this.value, properties = {}) {
       this.value = value;
-      return this.listeners[type]?.({ target: this, currentTarget: this });
+      return this.listeners[type]?.({ target: this, currentTarget: this, ...properties });
     },
   });
   const matches = (node, selector) => {
@@ -46,7 +51,8 @@ function scenario() {
     get innerHTML() { return this._html; },
     set innerHTML(html) {
       this._html = html;
-      nodes = [...html.matchAll(/<(?:input|select|button|div|p|section)\b([^>]*)>/g)].map(([, tag]) => {
+      if (nodes.includes(activeElement)) activeElement = null;
+      nodes = [...html.matchAll(/<(?:input|select|button|div|p|section|strong)\b([^>]*)>/g)].map(([, tag]) => {
         const attrs = Object.fromEntries([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(m => [m[1], m[2]]));
         for (const [name] of tag.matchAll(/\bdata-[\w-]+\b(?![\w-]|=)/g)) {
           if (!(name in attrs)) attrs[name] = '';
@@ -65,6 +71,7 @@ function scenario() {
     Date: class extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } },
     window: { addEventListener() {} },
     document: {
+      get activeElement() { return activeElement; },
       getElementById(id) { return id === 'admin-tab-content' ? target : target.querySelector(`#${id}`); },
       querySelector(selector) {
         if (selector === 'main') return target;
@@ -87,6 +94,7 @@ function scenario() {
   const api = context.api;
   Object.assign(api.ADMIN_STATE, { token: 'synthetic-admin', orders: [order('OLD')], activeTab: 'orders' });
   return { ...api, state: api.ADMIN_STATE, target, calls, badge,
+    get activeElement() { return activeElement; },
     advance(ms) { now += ms; },
     respond(fn) { respond = fn; },
     enter(tab) { api.ADMIN_STATE.activeTab = tab; api.renderAdminTab(); },
@@ -310,4 +318,99 @@ test('inventory retains Todos/Publicados/Pendientes, search, batch and publicati
   assert.equal((s.target.innerHTML.match(/data-legacy-open=/g) || []).length, 1);
   assert.match(s.target.innerHTML, /value="ALL"\s+selected/);
   assert.match(s.target.innerHTML, /value="TWO"\s+selected/);
+});
+
+test('inventory continuous typing retains the same focused input, caret and filters while updating matches/count', () => {
+  const s = scenario();
+  s.state.inventory = inventoryFixture();
+  s.enter('inventory');
+  const input = s.node('#inventory-search');
+  const batch = s.node('#inventory-batch'), status = s.node('#inventory-status');
+  input.focus();
+  let value = '';
+  for (const character of 'Artículo 12') {
+    value += character;
+    input.setSelectionRange(value.length, value.length);
+    input.fire('input', value);
+    assert.equal(s.node('#inventory-search'), input);
+    assert.equal(s.activeElement, input);
+    assert.equal(input.selectionStart, value.length);
+    assert.equal(input.selectionEnd, value.length);
+    assert.equal(s.state.inventorySearch, value);
+    assert.equal(s.node('#inventory-batch'), batch);
+    assert.equal(s.node('#inventory-status'), status);
+    const expected = value === 'Artículo 12' ? 1 : value === 'Artículo 1' ? 2 : 3;
+    assert.equal(s.node('#inventory-count').textContent, `${expected} de 12`);
+    assert.equal((s.node('#inventory-results').innerHTML.match(/data-legacy-open=/g) || []).length, expected);
+  }
+  assert.equal(s.calls.length, 0);
+});
+
+test('inventory middle edits, deletion, replacement, clearing and composition preserve focus and selection', () => {
+  const s = scenario();
+  s.state.inventory = inventoryFixture();
+  s.enter('inventory');
+  const input = s.node('#inventory-search');
+  input.focus();
+  // Each input event arrives after the browser has applied the edit and caret movement.
+  for (const [value, start, end, direction, isComposing = false] of [
+    ['Artículo 12', 11, 11, 'none'],
+    ['ArtXículo 12', 4, 4, 'none'], // Insert in the middle.
+    ['Artículo 12', 3, 3, 'none'], // Backspace.
+    ['Artculo 12', 3, 3, 'none'], // Delete.
+    ['Artículo 12', 3, 5, 'backward'], // Selection survives an input update.
+    ['ArtABulo 12', 5, 5, 'none'], // Replace selected text.
+    ['', 0, 0, 'none'], // Clear, including the native search clear action.
+    ['に', 1, 1, 'none', true],
+    ['日本', 0, 2, 'backward', true],
+    ['日本', 2, 2, 'none'],
+    ['', 0, 0, 'none'],
+  ]) {
+    input.setSelectionRange(start, end, direction);
+    input.fire('input', value, { isComposing });
+    assert.equal(s.node('#inventory-search'), input);
+    assert.equal(s.activeElement, input);
+    assert.deepEqual([input.selectionStart, input.selectionEnd, input.selectionDirection], [start, end, direction]);
+    assert.equal(s.state.inventorySearch, value);
+    if (value === '') assert.equal(s.node('#inventory-count').textContent, '3 de 12');
+    if (isComposing) assert.match(s.node('#inventory-results').innerHTML, /No encontramos artículos/);
+  }
+});
+
+test('inventory search updates honor every publication view and batch without mutating inventory', () => {
+  const s = scenario();
+  s.state.inventory = inventoryFixture();
+  s.state.batches = [{ id: 'ONE', name: 'Uno' }, { id: 'TWO', name: 'Dos' }];
+  const before = JSON.stringify(s.state.inventory);
+  s.enter('inventory');
+  s.node('#inventory-batch').fire('change', 'ONE');
+  for (const [status, count] of [['ACTIVE', 2], ['ALL', 11], ['PUBLISHED', 10], ['REVIEW', 1]]) {
+    s.node('#inventory-status').fire('change', status);
+    s.node('#inventory-search').fire('input', 'Artículo');
+    assert.equal(s.node('#inventory-count').textContent, `${count} de 12`);
+    assert.equal((s.node('#inventory-results').innerHTML.match(/data-legacy-open=/g) || []).length, count);
+    assert.equal(s.state.inventoryBatch, 'ONE');
+    assert.equal(s.state.inventoryStatus, status);
+    s.node('#inventory-search').fire('input', 'no match');
+    assert.equal(s.node('#inventory-count').textContent, '0 de 12');
+    assert.match(s.node('#inventory-results').innerHTML, /No encontramos artículos/);
+    s.node('#inventory-search').fire('input', '');
+    assert.equal(s.node('#inventory-count').textContent, `${count} de 12`);
+  }
+  assert.equal(JSON.stringify(s.state.inventory), before);
+  assert.equal(s.calls.length, 0);
+});
+
+test('opening inventory and returning from another tab never focus search automatically', () => {
+  const s = scenario();
+  s.badge.focus();
+  s.enter('inventory');
+  assert.equal(s.activeElement, s.badge);
+  s.node('#inventory-search').focus();
+  s.node('#inventory-search').fire('input', 'saved search');
+  s.enter('review');
+  s.badge.focus();
+  s.enter('inventory');
+  assert.equal(s.activeElement, s.badge);
+  assert.equal(s.node('#inventory-search').value, 'saved search');
 });
