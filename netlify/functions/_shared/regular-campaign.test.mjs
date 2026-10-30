@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
-import { REGULAR_CAMPAIGN, LEDGER_KEY, BASELINE_KEY, updateRegularCampaign,
+import { REGULAR_CAMPAIGN, PRIORITY_PASS, LEDGER_KEY, BASELINE_KEY, updateRegularCampaign,
   readCampaignPanel, selectRegularCampaign, validateCampaignHistory } from './regular-campaign.mjs';
 import { PREPARATION_EVIDENCE } from './regular-campaign-seed.mjs';
-import { loadBaseCatalog } from './commerce.mjs';
+import { loadBaseCatalog, loadCatalog } from './commerce.mjs';
+import { buildSalePulseSnapshot } from './sale-pulse.mjs';
 import { createAdminSalePulseHandler } from '../admin-sale-pulse.mjs';
 
 const clone = value => structuredClone(value);
@@ -40,7 +41,7 @@ function catalog(count = 60) {
   return {
     generatedAt: '2026-10-28T15:00:00Z',
     marketableProducts: Array.from({ length: count }, (_, i) => ({ productId: `product-${i + 1}`, itemNumber: i + 1,
-      title: `Synthetic product ${i + 1}`, askingPricePYG: (i + 1) * 1000,
+      title: `Synthetic product ${i + 1}`, askingPricePYG: 50000 + (i + 1) * 1000,
       category: 'Hogar', saleMode: 'IMMEDIATE', purchasableQuantity: 1, marketabilityStatus: 'MARKETABLE',
       productUrl: `/producto/synthetic-${i + 1}`, mainImage: `/synthetic-${i + 1}.jpg`,
       views: 999 - i, cartAdds: i % 4 })),
@@ -54,6 +55,7 @@ function harness(count = 60, evidence = []) {
   return {
     store, run, prepare: () => run({ action: 'prepare' }),
     setDay(day) { instant = `2026-11-${String(day).padStart(2, '0')}T15:00:00.000Z`; },
+    setTime(value) { instant = value; },
     setPacket(value) { packet = value; }, packet: () => clone(packet),
     history: () => clone(store.files.get(LEDGER_KEY).data),
     async confirm(result, person, ids = result.packet.regularCampaign.assignments[person]) {
@@ -63,6 +65,114 @@ function harness(count = 60, evidence = []) {
   };
 }
 const selected = result => result.packet.regularCampaign.selectedProductIds;
+
+test('priority threshold is strict and marketability plus purchasable stock are required', async () => {
+  const h = harness(10), packet = h.packet();
+  const prices = [50001, 50000, 49999, 0, 200000, 200000, 200000, 200000, 200000, 200000];
+  packet.marketableProducts.forEach((p, i) => { p.askingPricePYG = prices[i]; });
+  for (const [i, status] of [[4,'SOLD'],[5,'TEMPORARILY_RESERVED'],[6,'PENDING_PAYMENT_OR_CONFIRMATION'],[7,'NOT_MARKETABLE']]) {
+    packet.marketableProducts[i].marketabilityStatus = status;
+  }
+  packet.marketableProducts[8].purchasableQuantity = 0;
+  h.setPacket(packet);
+  const before = clone(packet), result = await h.prepare();
+  assert.deepEqual(selected(result), ['product-1','product-10']);
+  assert.equal(result.packet.regularCampaign.totalMarketable, 2);
+  assert.equal(result.packet.marketableProducts.length, 10, 'Only campaign selection is filtered');
+  assert.deepEqual(h.packet(), before, 'Product prices and inventory remain untouched');
+});
+
+test('real catalog override adapter and Sale Pulse determine priority eligibility from current asking prices', async () => {
+  const products = await loadBaseCatalog('https://example.test');
+  const original = products.find(p => p.status === 'AVAILABLE' && p.quantityRemaining > 0 && p.images?.length && p.itemNumber > 40);
+  assert.ok(original);
+  for (const price of [50001, 50000, 49999, 150000]) {
+    const base = { ...clone(original), askingPricePYG: price > 50000 ? 10000 : 200000 };
+    const authoritative = await loadCatalog('https://example.test', {
+      loadBaseCatalog: async () => [base],
+      listProductOverrides: async () => [{ productId: base.id, publicFields: { askingPricePYG: price } }],
+      readCommittedInventory: async () => new Map(),
+    });
+    const packet = buildSalePulseSnapshot({ products: authoritative,
+      purchasableInventory: new Map([[base.id, { product_id: base.id, capacity: base.quantityRemaining,
+        committed_quantity: 0, purchasable_quantity: base.quantityRemaining, cart_held_quantity: 0, order_held_quantity: 0 }]]) }).marketingPacket;
+    assert.equal(packet.marketableProducts[0].askingPricePYG, price);
+    const h = harness(); h.setPacket(packet);
+    if (price > 50000) assert.deepEqual(selected(await h.prepare()), [base.id]);
+    else { await assert.rejects(h.prepare(), /No quedan Items elegibles/); assert.equal(h.store.writes.length, 0); }
+    assert.equal(authoritative[0].askingPricePYG, price);
+    assert.notEqual(base.askingPricePYG, price, 'Injected override wins over the base price');
+  }
+});
+
+test('morning and afternoon advance on the same date; partial and failed-copy retries reopen the original batch', async () => {
+  const h = harness(23);
+  h.setTime('2026-10-30T12:00:00Z');
+  const morning = await h.prepare(), writes = h.store.writes.length;
+  assert.equal((await h.prepare()).packet.regularCampaign.batchId, morning.packet.regularCampaign.batchId);
+  assert.equal(h.store.writes.length, writes);
+  await h.confirm(morning, 'David');
+  h.setTime('2026-10-30T18:00:00Z');
+  const partial = await h.prepare();
+  assert.equal(partial.packet.regularCampaign.batchId, morning.packet.regularCampaign.batchId);
+  assert.deepEqual(selected(partial), morning.packet.regularCampaign.assignments.Maria);
+  await h.confirm(morning, 'Maria');
+  const afternoon = await h.prepare();
+  assert.equal(h.history().batches[0].date, h.history().batches[1].date);
+  assert.equal(afternoon.packet.regularCampaign.assignments.David.length, 5);
+  assert.equal(afternoon.packet.regularCampaign.assignments.Maria.length, 5);
+  assert.ok(selected(afternoon).every(id => !selected(morning).includes(id)));
+  assert.equal((await h.prepare()).packet.regularCampaign.batchId, afternoon.packet.regularCampaign.batchId);
+  await h.confirm(afternoon, 'David'); await h.confirm(afternoon, 'Maria');
+  assert.deepEqual(selected(await h.prepare()), ['product-21','product-22','product-23']);
+});
+
+test('broad campaign POSTED and PREPARED records survive a concurrent priority boundary without counting as priority coverage', async () => {
+  const h = harness(12, PREPARATION_EVIDENCE), broad = await h.prepare();
+  await h.confirm(broad, 'David');
+  const stored = h.store.files.get(LEDGER_KEY).data;
+  delete stored.batches[0].passId; stored.batches[0].phase = 'PHASE_2';
+  const original = h.history(), baseline = clone(h.store.files.get(BASELINE_KEY));
+  const writes = h.store.writes.length;
+  assert.deepEqual((await readCampaignPanel({store:h.store})).pendingBatches, []);
+  assert.equal(h.store.writes.length, writes, 'Viewing does not establish the new pass');
+  const [first, retry] = await Promise.all([h.prepare(), h.prepare()]);
+  assert.equal(first.packet.regularCampaign.batchId, retry.packet.regularCampaign.batchId);
+  assert.equal(first.packet.regularCampaign.passId, PRIORITY_PASS);
+  assert.equal(first.packet.regularCampaign.passStartedAt, h.history().batches[1].preparedAt);
+  assert.equal(first.packet.regularCampaign.eligibleUnconfirmedCount, 12);
+  const {batches, revision, ...fixed} = h.history();
+  assert.deepEqual(batches[0], original.batches[0]);
+  assert.equal(batches.length, 2);
+  const {batches: oldBatches, revision: oldRevision, ...oldFixed} = original;
+  assert.deepEqual(fixed, oldFixed);
+  assert.deepEqual(h.store.files.get(BASELINE_KEY), baseline);
+  await h.confirm(broad, 'Maria'); // A true late confirmation belongs only to the old pass.
+  assert.equal((await h.prepare()).packet.regularCampaign.eligibleUnconfirmedCount, 12);
+  await h.confirm(first, 'David'); await h.confirm(first, 'Maria');
+  const last = await h.prepare();
+  assert.equal(selected(last).length, 2);
+  assert.ok(selected(last).every(id => !selected(first).includes(id)));
+  await h.confirm(last, 'David');
+  await assert.rejects(h.prepare(), /No quedan Items elegibles/);
+  assert.ok(h.history().batches[0].assignments.David.every(p => p.postedAt));
+});
+
+test('retry removes newly cheap, sold or reserved Items without changing assignments or falsely posting them', async () => {
+  const h = harness(12), first = await h.prepare(), before = h.history();
+  const packet = h.packet();
+  packet.marketableProducts[0].askingPricePYG = 50000;
+  packet.marketableProducts[1].marketabilityStatus = 'SOLD';
+  packet.marketableProducts[2].marketabilityStatus = 'TEMPORARILY_RESERVED';
+  h.setPacket(packet);
+  assert.deepEqual(selected(await h.prepare()), selected(first).slice(3));
+  assert.deepEqual(h.history(), before);
+  await h.confirm(first, 'David', ['product-4','product-5']); await h.confirm(first, 'Maria');
+  assert.deepEqual(selected(await h.prepare()), ['product-11','product-12']);
+  packet.marketableProducts[0].askingPricePYG = 50001;
+  h.setPacket(packet); h.setDay(16);
+  assert.ok(selected(await h.prepare()).includes('product-1'), 'Newly eligible and still unposted can enter later');
+});
 
 test('first pass progresses through all 83 marketable Items across days without repeats or 36-Item cutoff', async () => {
   const h = harness(83), posted = new Set();
@@ -77,9 +187,10 @@ test('first pass progresses through all 83 marketable Items across days without 
   assert.equal(posted.size, 83);
   assert.ok(posted.has('product-83'));
   h.setDay(10);
-  const phase2 = await h.prepare();
-  assert.equal(phase2.packet.regularCampaign.phase, 'PHASE_2');
-  assert.deepEqual(selected(phase2), Array.from({length:10}, (_, i) => `product-${83 - i}`));
+  const before = h.history(), writes = h.store.writes.length;
+  await assert.rejects(h.prepare(), /Reutilizá las fotos y mensajes existentes/);
+  assert.deepEqual(h.history(), before);
+  assert.equal(h.store.writes.length, writes);
 });
 
 test('PREPARED is not POSTED; unprepared Items precede prepared/unconfirmed across dates', async () => {
@@ -137,11 +248,11 @@ test('fewer than ten unconfirmed Items are never padded with confirmed repeats',
   assert.equal(last.packet.regularCampaign.phase, 'FIRST_PASS');
 });
 
-test('newly marketable unposted Items immediately preempt Phase 2; held Items never enter selection', async () => {
+test('newly eligible unposted Items enter a completed pass after November 15 without restarting coverage', async () => {
   const h = harness(10), first = await h.prepare();
   await h.confirm(first,'David'); await h.confirm(first,'Maria');
-  h.setDay(1); const repeat = await h.prepare();
-  assert.equal(repeat.packet.regularCampaign.phase,'PHASE_2');
+  h.setDay(16);
+  await assert.rejects(h.prepare(), /No quedan Items elegibles/);
   const packet = catalog(12);
   packet.marketableProducts[11].marketabilityStatus = 'TEMPORARILY_RESERVED';
   h.setPacket(packet);
@@ -151,16 +262,16 @@ test('newly marketable unposted Items immediately preempt Phase 2; held Items ne
   assert.ok(!selected(newcomer).includes('product-12'));
 });
 
-test('Phase 2 ranks descending current price without a threshold or traffic/popularity influence', async () => {
+test('price increases do not repeat confirmed Items and reduced prices leave the final batch short', async () => {
   const h = harness(15);
   let result = await h.prepare(); await h.confirm(result,'David'); await h.confirm(result,'Maria');
-  h.setDay(1); result=await h.prepare(); await h.confirm(result,'David');
-  h.setDay(2);
   const packet=h.packet(); packet.marketableProducts[0].askingPricePYG=1000000;
-  h.setPacket(packet); const repeated=await h.prepare();
-  assert.equal(selected(repeated)[0],'product-1');
-  assert.ok(!selected(repeated).includes('product-2'));
-  assert.ok(repeated.packet.regularCampaign.assignments.David.every(id => !repeated.packet.regularCampaign.assignments.Maria.includes(id)));
+  packet.marketableProducts[10].askingPricePYG=50000;
+  h.setPacket(packet); result=await h.prepare();
+  assert.deepEqual(selected(result), ['product-12','product-13','product-14','product-15']);
+  await h.confirm(result,'David');
+  h.setDay(2);
+  await assert.rejects(h.prepare(), /No quedan Items elegibles/);
 });
 
 test('independent posts, email delivery and analytics cannot alter campaign selection or history', async () => {
@@ -387,7 +498,7 @@ test('recovered preparation still revalidates current marketability without chan
   assert.equal(selected(recovered).length,9);
 });
 
-test('incomplete current marketable data cannot silently declare coverage complete or enter Phase 2', async () => {
+test('incomplete eligible product data cannot silently declare coverage complete', async () => {
   const h=harness(2), packet=h.packet(); packet.marketableProducts[1].mainImage=null; h.setPacket(packet);
   await assert.rejects(h.prepare(), /Faltan datos completos/);
   assert.equal(h.store.writes.length,0);
@@ -440,7 +551,7 @@ test('server selection and persistence never import operational writes or email 
   assert.match(source,/onlyIfMatch/);
 });
 
-test('actual clipboard handler uses the authenticated endpoint and persisted history across days', async () => {
+test('actual clipboard handler uses the authenticated endpoint and persisted history for morning and afternoon', async () => {
   const store=memoryStore(), copied=[];
   let instant='2026-10-28T15:00:00Z', sequence=0;
   const handler=createAdminSalePulseHandler({authorized:req=>req.headers.get('x-admin-token')==='synthetic',
@@ -465,7 +576,7 @@ test('actual clipboard handler uses the authenticated endpoint and persisted his
     authenticated.headers.set('x-admin-token','synthetic');
     assert.equal((await handler(authenticated)).status,200);
   }
-  instant='2026-10-29T15:00:00Z';
+  instant='2026-10-28T20:00:00Z';
   await context.copy({currentTarget:{disabled:false,textContent:''}});
   const next=JSON.parse(copied[1].match(/\nCANDIDATOS_JSON\n([^\n]+)\nFIN_CANDIDATOS_JSON/)[1]);
   assert.deepEqual(next.candidates.map(p=>p.productId),Array.from({length:10},(_,i)=>`product-${i+11}`));

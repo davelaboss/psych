@@ -231,6 +231,7 @@ const handoffPacket = {
 function trustedSelection(products, overrides = {}) {
   const ids = products.slice(0, 10).map(p => p.productId);
   return { status: 'READY', campaignId: 'regular-chatgpt-daily-v1', cycleId: 'synthetic-cycle',
+    passId: 'priority-over-50000-v1', passStartedAt: '2026-10-30T12:00:00Z',
     batchId: 'synthetic-batch', startedAt: '2026-10-20T15:00:00Z', revision: 1,
     historicalCompleteness: 'UNRECONCILED', phase: 'FIRST_PASS',
     selectedProductIds: ids, assignments: { David: ids.slice(0, 5), Maria: ids.slice(5) }, ...overrides };
@@ -420,8 +421,11 @@ test('unreconciled older history allows an active-cycle handoff and independent 
   await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
   const text = copied[0];
   assert.match(text, /PREPARED no es POSTED/);
-  assert.match(text, /No detengas por incertidumbre anterior al ciclo/);
-  assert.match(text, /UNCONFIRMED en este ciclo, no históricamente NEVER POSTED/);
+  assert.match(text, /No detengas por incertidumbre anterior/);
+  assert.match(text, /UNCONFIRMED en esta pasada no significa históricamente NEVER POSTED/);
+  assert.match(text, /passId[\s\S]*?passStartedAt/);
+  assert.match(text, /estrictamente mayor a ₲50.000/);
+  assert.match(text, /no regeneres materiales ni inicies una repetición automática/);
   assert.match(text, /anuncios independientes de David o María no cuentan; no los registres ni pidas reportarlos/);
   assert.equal(handoffData(text).regularCampaign.historicalCompleteness, 'UNRECONCILED');
   assert.doesNotMatch(JSON.stringify(handoffData(text)), /"history"|"POSTED"|"PREPARED"/);
@@ -608,6 +612,19 @@ test('clipboard fails closed on missing active history or an unavailable authori
     await chatgptButton(listeners)({currentTarget:button});
     assert.equal(copied.length,0);
     assert.match(button.textContent,/HISTORIAL NO FIABLE|DATOS INCOMPLETOS/);
+  }
+});
+
+test('clipboard refuses selected products at or below the priority price floor', async () => {
+  for (const askingPricePYG of [50000, 49999]) {
+    const packet = structuredClone(handoffPacket), copied = [];
+    packet.marketableProducts[0].askingPricePYG = askingPricePYG;
+    const {listeners} = overviewScenario({fetchSalePulse:async()=>pulse({marketingPacket:packet}),
+      writeClipboard:async text=>copied.push(text)});
+    const button = {disabled:false,textContent:''};
+    await chatgptButton(listeners)({currentTarget:button});
+    assert.equal(copied.length, 0);
+    assert.match(button.textContent, /DATOS INCOMPLETOS/);
   }
 });
 

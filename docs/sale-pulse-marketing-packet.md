@@ -10,7 +10,7 @@ the existing text report.
 every click and copies a self-contained Spanish handoff for an ordinary ChatGPT
 conversation. It includes the exact server-selected regular-campaign batch (at most ten Items),
 current product and main-image URLs, and the optional Personal Google Drive
-Marketing Production Desk folder. Selection ranks the full fresh marketable
+Marketing Production Desk folder. Selection ranks the full fresh eligible
 catalog against trusted campaign history before serialization; no fixed
 36-product shortlist remains. The complete batch must fit within 18,000 characters. It states the
 snapshot time, total marketable count, included count, and that omitted Items
@@ -62,7 +62,18 @@ A handoff preparation records PREPARED handoff evidence, not a claim that extern
 Story images were generated or published. Failed clipboard writes leave a
 reopenable prepared batch and zero publication confirmations.
 
-### Dated baseline and historical uncertainty
+### Priority pass boundary and historical uncertainty
+
+The higher-value pass uses the stable batch tag `passId: priority-over-50000-v1`.
+The first priority preparation appends a tagged batch to the existing ledger using
+the same conditional writes and verified readback. Its actual preparation time is
+returned as `passStartedAt`; `startedAt` continues to identify the original cycle.
+Untagged broad-campaign batches, all prior POSTED timestamps, preparation evidence,
+and the immutable baseline remain intact. Earlier postings do not satisfy priority
+coverage, including late confirmations on old batches. Only tagged pending batches
+appear in the current confirmation panel. Existing old batch confirmations remain
+valid for truthful earlier publications. Passive reads never establish a pass.
+There is no date-based reset or automatic change on November 15.
 
 The first successful prepare initializes an auditable active coverage cycle with
 its actual start timestamp and historicalCompleteness UNRECONCILED. Existing
@@ -82,20 +93,26 @@ remains explicitly unreconciled, without halting the valid active cycle.
 
 On prepare the server reads fresh authoritative Sale Pulse marketability and
 the strong-consistency ledger. It ranks the entire eligible catalog, excluding
-all Items already confirmed in the active cycle while any eligible Item remains
-unconfirmed. Within first pass, Items without preparation evidence precede
+all Items already confirmed POSTED in this priority pass. Only marketable products
+with purchasable stock and current asking price strictly greater than PYG 50,000
+qualify, after the existing Admin/Netlify Blob overrides. No fixed list or count is
+used. Protected products follow the same eligibility rule; no prices are changed.
+Lower-priced products remain in the public catalog and raw Sale Pulse packet.
+Within first pass, Items without preparation evidence precede
 prepared/unconfirmed Items; older preparations precede newer ones. Take at most
 ten, assigned five to David then five to María, with no overlap. Fewer remaining
 first-pass Items produce fewer entries, never repeat fill. Same-day reopening
-returns only still-marketable, unconfirmed assigned Items; future dates advance
-through the catalog. Incomplete current product facts fail closed.
+returns only still-eligible, unconfirmed assigned Items. Once those Items are all
+confirmed (or no longer eligible), another click can prepare the next batch on the
+same date: morning and afternoon need no new controls. Future dates retain the
+existing preparation ordering. Incomplete eligible product facts fail closed.
 
-Only when every then-marketable Item has confirmation does Phase 2 select by
-descending current asking price, without an invented threshold. It excludes Items
-already prepared that day. Newly marketable unconfirmed Items immediately restore
-first-pass priority, including over a prepared Phase 2 handoff. Sold/held/unlisted
-Items never enter selection; confirmation of a genuinely earlier publication is
-still allowed if the Item subsequently sold or became unavailable.
+When no eligible unposted Items remain, preparation stops with a Spanish message
+to reuse existing photos and messages; it creates no repeat batch or automatic
+reposting process. Newly eligible unposted products can enter the same priority
+pass later. Sold/held/unlisted Items never enter selection; confirmation of a
+genuinely earlier publication is still allowed if the Item subsequently sold or
+became unavailable. Legacy PHASE_2 records stay valid historical records.
 
 The browser follows the exact server product IDs and person assignments. It no
 longer ranks popularity/category lanes or trims away selected Items to fit a
