@@ -1268,7 +1268,7 @@ function mobileMarketingCandidates(packet) {
   const products = packet.marketableProducts.filter((product) => {
     if (!product || (product.marketabilityStatus && product.marketabilityStatus !== 'MARKETABLE') ||
       !product.productId || !Number.isInteger(Number(product.itemNumber)) || Number(product.itemNumber) <= 0 ||
-      !product.title || !Number.isFinite(Number(product.askingPricePYG)) ||
+      !product.title || !Number.isFinite(Number(product.askingPricePYG)) || Number(product.askingPricePYG) <= 50000 ||
       !product.category || !product.saleMode || Number(product.purchasableQuantity) <= 0 ||
       !product.productUrl || !product.mainImage || seen.has(product.productId) ||
       seenItems.has(Number(product.itemNumber))) return false;
@@ -1321,14 +1321,14 @@ DATOS ACTUALES: este JSON es un SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUA
 FUENTES Y AUTORIDAD
 - La consulta Sale Pulse recién copiada es la autoridad FINAL para disponibilidad, comercialización, precios, títulos y cantidades actuales. Elige exclusivamente del subconjunto JSON. No promociones Items vendidos, temporalmente reservados, pendientes de pago o no publicados. No crees carritos ni reservas para comprobar disponibilidad.
 - Si tienes acceso al Drive Personal de David, consulta el Marketing Production Desk: ${CHATGPT_MARKETING_DRIVE_URL}. Usa README, manifiesto, preflight y archivos Marketplace como contexto; este Sale Pulse prevalece. Si Drive no está disponible, usa estos datos y ${CHATGPT_MARKETING_SITE_URL}.
-- La selección y asignación del JSON ya usan el historial fiable del ciclo activo de la campaña regular. Respétalas: no sustituyas Items ni uses visitas, anuncios independientes o interés para cambiarlas. PREPARED no es POSTED: solo la confirmación expresa de publicación real cuenta. El ciclo comienza en startedAt; lo anterior no conciliado es UNCONFIRMED en este ciclo, no históricamente NEVER POSTED. No detengas por incertidumbre anterior al ciclo. Los anuncios independientes de David o María no cuentan; no los registres ni pidas reportarlos.
+- La selección y asignación del JSON ya usan el historial fiable de la pasada prioritaria passId de la campaña regular, iniciada en passStartedAt. Respétalas: no sustituyas Items ni uses visitas, anuncios independientes o interés para cambiarlas. PREPARED no es POSTED: solo la confirmación expresa de publicación real cuenta. El historial anterior se conserva, pero no satisface cobertura de esta pasada; UNCONFIRMED en esta pasada no significa históricamente NEVER POSTED. No detengas por incertidumbre anterior. Los anuncios independientes de David o María no cuentan; no los registres ni pidas reportarlos.
 
 SELECCIÓN Y ENTREGABLES
 - Usa exactamente la selección y assignments del JSON: hasta 10 Items únicos, 5 para David y 5 para María, sin repetir entre ambos. Si hay menos, conserva la asignación y explica la limitación; nunca rellenes.
 - Para David y María, prepara cinco Stories individuales por persona: un producto y una foto auténtica por Story, con un solo Link sticker al detalle de ese producto, src=story y texto VER ARTÍCULO. Da textos breves en español y referencias a las fotos auténticas.
 - Entrega un documento de texto de marketing por persona: sus cinco Stories, cinco WhatsApp Status de los mismos cinco productos y las entradas JW Group indicadas abajo.
 - Una hoja de contacto de cinco imágenes es opcional para revisión interna, no un archivo necesario para publicar. Evita imágenes adjuntas redundantes, instrucciones duplicadas y documentos intermedios innecesarios.
-- FIRST_PASS excluye Items ya confirmados en este ciclo y prioriza los no preparados. PHASE_2 solo empieza con cobertura confirmada de todos los comercializables; prioriza precios altos. Los nuevos Items sin cobertura vuelven a FIRST_PASS.
+- FIRST_PASS incluye solo Items comercializables con unidades comprables y precio pedido actual estrictamente mayor a ₲50.000; excluye Items ya confirmados POSTED en esta pasada y prioriza los no preparados. Los nuevos Items elegibles sin cobertura entran en FIRST_PASS. Al completar la pasada, reutilicen las fotos y mensajes existentes para nueva exposición; no regeneres materiales ni inicies una repetición automática.
 - Usa solo números, títulos, precios, cantidades, URLs e imágenes auténticas actuales. No inventes condición, especificaciones, accesorios, urgencia ni popularidad, ni alteres productos en imágenes.
 - Para Stories, Status y JW Group, usa nombre, precio, descripción breve y veraz, foto auténtica y enlace directo. Omite texto rutinario sobre plazos de pago, fechas o arreglos de retiro, ubicación, entrega, transporte, objetos ajenos visibles y otros avisos administrativos. Señala una limitación material inusual si omitirla puede engañar al comprador. Conserva sin cambios las condiciones, inclusiones, exclusiones y advertencias reales en el sitio y checkout.
 
