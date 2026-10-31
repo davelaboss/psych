@@ -525,6 +525,28 @@ test('fresh Sale Pulse failure copies nothing stale and retries successfully', a
   assert.equal(button.textContent, 'PROMPT COPIADO PARA CHATGPT');
 });
 
+for (const mobile of [false, true]) test(`completed priority pass shows reuse guidance without copying stale content (${mobile ? 'mobile clipboard' : 'writeText'})`, async () => {
+  let requests = 0;
+  const copied = [], cached = pulse({ marketingPacket: handoffPacket });
+  const { listeners, state } = overviewScenario({
+    salePulse: cached,
+    fetchSalePulse: async (url, options) => {
+      requests += 1;
+      assert.deepEqual(JSON.parse(options.body), { action: 'prepare', campaignId: 'regular-chatgpt-daily-v1' });
+      throw new Error('No quedan Items elegibles sin publicar en la pasada prioritaria. Reutilizá las fotos y mensajes existentes para nuevas publicaciones; no se preparó otro lote.');
+    },
+    writeClipboard: async text => copied.push(text),
+    ...(mobile ? { writeClipboardItem: async ([item]) => copied.push(await (await item.data['text/plain']).text()) } : {}),
+  });
+  const button = { disabled: false, textContent: '' };
+  await chatgptButton(listeners)({ currentTarget: button });
+  assert.equal(button.textContent, 'POR AHORA NO HAY OTRO LOTE PRIORITARIO · REUTILIZÁ LAS FOTOS Y MENSAJES EXISTENTES');
+  assert.equal(button.disabled, false);
+  assert.equal(requests, 1, 'Completion does not trigger another preparation or reset');
+  assert.equal(copied.length, 0);
+  assert.equal(state.salePulse, cached);
+});
+
 test('mobile clipboard write starts in the click gesture before the fresh fetch resolves', async () => {
   let finishFetch;
   let writes = 0;

@@ -75,6 +75,19 @@ appear in the current confirmation panel. Existing old batch confirmations remai
 valid for truthful earlier publications. Passive reads never establish a pass.
 There is no date-based reset or automatic change on November 15.
 
+Pre-deployment owner reconciliation: the new Admin panel hides untagged pending
+broad-campaign batches, even before the first priority preparation. Before an
+approved deployment, David and María must review those batches in the current
+Admin interface and confirm only Items they can truthfully attest were actually
+POSTED. Leave unpublished or unverifiable Items PREPARED; never confirm them just
+to clear the list. Pause further publishing from unfinished broad-campaign batches
+during cutover. If actual earlier publications still await verification or
+confirmation, defer deployment until the owners reconcile them in the current
+interface. The server still accepts valid old-batch confirmations with their
+original identities, but the new panel no longer provides their controls. This
+preflight is documented only; this PR does not migrate, delete, reset or reconcile
+production records.
+
 The first successful prepare initializes an auditable active coverage cycle with
 its actual start timestamp and historicalCompleteness UNRECONCILED. Existing
 trusted ledger records are never reset or replaced on later preparation. No old

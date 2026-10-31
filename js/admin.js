@@ -1381,11 +1381,13 @@ async function copySalePulseForChatgpt(event) {
       await prompt;
       button.textContent = 'NO SE PUDO COPIAR · REINTENTAR';
     } catch (error) {
-      button.textContent = error?.message?.startsWith('El paquete móvil')
-        ? 'PAQUETE MÓVIL MUY GRANDE · NO COPIADO'
-        : error?.message?.startsWith('Faltan datos completos')
-          ? 'DATOS INCOMPLETOS · NO COPIADO'
-          : error?.message?.startsWith('Historial') ? 'HISTORIAL NO FIABLE · NO COPIADO' : 'NO SE PUDO ACTUALIZAR · REINTENTAR';
+      button.textContent = error?.message?.startsWith('No quedan Items elegibles')
+        ? 'POR AHORA NO HAY OTRO LOTE PRIORITARIO · REUTILIZÁ LAS FOTOS Y MENSAJES EXISTENTES'
+        : error?.message?.startsWith('El paquete móvil')
+          ? 'PAQUETE MÓVIL MUY GRANDE · NO COPIADO'
+          : error?.message?.startsWith('Faltan datos completos')
+            ? 'DATOS INCOMPLETOS · NO COPIADO'
+            : error?.message?.startsWith('Historial') ? 'HISTORIAL NO FIABLE · NO COPIADO' : 'NO SE PUDO ACTUALIZAR · REINTENTAR';
     }
   } finally {
     button.disabled = false;
