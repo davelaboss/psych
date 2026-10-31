@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 const priorNodeEnv = process.env.NODE_ENV;
 process.env.NODE_ENV = 'test';
 const { getStore } = await import('@netlify/blobs');
-const { REGULAR_CAMPAIGN, LEDGER_KEY, BASELINE_KEY, updateRegularCampaign, readCampaignPanel } = await import('./regular-campaign.mjs');
+const { REGULAR_CAMPAIGN, PRIORITY_PASS, LEDGER_KEY, BASELINE_KEY, updateRegularCampaign, readCampaignPanel } = await import('./regular-campaign.mjs');
 const { createAdminSalePulseHandler } = await import('../admin-sale-pulse.mjs');
 if (priorNodeEnv === undefined) delete process.env.NODE_ENV;
 else process.env.NODE_ENV = priorNodeEnv;
@@ -58,7 +58,7 @@ function sdkFixture(count = 12) {
     edgeURL: 'https://campaign.test.invalid', uncachedEdgeURL: 'https://campaign.test.invalid',
     consistency: 'strong', fetch: fetchImpl });
   fixture.packet = () => ({ generatedAt: instant, marketableProducts: Array.from({ length: count }, (_, i) => ({
-    productId: `synthetic-${i + 1}`, itemNumber: i + 1, title: `Synthetic ${i + 1}`, askingPricePYG: (i + 1) * 1000,
+    productId: `synthetic-${i + 1}`, itemNumber: i + 1, title: `Synthetic ${i + 1}`, askingPricePYG: 50000 + (i + 1) * 1000,
     category: 'Hogar', saleMode: 'IMMEDIATE', purchasableQuantity: 1, marketabilityStatus: 'MARKETABLE',
     productUrl: `/producto/synthetic-${i + 1}`, mainImage: `/synthetic-${i + 1}.jpg`,
   })) });
@@ -90,6 +90,26 @@ test('the fixture exercises the locked @netlify/blobs 11.1.0 rather than an upgr
   assert.equal(h.history().initialization, 'ESTABLISHED');
   assert.equal(h.requests.filter(r => r.method === 'PUT').length, 3);
   assert.ok(h.requests.filter(r => r.method === 'GET').length > 3, 'Persistence is verified through SDK strong reads');
+});
+
+test('real SDK priority boundary survives a rejected write and preserves broad POSTED history and anchor', async () => {
+  const h = sdkFixture(2), broad = await h.prepare();
+  await h.confirm(broad, 'David');
+  delete h.files.get(LEDGER_KEY).data.batches[0].passId;
+  const before = h.history(), baseline = clone(h.files.get(BASELINE_KEY));
+  h.fault = { when: (key, data) => key === LEDGER_KEY && data.batches.length === 2, status: 403 };
+  await assert.rejects(h.prepare(), uncertain);
+  assert.deepEqual(h.history(), before);
+  h.fault = null;
+  const priority = await h.prepare();
+  assert.equal(priority.packet.regularCampaign.passId, PRIORITY_PASS);
+  assert.deepEqual(priority.packet.regularCampaign.selectedProductIds, ['synthetic-1','synthetic-2']);
+  assert.deepEqual(h.history().batches[0], before.batches[0]);
+  assert.deepEqual(h.files.get(BASELINE_KEY), baseline);
+  await h.confirm(priority, 'David');
+  const complete = h.history();
+  await assert.rejects(h.prepare(), /No quedan Items elegibles/);
+  assert.deepEqual(h.history(), complete);
 });
 
 for (const status of [403, 503]) for (const condition of ['onlyIfNew', 'onlyIfMatch']) {

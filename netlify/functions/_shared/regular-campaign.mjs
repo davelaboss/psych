@@ -4,6 +4,7 @@ import { getStore } from '@netlify/blobs';
 import { PREPARATION_EVIDENCE } from './regular-campaign-seed.mjs';
 
 export const REGULAR_CAMPAIGN = 'regular-chatgpt-daily-v1';
+export const PRIORITY_PASS = 'priority-over-50000-v1';
 export const LEDGER_KEY = 'history-v1.json';
 export const BASELINE_KEY = 'baseline-v1.json';
 const people = ['David', 'Maria'];
@@ -78,6 +79,7 @@ export function validateCampaignHistory(history, { allowProvisional = false } = 
     if (!validId(batch.id) || batchIds.has(batch.id) || batch.campaignId !== REGULAR_CAMPAIGN ||
         batch.cycleId !== history.cycleId || !validDate(batch.preparedAt) || Date.parse(batch.preparedAt) < Date.parse(history.startedAt) ||
         !['FIRST_PASS', 'PHASE_2'].includes(batch.phase) ||
+        ![undefined, PRIORITY_PASS].includes(batch.passId) || (batch.passId === PRIORITY_PASS && batch.phase !== 'FIRST_PASS') ||
         batch.date !== dateInParaguay(batch.preparedAt) || !batch.assignments ||
         Object.keys(batch.assignments).sort().join(',') !== 'David,Maria') {
       throw fail('Lote de campaña no fiable.');
@@ -107,7 +109,8 @@ function coverage(history) {
   for (const evidence of history.preparationEvidence) {
     recordPreparation(evidence.productId, evidence.preparedDate);
   }
-  for (const batch of history.batches) for (const person of people) {
+  // Untagged broad-campaign records remain immutable history, outside this pass.
+  for (const batch of history.batches.filter(b => b.passId === PRIORITY_PASS)) for (const person of people) {
     for (const item of batch.assignments[person]) {
       recordPreparation(item.productId, batch.preparedAt);
       if (item.postedAt) posted.add(item.productId);
@@ -119,7 +122,8 @@ function coverage(history) {
 function eligibleProducts(packet) {
   if (!packet?.generatedAt || !Array.isArray(packet.marketableProducts)) throw fail('Faltan datos Sale Pulse actuales.');
   const ids = new Set(), numbers = new Set();
-  return packet.marketableProducts.filter(p => p?.marketabilityStatus === 'MARKETABLE').map(p => {
+  return packet.marketableProducts.filter(p => p?.marketabilityStatus === 'MARKETABLE' &&
+    p.askingPricePYG > 50000 && p.purchasableQuantity > 0).map(p => {
     let urlsValid = false;
     try { urlsValid = [p.productUrl, p.mainImage].every(url => typeof url === 'string' && url.length > 0 &&
       new URL(url, 'https://thelabossieres.com').protocol === 'https:'); } catch { /* fail below */ }
@@ -138,16 +142,10 @@ export function selectRegularCampaign(packet, history, now) {
   const products = eligibleProducts(packet);
   const { posted, prepared } = coverage(history);
   const firstPass = products.filter(p => !posted.has(p.productId));
-  const phase = firstPass.length ? 'FIRST_PASS' : 'PHASE_2';
-  const today = dateInParaguay(now);
   const byIdentity = (a, b) => a.itemNumber - b.itemNumber || a.productId.localeCompare(b.productId);
-  const todayIds = new Set(history.batches.filter(b => b.date === today)
-    .flatMap(b => people.flatMap(person => b.assignments[person].map(p => p.productId))));
-  const ranked = phase === 'FIRST_PASS'
-    ? firstPass.sort((a, b) => Number(prepared.has(a.productId)) - Number(prepared.has(b.productId)) ||
-      String(prepared.get(a.productId) || '').localeCompare(String(prepared.get(b.productId) || '')) || byIdentity(a, b))
-    : products.filter(p => !todayIds.has(p.productId)).sort((a, b) => b.askingPricePYG - a.askingPricePYG || byIdentity(a, b));
-  return { phase, products: ranked.slice(0, 10), eligibleUnconfirmedCount: firstPass.length, totalMarketable: products.length };
+  const ranked = firstPass.sort((a, b) => Number(prepared.has(a.productId)) - Number(prepared.has(b.productId)) ||
+    String(prepared.get(a.productId) || '').localeCompare(String(prepared.get(b.productId) || '')) || byIdentity(a, b));
+  return { phase: 'FIRST_PASS', products: ranked.slice(0, 10), eligibleUnconfirmedCount: firstPass.length, totalMarketable: products.length };
 }
 
 export function campaignPanel(history) {
@@ -155,8 +153,9 @@ export function campaignPanel(history) {
   const { posted } = coverage(history);
   return {
     status: 'READY', campaignId: REGULAR_CAMPAIGN, cycleId: history.cycleId,
+    passId: PRIORITY_PASS, passStartedAt: history.batches.find(b => b.passId === PRIORITY_PASS)?.preparedAt || null,
     startedAt: history.startedAt, historicalCompleteness: history.historicalCompleteness, revision: history.revision,
-    pendingBatches: history.batches.map(batch => ({
+    pendingBatches: history.batches.filter(b => b.passId === PRIORITY_PASS).map(batch => ({
       id: batch.id, date: batch.date, phase: batch.phase,
       assignments: Object.fromEntries(people.map(person => [person, batch.assignments[person]
         .filter(p => !p.postedAt && (batch.phase === 'PHASE_2' || !posted.has(p.productId)))
@@ -248,12 +247,12 @@ export async function updateRegularCampaign({ body, loadPacket, store = campaign
       packet = await loadPacket();
       const selected = selectRegularCampaign(packet, history, instant);
       // Reopening today's incomplete handoff is a retry, not a new preparation.
-      batch = history.batches.findLast(b => b.date === dateInParaguay(instant) && b.phase === selected.phase &&
+      batch = history.batches.findLast(b => b.passId === PRIORITY_PASS && b.date === dateInParaguay(instant) && b.phase === selected.phase &&
         handoffCampaign(packet, history, b).regularCampaign.selectedProductIds.length);
       if (!batch) {
-        if (!selected.products.length) throw fail('No hay Items disponibles para otra selección hoy.');
+        if (!selected.products.length) throw fail('No quedan Items elegibles sin publicar en la pasada prioritaria. Reutilizá las fotos y mensajes existentes para nuevas publicaciones; no se preparó otro lote.');
         batch = { id: idFactory(), campaignId: REGULAR_CAMPAIGN, cycleId: history.cycleId,
-          date: dateInParaguay(instant), preparedAt: instant, phase: selected.phase,
+          date: dateInParaguay(instant), preparedAt: instant, phase: selected.phase, passId: PRIORITY_PASS,
           assignments: Object.fromEntries(people.map((person, index) => [person, selected.products
             .slice(index * 5, index * 5 + 5).map(p => ({ productId: p.productId, itemNumber: p.itemNumber, postedAt: null }))])) };
         history.batches.push(batch); changed = true;
