@@ -41,7 +41,7 @@ function catalog(count = 60) {
   return {
     generatedAt: '2026-10-28T15:00:00Z',
     marketableProducts: Array.from({ length: count }, (_, i) => ({ productId: `product-${i + 1}`, itemNumber: i + 1,
-      title: `Synthetic product ${i + 1}`, askingPricePYG: 50000 + (i + 1) * 1000,
+      title: `Synthetic product ${i + 1}`, askingPricePYG: 100000,
       category: 'Hogar', saleMode: 'IMMEDIATE', purchasableQuantity: 1, marketabilityStatus: 'MARKETABLE',
       productUrl: `/producto/synthetic-${i + 1}`, mainImage: `/synthetic-${i + 1}.jpg`,
       views: 999 - i, cartAdds: i % 4 })),
@@ -66,6 +66,25 @@ function harness(count = 60, evidence = []) {
 }
 const selected = result => result.packet.regularCampaign.selectedProductIds;
 
+test('new batches rank current authoritative prices descending, then Item number, without replacing pending batches', async () => {
+  const h = harness(23), packet = h.packet();
+  packet.marketableProducts.forEach((p, index) => { p.askingPricePYG = index < 3 ? [3500000, 1800000, 1800000][index] : 90000 + index; });
+  packet.marketableProducts.reverse(); h.setPacket(packet);
+  const first = await h.prepare(), original = h.history();
+  assert.deepEqual(selected(first), ['product-1','product-2','product-3','product-23','product-22','product-21','product-20','product-19','product-18','product-17']);
+  packet.marketableProducts.find(p => p.productId === 'product-4').askingPricePYG = 5000000;
+  h.setPacket(packet); h.setDay(1);
+  assert.deepEqual(selected(await h.prepare()), selected(first), 'A price change and new date do not reshuffle an unfinished batch');
+  assert.deepEqual(h.history(), original);
+  await h.confirm(first,'David');
+  assert.deepEqual(selected(await h.prepare()), first.packet.regularCampaign.assignments.Maria);
+  await h.confirm(first,'Maria');
+  const second = await h.prepare();
+  assert.equal(selected(second)[0], 'product-4');
+  assert.ok(selected(second).every(id => !selected(first).includes(id)));
+  assert.equal(second.packet.regularCampaign.passId, first.packet.regularCampaign.passId);
+});
+
 test('priority threshold is strict and marketability plus purchasable stock are required', async () => {
   const h = harness(10), packet = h.packet();
   const prices = [50001, 50000, 49999, 0, 200000, 200000, 200000, 200000, 200000, 200000];
@@ -76,7 +95,7 @@ test('priority threshold is strict and marketability plus purchasable stock are 
   packet.marketableProducts[8].purchasableQuantity = 0;
   h.setPacket(packet);
   const before = clone(packet), result = await h.prepare();
-  assert.deepEqual(selected(result), ['product-1','product-10']);
+  assert.deepEqual(selected(result), ['product-10','product-1']);
   assert.equal(result.packet.regularCampaign.totalMarketable, 2);
   assert.equal(result.packet.marketableProducts.length, 10, 'Only campaign selection is filtered');
   assert.deepEqual(h.packet(), before, 'Product prices and inventory remain untouched');
@@ -168,7 +187,9 @@ test('retry removes newly cheap, sold or reserved Items without changing assignm
   assert.deepEqual(selected(await h.prepare()), selected(first).slice(3));
   assert.deepEqual(h.history(), before);
   await h.confirm(first, 'David', ['product-4','product-5']); await h.confirm(first, 'Maria');
-  assert.deepEqual(selected(await h.prepare()), ['product-11','product-12']);
+  const last = await h.prepare();
+  assert.deepEqual(selected(last), ['product-11','product-12']);
+  await h.confirm(last, 'David');
   packet.marketableProducts[0].askingPricePYG = 50001;
   h.setPacket(packet); h.setDay(16);
   assert.ok(selected(await h.prepare()).includes('product-1'), 'Newly eligible and still unposted can enter later');
@@ -193,7 +214,7 @@ test('first pass progresses through all 83 marketable Items across days without 
   assert.equal(h.store.writes.length, writes);
 });
 
-test('PREPARED is not POSTED; unprepared Items precede prepared/unconfirmed across dates', async () => {
+test('PREPARED is not POSTED; unfinished batches reopen across dates without changing assignments', async () => {
   const h = harness(23);
   const first = await h.prepare();
   assert.ok(h.history().batches[0].assignments.David.every(p => p.postedAt === null));
@@ -201,9 +222,10 @@ test('PREPARED is not POSTED; unprepared Items precede prepared/unconfirmed acro
   assert.deepEqual(selected(await h.prepare()), selected(first), 'Same-day reopening is idempotent');
   assert.equal(h.history().revision, revision);
   h.setDay(1); const second = await h.prepare();
-  assert.deepEqual(selected(second), Array.from({length:10}, (_, i) => `product-${11 + i}`));
+  assert.deepEqual(selected(second), selected(first));
+  assert.equal(second.packet.regularCampaign.batchId, first.packet.regularCampaign.batchId);
   h.setDay(2); const third = await h.prepare();
-  assert.deepEqual(selected(third).slice(0, 3), ['product-21', 'product-22', 'product-23']);
+  assert.deepEqual(selected(third), selected(first));
   assert.equal(third.packet.regularCampaign.phase, 'FIRST_PASS');
   assert.ok(selected(third).includes('product-1'), 'Prepared but unconfirmed remains in first pass');
 });
@@ -216,7 +238,7 @@ test('dated unconfirmed historical baseline preserves preparation evidence witho
   assert.equal(history.startedAt, '2026-10-28T15:00:00.000Z');
   assert.equal(history.historicalCompleteness, 'UNRECONCILED');
   assert.deepEqual(history.preparationEvidence, evidence);
-  assert.ok(!selected(first).includes('product-1'));
+  assert.ok(selected(first).includes('product-1'), 'Preparation evidence does not override price/Item ordering');
   assert.ok(history.batches.flatMap(b=>Object.values(b.assignments).flat()).every(p => p.postedAt === null));
   assert.equal(first.packet.regularCampaign.eligibleUnconfirmedCount, 12);
 });
@@ -235,7 +257,8 @@ test('partial person confirmation preserves the other Items, original timestamp 
   const next = await h.prepare();
   assert.equal(next.packet.regularCampaign.eligibleUnconfirmedCount, 10);
   assert.ok(selected(next).every(id => !ids.slice(0, 2).includes(id)));
-  assert.deepEqual(selected(next).slice(0,2), ['product-11','product-12']);
+  assert.equal(next.packet.regularCampaign.batchId, batch.packet.regularCampaign.batchId);
+  assert.deepEqual(selected(next), selected(batch).slice(2));
 });
 
 test('fewer than ten unconfirmed Items are never padded with confirmed repeats', async () => {
@@ -308,7 +331,8 @@ test('conditional writes preserve concurrent partial confirmations and cross-ses
   h.setDay(1);
   const [a,b]=await Promise.all([h.prepare(),h.prepare()]);
   assert.equal(a.packet.regularCampaign.batchId,b.packet.regularCampaign.batchId);
-  assert.equal(h.history().batches.length,2);
+  assert.equal(a.packet.regularCampaign.batchId,batch.packet.regularCampaign.batchId);
+  assert.equal(h.history().batches.length,1);
   assert.ok(h.store.writes.filter(w=>w.key===LEDGER_KEY).slice(1).every(w=>w.options.onlyIfMatch));
 });
 
@@ -336,17 +360,19 @@ test('initial read is passive and uncertain historical data never halts a valid 
   assert.doesNotThrow(()=>validateCampaignHistory(h.history()));
 });
 
-test('preparation evidence keeps the most recent date regardless of archive listing order', async () => {
+test('historical preparation evidence stays intact without overriding stable Item ordering', async () => {
   const evidence=[
     {productId:'product-1',itemNumber:1,preparedDate:'2026-10-27',source:'synthetic-newest'},
     {productId:'product-2',itemNumber:2,preparedDate:'2026-10-25',source:'synthetic-other'},
     {productId:'product-1',itemNumber:1,preparedDate:'2026-10-21',source:'synthetic-oldest'},
   ];
   const h=harness(12,evidence), result=await h.prepare();
-  assert.deepEqual(selected(result),Array.from({length:10},(_,i)=>`product-${i+3}`));
+  assert.deepEqual(selected(result),Array.from({length:10},(_,i)=>`product-${i+1}`));
+  await h.confirm(result, 'David'); await h.confirm(result, 'Maria');
   h.setDay(1);
   const next=await h.prepare();
-  assert.deepEqual(selected(next).slice(0,2),['product-2','product-1']);
+  assert.deepEqual(selected(next),['product-11','product-12']);
+  assert.deepEqual(h.history().preparationEvidence, evidence);
 });
 
 test('failure after baseline creation is recoverable with the original cycle and passive GETs', async () => {

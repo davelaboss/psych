@@ -520,6 +520,10 @@ test('packet allowlist exports authoritative public facts and signal membership 
     'productId', 'itemNumber', 'title', 'views', 'cartAdds', 'slug', 'productUrl', 'category',
     'askingPricePYG', 'saleMode', 'mainImage', 'quantityRemaining', 'purchasableQuantity',
     'cartHeldQuantity', 'orderHeldQuantity', 'nextReleaseAt', 'marketabilityStatus', 'marketabilityReason', 'signals',
+    'description', 'condition', 'conditionNotes', 'knownDefects', 'images', 'includedAccessories', 'logisticsNotes',
+    'functionality', 'measurements', 'saleStructure', 'notIncludedVisible',
+    'requiresVehicle', 'requiresLoadingHelp', 'depositPercent', 'pickupAvailableDate', 'pickupWindowStart', 'pickupWindowEnd',
+    'finalPaymentWindowStart', 'finalPaymentWindowEnd',
   ].sort());
   assert.equal(record.title, 'Título actual');
   assert.equal(record.askingPricePYG, 175000);
@@ -554,7 +558,26 @@ test('packet mainImage uses only the first authoritative image and leaves image 
   assert.deepEqual(source, before);
 });
 
-test('packet cover follows current authoritative catalog adapter overrides without synthetic mainImage input', async () => {
+test('packet keeps complete Marketplace public facts without private notes, mutation, or invented missing values', () => {
+  const facts = {
+    description: 'Mesa y ocho sillas; no incluye decoración.', condition: 'Muy buen estado', conditionNotes: 'Desgaste normal.',
+    knownDefects: 'Marca en una esquina.', functionality: 'Uso confirmado.', measurements: '185 × 100 × 76 cm.',
+    saleStructure: 'Conjunto completo.', notIncludedVisible: 'Decoración no incluida.', includedAccessories: ['Ocho sillas'],
+    logisticsNotes: ['Traer ayuda para cargar.'], requiresVehicle: true, requiresLoadingHelp: true,
+    depositPercent: 25, pickupAvailableDate: '2026-12-09', pickupWindowStart: '2026-12-09', pickupWindowEnd: '2026-12-12',
+    finalPaymentWindowStart: '2026-12-01', finalPaymentWindowEnd: '2026-12-08',
+    images: ['/images/cover.jpg','/images/detail.jpg','/images/defect.jpg'],
+  };
+  const source=product(1,{...facts,internalNotes:'PRIVATE-NOTE',sellerQuestions:'PRIVATE-QUESTION'}), before=structuredClone(source);
+  const record=buildSalePulseSnapshot({products:[source],purchasableInventory:availableInventory(1)}).marketingPacket.marketableProducts[0];
+  for(const [key,value] of Object.entries(facts))assert.deepEqual(record[key],value);
+  assert.doesNotMatch(JSON.stringify(record),/PRIVATE-|internalNotes|sellerQuestions/);
+  assert.deepEqual(source,before);
+  const missing=buildSalePulseSnapshot({products:[product(1)],purchasableInventory:availableInventory(1)}).marketingPacket.marketableProducts[0];
+  for(const key of ['condition','description','knownDefects','depositPercent','pickupWindowStart','finalPaymentWindowStart'])assert.equal(missing[key],null);
+});
+
+test('packet cover and listing facts follow current authoritative catalog adapter overrides without synthetic mainImage input', async () => {
   const base = await loadBaseCatalog('https://example.com');
   const source = base.find((item) => item.status === 'AVAILABLE' && item.quantityRemaining > 0 && item.images?.length);
   assert.ok(source, 'committed production catalog includes a public product with images');
@@ -564,7 +587,8 @@ test('packet cover follows current authoritative catalog adapter overrides witho
     loadBaseCatalog: async () => [source],
     listProductOverrides: async () => [{
       productId: source.id, images: overrideImages,
-      publicFields: { title: 'Título actualizado', askingPricePYG: 189000 },
+      publicFields: { title: 'Título actualizado', askingPricePYG: 189000, description: 'Descripción vigente con medidas y exclusiones.',
+        condition: 'Estado vigente', knownDefects: 'Defecto vigente, no omitir.' },
     }],
     readCommittedInventory: async () => new Map(),
   });
@@ -580,6 +604,10 @@ test('packet cover follows current authoritative catalog adapter overrides witho
   assert.equal(packet.marketableProducts[0].mainImage, authoritative[0].images[0]);
   assert.equal(packet.marketableProducts[0].title, 'Título actualizado');
   assert.equal(packet.marketableProducts[0].askingPricePYG, 189000);
+  assert.equal(packet.marketableProducts[0].description, 'Descripción vigente con medidas y exclusiones.');
+  assert.equal(packet.marketableProducts[0].condition, 'Estado vigente');
+  assert.equal(packet.marketableProducts[0].knownDefects, 'Defecto vigente, no omitir.');
+  assert.deepEqual(packet.marketableProducts[0].images, overrideImages);
   assert.deepEqual(source.images, originalImages);
 });
 

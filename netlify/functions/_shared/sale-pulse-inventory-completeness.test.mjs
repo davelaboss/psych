@@ -141,6 +141,10 @@ test('fallback uses current loadCatalog overrides and keeps public facts allowli
     'productId', 'itemNumber', 'title', 'views', 'cartAdds', 'slug', 'productUrl', 'category',
     'askingPricePYG', 'saleMode', 'mainImage', 'quantityRemaining', 'purchasableQuantity',
     'cartHeldQuantity', 'orderHeldQuantity', 'nextReleaseAt', 'marketabilityStatus', 'marketabilityReason', 'signals',
+    'description', 'condition', 'conditionNotes', 'knownDefects', 'functionality', 'measurements',
+    'saleStructure', 'notIncludedVisible', 'images', 'includedAccessories', 'logisticsNotes',
+    'requiresVehicle', 'requiresLoadingHelp', 'depositPercent', 'pickupAvailableDate', 'pickupWindowStart', 'pickupWindowEnd',
+    'finalPaymentWindowStart', 'finalPaymentWindowEnd',
   ].sort());
   assert.doesNotMatch(JSON.stringify(result), /PRIVATE-|buyer|accessToken/);
   assert.deepEqual(products, before);

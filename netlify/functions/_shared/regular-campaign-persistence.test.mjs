@@ -16,7 +16,7 @@ const isPosted = data => data?.batches?.some(b => Object.values(b.assignments).f
 const matchesStage = (stage, key, data) => stage === 'initial' ? key === LEDGER_KEY && data.initialization === 'PROVISIONAL'
   : stage === 'baseline' ? key === BASELINE_KEY
   : stage === 'activation' ? key === LEDGER_KEY && data.initialization === 'ESTABLISHED' && data.revision === 1
-  : stage === 'preparation' ? key === LEDGER_KEY && data.initialization === 'ESTABLISHED' && data.revision > 1 && !isPosted(data)
+  : stage === 'preparation' ? key === LEDGER_KEY && data.initialization === 'ESTABLISHED' && data.batches.length > 1
   : stage === 'confirmation' && key === LEDGER_KEY && isPosted(data);
 
 function sdkFixture(count = 12) {
@@ -58,7 +58,7 @@ function sdkFixture(count = 12) {
     edgeURL: 'https://campaign.test.invalid', uncachedEdgeURL: 'https://campaign.test.invalid',
     consistency: 'strong', fetch: fetchImpl });
   fixture.packet = () => ({ generatedAt: instant, marketableProducts: Array.from({ length: count }, (_, i) => ({
-    productId: `synthetic-${i + 1}`, itemNumber: i + 1, title: `Synthetic ${i + 1}`, askingPricePYG: 50000 + (i + 1) * 1000,
+    productId: `synthetic-${i + 1}`, itemNumber: i + 1, title: `Synthetic ${i + 1}`, askingPricePYG: 100000,
     category: 'Hogar', saleMode: 'IMMEDIATE', purchasableQuantity: 1, marketabilityStatus: 'MARKETABLE',
     productUrl: `/producto/synthetic-${i + 1}`, mainImage: `/synthetic-${i + 1}.jpg`,
   })) });
@@ -174,7 +174,7 @@ for (const status of [403, 503]) test(`critical: rejected HTTP ${status} confirm
 
 for (const status of [403, 503]) test(`HTTP ${status} later preparation does not advance the durable campaign history`, async () => {
   const h = sdkFixture();
-  await h.prepare(); h.nextDay();
+  const first = await h.prepare(); await h.confirm(first, 'David'); await h.confirm(first, 'Maria'); h.nextDay();
   const before = h.history();
   h.rejectStage('preparation', status);
   await assert.rejects(h.prepare(), uncertain);

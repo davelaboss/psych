@@ -97,8 +97,8 @@ in this cycle, not asserted to have historically NEVER POSTED.
 Read-only inspection of the regular Desk campaign folders dated October 21–27
 provided 65 preparation references covering 51 stable Item IDs. The committed
 regular-campaign-seed.mjs preserves asset provenance and preparation dates only.
-These records put previously prepared/unconfirmed Items behind Items with no
-preparation evidence; they never satisfy coverage. The known October 26–27
+These records preserve preparation provenance without overriding price ordering;
+they never satisfy coverage. The known October 26–27
 overlaps 120/063 and 007/144/195 are preparation evidence only. Historical coverage
 remains explicitly unreconciled, without halting the valid active cycle.
 
@@ -111,14 +111,15 @@ with purchasable stock and current asking price strictly greater than PYG 50,000
 qualify, after the existing Admin/Netlify Blob overrides. No fixed list or count is
 used. Protected products follow the same eligibility rule; no prices are changed.
 Lower-priced products remain in the public catalog and raw Sale Pulse packet.
-Within first pass, Items without preparation evidence precede
-prepared/unconfirmed Items; older preparations precede newer ones. Take at most
+New selections rank current asking prices from highest to lowest, then Item number
+and stable product ID for ties. Preparation evidence never outranks price. Take at most
 ten, assigned five to David then five to María, with no overlap. Fewer remaining
-first-pass Items produce fewer entries, never repeat fill. Same-day reopening
+first-pass Items produce fewer entries, never repeat fill. Reopening, including on a later date,
 returns only still-eligible, unconfirmed assigned Items. Once those Items are all
 confirmed (or no longer eligible), another click can prepare the next batch on the
-same date: morning and afternoon need no new controls. Future dates retain the
-existing preparation ordering. Incomplete eligible product facts fail closed.
+same date: morning and afternoon need no new controls. Price changes never reshuffle
+an unfinished batch. The pass identity, old assignments and POSTED timestamps stay
+intact. Incomplete eligible product facts fail closed.
 
 When no eligible unposted Items remain, preparation stops with a Spanish message
 to reuse existing photos and messages; it creates no repeat batch or automatic
@@ -135,12 +136,42 @@ is copied. The regular ledger reads neither independent advertisements, email
 delivery history nor Sale Pulse traffic/cart metrics. No independent-post action,
 import field or reporting requirement exists.
 
+### Marketplace drafts and reusable website messages
+
+The existing public Sale Pulse allowlist now includes descriptions, condition and
+defect notes, functionality, measurements, inclusions/exclusions, accessories,
+payment/deposit fields, pickup dates and buyer logistics, plus all original photo
+references after catalog overrides. No seller notes, questions or customer data
+are exported. The mobile JSON retains complete nonempty listing facts in
+`marketplace`; the existing absolute `mainImageUrl` is the cover, while
+`additionalImages` preserves the other original references relative to the site
+(or their original absolute URLs). Only positive vehicle/loading requirements are
+included; omitted/blank facts remain unverified, never promises of no restrictions.
+
+For every assigned Item the handoff requests seven Spanish Marketplace fields:
+photos/references, title, asking price, recommended category, condition, San Lorenzo
+location, and the complete public description. Missing facts and questions stay
+in a separate seller-only section. Existing listing status/age require the owner's
+information; no assumed absence, duplicate listing, automatic publication or Renew
+recommendation unless Facebook actually offers it. María removes sold listings;
+David manages website inventory. No Marketplace account or tracking system is added.
+
+The eight approved general website messages are fixed text, reused verbatim with
+one shared link for Stories/Status (`https://www.thelabossieres.com/?src=story`) and
+one for JW (`https://www.thelabossieres.com/?src=jw-group`). They promote the whole
+catalog, including inexpensive Items. They are not regenerated per batch.
+Instructions are concise to retain the complete batch and critical disclosures
+within 18,000 characters. If it does not fit, nothing is copied; no disclosure,
+photo reference or selected Item is silently dropped.
+
 ### Preserved copy policy
 
 Each person's marketing text document requests five Stories and five native
 WhatsApp Status entries using their same five assigned Items (or fewer when the
 batch is short), and only four JW Group product entries chosen from that person's
-five for likely sales potential, or fewer when necessary. No additional product
+five for likely sales potential, or fewer when necessary. Four JW Items per person
+means eight total for a full batch, staggered. Instagram already shares Stories to
+Facebook; no separate Facebook campaign is requested. No additional product
 or fifth JW entry/photo. Preserve src=story for Stories/Status and src=jw-group for
 JW, authentic photographs, preview-cache safeguards, phone/Marketplace workflows
 and David's publication approval.
