@@ -1333,38 +1333,35 @@ function buildChatgptMarketingHandoff(packet) {
   const limitation = candidates.length < 10
     ? `LIMITACIÓN ACTUAL: solo hay ${candidates.length} Items en esta selección del ciclo; usa únicamente estos, sin rellenar con repetidos para llegar a 5+5.\n`
     : '';
-  const instructions = `Venta de mudanza de David y María, Paraguay. Instrucciones en inglés sencillo, anuncios en español natural; David aprueba.
+  const instructions = `Venta de mudanza David/María. Instrucciones en inglés sencillo; anuncios en español natural; David aprueba.
 Comprueba el cierre ${CHATGPT_MOBILE_END}. Si falta, no hagas recomendaciones de productos: pide copiar otra vez.
 SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUALES: los productos omitidos no se consideran vendidos ni no disponibles.
 `;
   const detail = `
 FUENTES Y COBERTURA
-- Sale Pulse: autoridad FINAL. Solo selectedProductIds/assignments, sin sustituir por popularidad ni crear carritos.
-- Drive opcional: ${CHATGPT_MARKETING_DRIVE_URL}. README/manifiesto/preflight son contexto; prevalece JSON. Sitio: ${CHATGPT_MARKETING_SITE_URL}.
-- passId identifica la pasada; passStartedAt su inicio. PREPARED no es POSTED: solo publicación real confirmada cuenta. UNCONFIRMED en esta pasada no significa históricamente NEVER POSTED. No detengas por incertidumbre anterior. Los anuncios independientes no cuentan; no pidas reportarlos.
-- FIRST_PASS: MARKETABLE, comprable y estrictamente mayor a ₲50.000. Lotes nuevos: precio descendente, desempate Item; conserva pendientes, no repitas POSTED. Reutiliza fotos/mensajes; no regeneres materiales ni inicies una repetición automática.
+- Sale Pulse: autoridad FINAL. Solo selectedProductIds/assignments; no crear carritos.
+- Drive/contexto: ${CHATGPT_MARKETING_DRIVE_URL}. Sitio: ${CHATGPT_MARKETING_SITE_URL}.
+- passId/passStartedAt: pasada/inicio. PREPARED no es POSTED; UNCONFIRMED no prueba NEVER POSTED histórico. Anuncios independientes no cuentan ni requieren informe.
+- FIRST_PASS: MARKETABLE, comprable, > ₲50.000; precio descendente, desempate Item. Conserva pendientes, no repitas POSTED ni reinicies pasada. Reutiliza materiales.
 
-ENTREGABLES SOCIALES
-- Hasta 10 Items únicos, 5 para David y 5 para María, sin repetir entre ambos; si hay menos conserva assignments, sin rellenar.
-- Un documento por persona: cinco Stories individuales y cinco WhatsApp Status de sus mismos cinco productos. Una foto auténtica por Story, sin collages; contacto opcional.
-- Instagram Stories: Link sticker al detalle con src=story y VER ARTÍCULO. Ya comparten automáticamente a Facebook; no crees campaña separada.
-- WhatsApp Status/Updates: entradas nativas individuales, URL clicable con src=story; el sticker de Instagram no conserva su enlace.
-- Grupo de WhatsApp Compras/Ventas/Servicios: src=jw-group; cuatro Items por persona entre sus cinco por potencial de venta: cuatro David y cuatro María, ocho total, escalonados. Si hay menos, solo esos. Introducción y cierre; nunca una quinta entrada/foto por persona ni fotos redundantes.
-- Stories/Status/JW: nombre, precio, texto breve veraz, foto y enlace. Omite logística rutinaria, fechas, pago y avisos administrativos; conserva limitaciones materiales. Sitio/checkout mantienen todas sus advertencias.
+ENTREGABLES — David.txt Y Maria.txt
+- Hasta 10 Items únicos, 5 para David y 5 para María; respeta assignments, sin rellenar ni repetir.
+- Un .txt por persona: 5 Stories, 5 Status/Updates, 4 JW y 5 entradas Marketplace de sus mismos cinco Items. No catálogos completos.
+- Gráficos: plantilla fija Item 274 aprobada, vertical 9:16. SOLO VENTA POR MUDANZA, ITEM número, fotografía original auténtica, nombre y precio actual. Mismo gráfico terminado para Instagram/Facebook Stories y WhatsApp Status. Sin collages, capturas web, fichas de producto ni imágenes reconstruidas por IA; conserva apariencia real. Si falta la plantilla aprobada, pídela, no la reinventes.
+- Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales: solo Marketplace/revisión privada. Gráficos sin descripciones ni URLs; enlaces solo en texto/stickers. Duda material de condición: revisión del dueño antes de publicar, sin engañar.
+- Instagram/Facebook Stories: por Item, número, archivo gráfico y URL directa src=story; sticker VER ARTÍCULO. Ya comparten automáticamente a Facebook; no crees campaña separada.
+- WhatsApp Status/Updates: mismo archivo gráfico, texto breve listo para copiar y URL directa src=story; el sticker de Instagram no conserva su enlace.
+- JW WhatsApp Group: cuatro Items por persona entre sus cinco: cuatro David y cuatro María, ocho total, escalonados; si hay menos, solo esos. Nunca una quinta entrada/foto por persona. Texto breve natural en español, nombre, precio actual y URL directa src=jw-group; vista previa nativa correcta o foto original.
 - Revisa foto de cada vista previa. Si está obsoleta añade cb=fecha-hora conservando src y los demás parámetros. No añadas src a mainImageUrl.
 
-TELÉFONOS
-- Android Drive: pulsación larga, seleccionar fotos, Download. Instagram: Select Multiple > fotos numeradas > Next > Separate; sticker por foto.
-- Android Marketplace: Marketplace > Sell > Create listing > One item > Add photos; Done, ordenar, Next. Precio numérico, categoría, San Lorenzo; revisar antes de Publish.
-- iPhone Drive: More > Send a copy > Save image. Indica pasos no verificados; no copies Android.
-
 FACEBOOK MARKETPLACE — BORRADORES POR CADA ITEM ASIGNADO
-- Formato Item 274, usando datos propios: 1. Fotos originales y referencias (mainImageUrl + additionalImages; resolver rutas relativas al sitio, conservar URLs completas); 2. Título; 3. Precio pedido completo; 4. Categoría recomendada desde category; 5. Condición; 6. Ubicación: San Lorenzo, Paraguay; 7. Descripción completa en español y productUrl.
-- Integra todo marketplace sin inventar ni omitir defectos/restricciones. IMMEDIATE: pago completo; sin entregas ni envíos.
-- DELAYED sin dato propio: seña 25%; pago final 1–8 y retiro 9–12 de diciembre de 2026. Respeta valores y excepciones del Item.
-- Otros datos ausentes/vacíos: no verificados, nunca sin defectos. Faltantes: SOLO PARA EL VENDEDOR, fuera de la descripción pública; señala bloqueos para publicar.
-- Estado en Marketplace NO VERIFICADO: revisar anuncios/antigüedad del dueño; no duplicar. Renovar solo si la opción nativa está realmente disponible. María retira vendidos; David maneja inventario web.
-- Prepara borradores para aprobación de David. No publiques automáticamente, cambies precios, reserves ni hagas compromisos.
+- 1. Fotos originales y referencias: mainImageUrl + additionalImages; resolver rutas relativas al sitio, conservar URLs completas. 2. Título; 3. Precio actual; 4. Categoría recomendada; 5. Condición; 6. San Lorenzo, Paraguay; 7. Descripción concisa en español, lista para copiar, y productUrl.
+- SOLO fotografías originales: sin gráficos promocionales, banners, texto superpuesto, capturas web ni representaciones generadas.
+- Solo datos verificados: condición, medidas, disponibilidad, defectos, restricciones. No omitas esenciales. IMMEDIATE: pago completo; sin entregas ni envíos.
+- DELAYED / RETIRO POSTERIOR: incluir "Seña: 25%" salvo excepción confirmada, y fechas aplicables. Sin dato propio: pago final 1–8 y retiro 9–12 de diciembre de 2026. Respeta valores y excepciones del Item; nunca digas que la seña es opcional.
+- Ausentes/vacíos: no verificados, nunca sin defectos. Faltantes/bloqueos: SOLO PARA EL VENDEDOR, fuera de la descripción pública.
+- Desk Config/marketplace-overrides.json: distingue ya anunciados/nuevos; precios históricos no son actuales. Sin datos: Marketplace NO VERIFICADO, revisar con dueño. Incluye existentes; nunca dupliques un anuncio activo. Renovar solo si la opción nativa está realmente disponible. María retira vendidos; David maneja inventario web.
+- Borradores para aprobación de David. No publiques automáticamente, cambies precios ni reserves.
 
 MENSAJES GENERALES APROBADOS — REUTILIZAR TEXTUALMENTE
 Todo el sitio, incluidos Items económicos. No regenerar ni duplicar por enlace.
