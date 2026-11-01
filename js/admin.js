@@ -1360,8 +1360,9 @@ TELÉFONOS
 
 FACEBOOK MARKETPLACE — BORRADORES POR CADA ITEM ASIGNADO
 - Formato Item 274, usando datos propios: 1. Fotos originales y referencias (mainImageUrl + additionalImages; resolver rutas relativas al sitio, conservar URLs completas); 2. Título; 3. Precio pedido completo; 4. Categoría recomendada desde category; 5. Condición; 6. Ubicación: San Lorenzo, Paraguay; 7. Descripción completa en español y productUrl.
-- Integra todo marketplace: detalles, medidas, funcionamiento, inclusiones/exclusiones, condición/defectos, seña, pago/retiro, vehículo/ayuda y logística. IMMEDIATE: pago completo; DELAYED: retiro posterior. Solo retiro; sin entregas ni envíos. No inventes ni recortes restricciones/defectos.
-- Ausente/vacío: no verificado, nunca sin defectos. Faltantes: SOLO PARA EL VENDEDOR, fuera de la descripción pública; señala bloqueos para publicar.
+- Integra todo marketplace sin inventar ni omitir defectos/restricciones. IMMEDIATE: pago completo; sin entregas ni envíos.
+- DELAYED sin dato propio: seña 25%; pago final 1–8 y retiro 9–12 de diciembre de 2026. Respeta valores y excepciones del Item.
+- Otros datos ausentes/vacíos: no verificados, nunca sin defectos. Faltantes: SOLO PARA EL VENDEDOR, fuera de la descripción pública; señala bloqueos para publicar.
 - Estado en Marketplace NO VERIFICADO: revisar anuncios/antigüedad del dueño; no duplicar. Renovar solo si la opción nativa está realmente disponible. María retira vendidos; David maneja inventario web.
 - Prepara borradores para aprobación de David. No publiques automáticamente, cambies precios, reserves ni hagas compromisos.
 

@@ -307,6 +307,30 @@ test('Marketplace handoff carries complete public facts, seven fields, and separ
   assert.doesNotMatch(copied[0], /PRIVATE-SELLER-QUESTION/);
 });
 
+test('DELAYED handoffs state approved global terms for blank fields while explicit Item exceptions take precedence', async () => {
+  for (const exceptions of [
+    {depositPercent:null,finalPaymentWindowStart:'',finalPaymentWindowEnd:null,pickupAvailableDate:'',pickupWindowStart:null,pickupWindowEnd:''},
+    {depositPercent:40,finalPaymentWindowStart:'2026-11-20',finalPaymentWindowEnd:'2026-11-22',pickupAvailableDate:'2026-11-23',pickupWindowStart:'2026-11-23',pickupWindowEnd:'2026-11-24'},
+    {depositPercent:0,pickupAvailableDate:'2026-11-25'},
+  ]) {
+    const packet=structuredClone(handoffPacket), copied=[];
+    Object.assign(packet.marketableProducts[0],{saleMode:'DELAYED'},exceptions);
+    const before=structuredClone(packet);
+    const {listeners}=overviewScenario({fetchSalePulse:async()=>pulse({marketingPacket:packet}),writeClipboard:async text=>copied.push(text)});
+    await chatgptButton(listeners)({currentTarget:{disabled:false,textContent:''}});
+    assert.equal(copied.length,1);
+    assert.match(copied[0],/DELAYED sin dato propio: seña 25%; pago final 1–8 y retiro 9–12 de diciembre de 2026/);
+    assert.match(copied[0],/Respeta valores y excepciones del Item/);
+    const candidate=handoffData(copied[0]).candidates[0];
+    assert.equal(candidate.saleMode,'DELAYED');
+    for(const [key,value] of Object.entries(exceptions)) {
+      if(value!=null&&value!=='')assert.equal(candidate.marketplace[key],value);
+      else assert.equal(Object.hasOwn(candidate.marketplace,key),false);
+    }
+    assert.deepEqual(packet,before,'Fallback instructions never rewrite catalog or Item-specific values');
+  }
+});
+
 test('a representative ten-Item high-value catalog fits with every Marketplace disclosure and photo reference', async () => {
   const source = (await loadBaseCatalog('https://example.test')).filter(p=>p.status==='AVAILABLE'&&p.quantityRemaining>0&&p.askingPricePYG>50000&&p.images?.length)
     .sort((a,b)=>b.askingPricePYG-a.askingPricePYG||a.itemNumber-b.itemNumber).slice(0,10);
@@ -351,7 +375,7 @@ test('missing Marketplace facts remain unknown and unsafe original photo referen
   await chatgptButton(listeners)({currentTarget:{disabled:false,textContent:''}});
   const details=handoffData(copied[0]).candidates[0].marketplace;
   assert.deepEqual(details,{additionalImages:[]});
-  assert.match(copied[0],/Ausente\/vacío: no verificado, nunca sin defectos/);
+  assert.match(copied[0],/Otros datos ausentes\/vacíos: no verificados, nunca sin defectos/);
   const packet=structuredClone(handoffPacket);
   packet.marketableProducts[0].images=[packet.marketableProducts[0].mainImage,'http://example.test/unsafe.jpg'];
   let writes=0;

@@ -147,6 +147,10 @@ are exported. The mobile JSON retains complete nonempty listing facts in
 `additionalImages` preserves the other original references relative to the site
 (or their original absolute URLs). Only positive vehicle/loading requirements are
 included; omitted/blank facts remain unverified, never promises of no restrictions.
+For DELAYED listings only, blank terms use the approved global fallback: 25%
+deposit, final payment December 1–8, 2026, and pickup December 9–12, 2026. Explicit
+Item-specific values/exceptions, including pickupAvailableDate, take precedence.
+These are handoff instructions only; catalog, checkout and campaign records are unchanged.
 
 For every assigned Item the handoff requests seven Spanish Marketplace fields:
 photos/references, title, asking price, recommended category, condition, San Lorenzo
