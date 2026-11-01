@@ -280,7 +280,7 @@ function largePacket() {
   };
 }
 
-test('Marketplace handoff carries complete public facts, seven fields, and separate owner checks', async () => {
+test('Marketplace handoff preserves source facts but limits posting TXT and blocks readiness for unresolved material concerns', async () => {
   const packet = structuredClone(handoffPacket), copied = [];
   const details = {
     description: 'Mesa de madera maciza con ocho sillas.', condition: 'Muy buen estado',
@@ -300,9 +300,16 @@ test('Marketplace handoff carries complete public facts, seven fields, and separ
   assert.deepEqual(candidate.marketplace, {...details,additionalImages:['https://example.test/images/side.jpg','/images/defect.jpg']});
   assert.match(copied[0],/resolver rutas relativas al sitio, conservar URLs completas/);
   assert.equal(candidate.saleMode,'DELAYED');
-  assert.match(copied[0], /1\. Fotos originales[\s\S]*2\. Título; 3\. Precio pedido completo; 4\. Categoría recomendada[\s\S]*5\. Condición; 6\. Ubicación: San Lorenzo, Paraguay; 7\. Descripción completa en español/);
-  assert.match(copied[0], /SOLO PARA EL VENDEDOR, fuera de la descripción pública/);
-  assert.match(copied[0], /Estado en Marketplace NO VERIFICADO/);
+  assert.match(copied[0], /1\. Fotos originales[\s\S]*2\. Título; 3\. Precio actual; 4\. Categoría recomendada[\s\S]*5\. Condición; 6\. San Lorenzo, Paraguay; 7\. Descripción concisa en español, lista para copiar/);
+  const marketplaceInstructions = copied[0].split('FACEBOOK MARKETPLACE — BORRADORES')[1].split('MENSAJES GENERALES')[0];
+  assert.match(marketplaceInstructions, /TXT: campos requeridos, condición\/medidas\/disponibilidad confirmadas y términos RETIRO POSTERIOR; sin otros auxiliares automáticos/);
+  assert.match(marketplaceInstructions, /Defectos\/restricciones materiales: SOLO PARA EL VENDEDOR, fuera del TXT/);
+  assert.match(marketplaceInstructions, /no marques listo hasta resolver con dueño divulgación necesaria sin engañar/);
+  assert.match(marketplaceInstructions, /Conserva fuente íntegra para verificar/);
+  assert.doesNotMatch(marketplaceInstructions, /Solo datos verificados: condición, medidas, disponibilidad, defectos, restricciones|No omitas esenciales|IMMEDIATE: pago completo|sin entregas ni envíos/);
+  assert.match(copied[0], /Sin datos: Marketplace NO VERIFICADO/);
+  assert.match(copied[0], /Desk Config\/marketplace-overrides\.json: distingue ya anunciados\/nuevos; precios históricos no son actuales/);
+  assert.match(copied[0], /Incluye existentes; nunca dupliques un anuncio activo/);
   assert.match(copied[0], /Renovar solo si la opción nativa está realmente disponible/);
   assert.doesNotMatch(copied[0], /PRIVATE-SELLER-QUESTION/);
 });
@@ -319,8 +326,10 @@ test('DELAYED handoffs state approved global terms for blank fields while explic
     const {listeners}=overviewScenario({fetchSalePulse:async()=>pulse({marketingPacket:packet}),writeClipboard:async text=>copied.push(text)});
     await chatgptButton(listeners)({currentTarget:{disabled:false,textContent:''}});
     assert.equal(copied.length,1);
-    assert.match(copied[0],/DELAYED sin dato propio: seña 25%; pago final 1–8 y retiro 9–12 de diciembre de 2026/);
+    assert.match(copied[0],/DELAYED \/ RETIRO POSTERIOR: incluir "Seña: 25%" salvo excepción confirmada, y fechas aplicables/);
+    assert.match(copied[0],/Sin dato propio: pago final 1–8 y retiro 9–12 de diciembre de 2026/);
     assert.match(copied[0],/Respeta valores y excepciones del Item/);
+    assert.match(copied[0],/nunca digas que la seña es opcional/);
     const candidate=handoffData(copied[0]).candidates[0];
     assert.equal(candidate.saleMode,'DELAYED');
     for(const [key,value] of Object.entries(exceptions)) {
@@ -331,7 +340,7 @@ test('DELAYED handoffs state approved global terms for blank fields while explic
   }
 });
 
-test('a representative ten-Item high-value catalog fits with every Marketplace disclosure and photo reference', async () => {
+test('a representative ten-Item high-value catalog fits with every source fact and photo reference', async () => {
   const source = (await loadBaseCatalog('https://example.test')).filter(p=>p.status==='AVAILABLE'&&p.quantityRemaining>0&&p.askingPricePYG>50000&&p.images?.length)
     .sort((a,b)=>b.askingPricePYG-a.askingPricePYG||a.itemNumber-b.itemNumber).slice(0,10);
   const packet = buildSalePulseSnapshot({products:source,purchasableInventory:new Map(source.map(p=>[p.id,{
@@ -375,7 +384,7 @@ test('missing Marketplace facts remain unknown and unsafe original photo referen
   await chatgptButton(listeners)({currentTarget:{disabled:false,textContent:''}});
   const details=handoffData(copied[0]).candidates[0].marketplace;
   assert.deepEqual(details,{additionalImages:[]});
-  assert.match(copied[0],/Otros datos ausentes\/vacíos: no verificados, nunca sin defectos/);
+  assert.match(copied[0],/Ausentes: no verificados/);
   const packet=structuredClone(handoffPacket);
   packet.marketableProducts[0].images=[packet.marketableProducts[0].mainImage,'http://example.test/unsafe.jpg'];
   let writes=0;
@@ -427,17 +436,14 @@ test('ChatGPT handoff fetches fresh authenticated Sale Pulse and copies complete
   assert.match(copied[0], /autoridad FINAL/);
   assert.match(copied[0], /SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUALES/);
   assert.match(copied[0], /Hasta 10 Items únicos, 5 para David y 5 para María/);
-  assert.match(copied[0], /Un documento por persona: cinco Stories individuales y cinco WhatsApp Status de sus mismos cinco productos/);
-  assert.match(copied[0], /Una foto auténtica por Story, sin collages/);
-  assert.match(copied[0], /Instagram Stories: Link sticker al detalle con src=story y VER ARTÍCULO/);
+  assert.match(copied[0], /ENTREGABLES — David\.txt Y Maria\.txt/);
+  assert.match(copied[0], /Un \.txt por persona: 5 Stories, 5 Status\/Updates, 4 JW y 5 entradas Marketplace de sus mismos cinco Items/);
+  assert.match(copied[0], /Instagram\/Facebook Stories: por Item, número, archivo gráfico y URL directa src=story; sticker VER ARTÍCULO/);
   assert.doesNotMatch(copied[0], /propone un collage de 3 productos|crear collages/);
   assert.match(copied[0], /Ya comparten automáticamente a Facebook; no crees campaña separada/);
-  assert.match(copied[0], /WhatsApp Status\/Updates: entradas nativas individuales, URL clicable con src=story/);
+  assert.match(copied[0], /WhatsApp Status\/Updates: mismo archivo gráfico, texto breve listo para copiar y URL directa src=story/);
   assert.match(copied[0], /el sticker de Instagram no conserva su enlace/);
-  assert.match(copied[0], /Grupo de WhatsApp Compras\/Ventas\/Servicios: src=jw-group/);
-  assert.match(copied[0], /Select Multiple > fotos numeradas > Next > Separate/);
-  assert.match(copied[0], /Marketplace > Sell > Create listing > One item > Add photos/);
-  assert.match(copied[0], /More > Send a copy > Save image/);
+  assert.match(copied[0], /Texto breve natural en español, nombre, precio actual y URL directa src=jw-group/);
   assert.match(copied[0], /No publiques automáticamente/);
   const data = handoffData(copied[0]);
   assert.equal(data.generatedAt, handoffPacket.generatedAt);
@@ -498,17 +504,19 @@ test('handoff caps each person at four JW entries from their own five products',
   });
   await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
   const text = copied[0];
-  assert.match(text, /Hasta 10 Items únicos, 5 para David y 5 para María, sin repetir entre ambos/);
-  assert.match(text, /Un documento por persona: cinco Stories individuales y cinco WhatsApp Status de sus mismos cinco productos/);
-  assert.match(text, /cuatro Items por persona entre sus cinco por potencial de venta/);
+  assert.match(text, /Hasta 10 Items únicos, 5 para David y 5 para María; respeta assignments, sin rellenar ni repetir/);
+  assert.match(text, /Un \.txt por persona: 5 Stories, 5 Status\/Updates, 4 JW y 5 entradas Marketplace de sus mismos cinco Items/);
+  assert.match(text, /cuatro Items por persona entre sus cinco/);
   assert.match(text, /cuatro David y cuatro María, ocho total, escalonados/);
-  assert.match(text, /Si hay menos, solo esos/);
-  assert.match(text, /nunca una quinta entrada\/foto por persona/);
-  assert.match(text, /Grupo de WhatsApp[\s\S]*?src=jw-group[\s\S]*?nunca una quinta entrada\/foto por persona/);
+  assert.match(text, /si hay menos, solo esos/);
+  assert.match(text, /Nunca una quinta entrada\/foto por persona/);
+  assert.match(text, /JW WhatsApp Group:[\s\S]*?Nunca una quinta entrada\/foto por persona[\s\S]*?src=jw-group/);
+  const data = handoffData(text);
+  for (const person of ['David', 'Maria']) assert.equal(data.regularCampaign.assignments[person].length, 5);
   assert.doesNotMatch(text, /envíos de cuatro y una|la quinta por separado|luego la quinta/);
 });
 
-test('promotional copy excludes routine logistics while preserving material disclosures and preview safeguards', async () => {
+test('handoff requires the approved Item 274 graphic for social channels and only originals for Marketplace', async () => {
   const copied = [];
   const { listeners } = overviewScenario({
     fetchSalePulse: async () => pulse({ marketingPacket: handoffPacket }),
@@ -516,13 +524,21 @@ test('promotional copy excludes routine logistics while preserving material disc
   });
   await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
   const text = copied[0];
-  assert.match(text, /Stories\/Status\/JW: nombre, precio, texto breve veraz, foto y enlace/);
-  assert.match(text, /Omite logística rutinaria, fechas, pago y avisos administrativos; conserva limitaciones materiales/);
-  assert.match(text, /Sitio\/checkout mantienen todas sus advertencias/);
-  const socialInstructions = text.split('FACEBOOK MARKETPLACE — BORRADORES')[0];
-  assert.doesNotMatch(socialInstructions, /precio, retiro y URL|Ubicación: San Lorenzo|Sin entrega|1 al 8 de diciembre|9 al 12 de diciembre|Menciona estos plazos/);
+  const socialInstructions = text.split('ENTREGABLES —')[1].split('FACEBOOK MARKETPLACE —')[0];
+  const marketplaceInstructions = text.split('FACEBOOK MARKETPLACE — BORRADORES')[1].split('MENSAJES GENERALES')[0];
+  assert.match(socialInstructions, /plantilla fija Item 274 aprobada, vertical 9:16/);
+  assert.match(socialInstructions, /SOLO VENTA POR MUDANZA, ITEM número, fotografía original auténtica, nombre y precio actual/);
+  assert.match(socialInstructions, /Mismo gráfico terminado para Instagram\/Facebook Stories y WhatsApp Status/);
+  assert.match(socialInstructions, /Sin collages, capturas web, fichas de producto ni imágenes reconstruidas por IA; conserva apariencia real/);
+  assert.match(socialInstructions, /Si falta la plantilla aprobada, pídela, no la reinventes/);
+  assert.match(socialInstructions, /Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales\./);
+  assert.match(socialInstructions, /Gráficos sin descripciones ni URLs; enlaces solo en texto\/stickers/);
+  assert.match(socialInstructions, /vista previa nativa correcta o foto original/);
+  assert.doesNotMatch(socialInstructions, /contacto opcional|conserva limitaciones materiales|\bseña\b|pago final/i);
+  assert.match(marketplaceInstructions, /SOLO fotografías originales: sin gráficos promocionales, banners, texto superpuesto, capturas web ni representaciones generadas/);
+  assert.match(marketplaceInstructions, /condición\/medidas\/disponibilidad confirmadas y términos RETIRO POSTERIOR; sin otros auxiliares automáticos/);
   assert.match(text, /cb=fecha-hora conservando src y los demás parámetros[\s\S]*?No añadas src a mainImageUrl/);
-  assert.match(text, /Prepara borradores para aprobación de David/);
+  assert.match(text, /Borradores para aprobación de David/);
   assert.ok(text.length <= 18000);
   handoffData(text);
 });
@@ -540,12 +556,11 @@ test('unreconciled older history allows an active-cycle handoff and independent 
   await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
   const text = copied[0];
   assert.match(text, /PREPARED no es POSTED/);
-  assert.match(text, /No detengas por incertidumbre anterior/);
-  assert.match(text, /UNCONFIRMED en esta pasada no significa históricamente NEVER POSTED/);
+  assert.match(text, /UNCONFIRMED no prueba NEVER POSTED histórico/);
   assert.match(text, /passId[\s\S]*?passStartedAt/);
-  assert.match(text, /estrictamente mayor a ₲50.000/);
-  assert.match(text, /no regeneres materiales ni inicies una repetición automática/);
-  assert.match(text, /anuncios independientes no cuentan; no pidas reportarlos/);
+  assert.match(text, /> ₲50.000; precio descendente, desempate Item/);
+  assert.match(text, /no repitas POSTED ni reinicies pasada\. Reutiliza materiales/);
+  assert.match(text, /Anuncios independientes no cuentan ni requieren informe/);
   assert.equal(handoffData(text).regularCampaign.historicalCompleteness, 'UNRECONCILED');
   assert.doesNotMatch(JSON.stringify(handoffData(text)), /"history"|"POSTED"|"PREPARED"/);
   assert.doesNotMatch(text, /Evita repeticiones sin ángulo nuevo/);

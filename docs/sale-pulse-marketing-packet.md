@@ -154,37 +154,84 @@ These are handoff instructions only; catalog, checkout and campaign records are 
 
 For every assigned Item the handoff requests seven Spanish Marketplace fields:
 photos/references, title, asking price, recommended category, condition, San Lorenzo
-location, and the complete public description. Missing facts and questions stay
-in a separate seller-only section. Existing listing status/age require the owner's
-information; no assumed absence, duplicate listing, automatic publication or Renew
-recommendation unless Facebook actually offers it. María removes sold listings;
+location, and a concise ready-to-copy description. Beyond required listing fields,
+original photo references and URLs, posting TXT may include only confirmed condition,
+dimensions, availability and the delayed-pickup terms below. Do not automatically
+insert other auxiliary details, including routine defects, restrictions, immediate
+payment requirements or delivery notices. Preserve complete source facts in the
+handoff JSON for verification. Flag material defects/restrictions privately, outside
+posting TXT, and do not mark an advertisement ready until the owner has resolved
+any disclosure necessary to avoid misleading buyers.
+Marketplace uses only original photographs: no promotional graphics, overlays,
+screenshots or generated representations. DELAYED / RETIRO POSTERIOR descriptions
+include `Seña: 25%` and applicable dates, unless a confirmed Item-specific exception
+applies; never describe this disclosure as optional. Missing facts and questions
+stay in separate private seller review, outside posting TXT. Read the Desk's existing
+`Config/marketplace-overrides.json` to distinguish already-advertised Items from
+new listings. Historical prices are not current prices. Each person's five entries
+may include existing listings: no duplicate active ads or assumed absence. Unknown
+status requires owner checking; recommend Renew only when Facebook offers it.
+María removes sold listings;
 David manages website inventory. No Marketplace account or tracking system is added.
 
 The eight approved general website messages are fixed text, reused verbatim with
 one shared link for Stories/Status (`https://www.thelabossieres.com/?src=story`) and
 one for JW (`https://www.thelabossieres.com/?src=jw-group`). They promote the whole
 catalog, including inexpensive Items. They are not regenerated per batch.
-Instructions are concise to retain the complete batch and critical disclosures
+Instructions are concise to retain the complete batch and source facts
 within 18,000 characters. If it does not fit, nothing is copied; no disclosure,
 photo reference or selected Item is silently dropped.
 
-### Preserved copy policy
+### Owner-approved production format
 
-Each person's marketing text document requests five Stories and five native
-WhatsApp Status entries using their same five assigned Items (or fewer when the
-batch is short), and only four JW Group product entries chosen from that person's
-five for likely sales potential, or fewer when necessary. Four JW Items per person
-means eight total for a full batch, staggered. Instagram already shares Stories to
-Facebook; no separate Facebook campaign is requested. No additional product
-or fifth JW entry/photo. Preserve src=story for Stories/Status and src=jw-group for
-JW, authentic photographs, preview-cache safeguards, phone/Marketplace workflows
-and David's publication approval.
+Request exactly `David.txt` and `Maria.txt`, with simple English posting instructions
+and natural Spanish buyer copy. Each file covers the same five assigned Items:
+five Instagram Stories automatically shared to Facebook, five WhatsApp Status/Updates,
+four staggered JW WhatsApp Group posts selected from those five, and five Marketplace
+entries. Preserve shorter server assignments without filling from other Items.
+Four JW posts per person means eight total, never a fifth post per person.
 
-Promotional text focuses on name, price, a brief truthful description, authentic
-photo and direct link. Routine payment/pickup dates, location, delivery/transport,
-unrelated photo objects and administrative disclaimers are omitted. Retain unusual
-material limitations when omission could mislead. Website/checkout sale terms,
-inclusions, exclusions, disclosures and all product records remain unchanged.
+Social graphics must follow the approved Item 274 vertical 9:16 template, containing
+only `VENTA POR MUDANZA`, Item number, authentic original photograph, product name
+and current price. Reuse the same finished graphic for Instagram, Facebook Stories
+and WhatsApp Status. No collages, website screenshots, product cards or AI-reconstructed
+products. If the approved template is unavailable, request it rather than inventing
+a replacement. No condition, defects, dimensions, availability, pickup or other
+auxiliary information in social posting sections. Graphics also exclude descriptions
+and URLs; direct product links belong in the TXT text/sticker instructions.
+Keep only the approved verified details in Marketplace posting TXT. Material concerns
+and seller-only questions belong in private review, with readiness blocked until
+required disclosure is resolved. Website/checkout disclosures and product data are unchanged.
+
+Stories entries identify Item number, graphic filename, direct `src=story` product
+URL and `VER ARTÍCULO` sticker. Status entries use the same graphic, short copy and
+direct `src=story` URL. JW entries contain short natural Spanish, name, current price,
+direct `src=jw-group` URL and a correct native preview or original photo where needed.
+Preserve URL parameters, preview-cache safeguards and David's publication approval.
+Detailed phone control walkthroughs are left to the Desk rather than repeated in
+the size-limited handoff.
+
+### Separate Desktop Production Desk adjustments still required
+
+Read-only inspection found that Admin instructions alone cannot enforce image production:
+
+- Local `Documents/Moving Sale/Marketing Production Desk/templates/render_collages.py`
+  still requires two or three Items per graphic, adds availability/pickup text and a
+  website footer, and uses `VENTA DE MUDANZA`. Although 1080×1920, it does not implement
+  the approved single-Item 274 template. Adapt or replace that local rendering path
+  using the approved graphic; do not regenerate the product photograph.
+- The local `START-HERE.txt` and `templates/desk-operating-instructions.txt` still
+  describe collage output. Synced `Desktop/Google Drive/Moving Sale/Marketing Production
+  Desk/Scripts/OPERATING-NOTES.txt` still requests pickup details in Status and permits
+  a fifth group photo; `Scripts/dmpd-core.mjs` embeds the old Status guidance in exports.
+  Align those instructions/exported guidance with the two TXT files, single-Item
+  graphic, four JW posts per person, social exclusions, Marketplace TXT limits/private
+  readiness review and original-only Marketplace images before producing another package.
+
+These local files and the existing Marketplace history were inspected, not changed.
+The approved sample graphic itself was not present in the inspected template paths;
+provide it to the Desk for exact visual matching. This PR changes only the Admin
+handoff, its tests and this documentation; it generates no package or graphics.
 
 ### Failure and deployment boundaries
 
