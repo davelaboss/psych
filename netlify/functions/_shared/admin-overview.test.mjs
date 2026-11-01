@@ -280,7 +280,7 @@ function largePacket() {
   };
 }
 
-test('Marketplace handoff carries complete public facts, seven fields, and separate owner checks', async () => {
+test('Marketplace handoff preserves source facts but limits posting TXT and blocks readiness for unresolved material concerns', async () => {
   const packet = structuredClone(handoffPacket), copied = [];
   const details = {
     description: 'Mesa de madera maciza con ocho sillas.', condition: 'Muy buen estado',
@@ -301,7 +301,12 @@ test('Marketplace handoff carries complete public facts, seven fields, and separ
   assert.match(copied[0],/resolver rutas relativas al sitio, conservar URLs completas/);
   assert.equal(candidate.saleMode,'DELAYED');
   assert.match(copied[0], /1\. Fotos originales[\s\S]*2\. Título; 3\. Precio actual; 4\. Categoría recomendada[\s\S]*5\. Condición; 6\. San Lorenzo, Paraguay; 7\. Descripción concisa en español, lista para copiar/);
-  assert.match(copied[0], /SOLO PARA EL VENDEDOR, fuera de la descripción pública/);
+  const marketplaceInstructions = copied[0].split('FACEBOOK MARKETPLACE — BORRADORES')[1].split('MENSAJES GENERALES')[0];
+  assert.match(marketplaceInstructions, /TXT: campos requeridos, condición\/medidas\/disponibilidad confirmadas y términos RETIRO POSTERIOR; sin otros auxiliares automáticos/);
+  assert.match(marketplaceInstructions, /Defectos\/restricciones materiales: SOLO PARA EL VENDEDOR, fuera del TXT/);
+  assert.match(marketplaceInstructions, /no marques listo hasta resolver con dueño divulgación necesaria sin engañar/);
+  assert.match(marketplaceInstructions, /Conserva fuente íntegra para verificar/);
+  assert.doesNotMatch(marketplaceInstructions, /Solo datos verificados: condición, medidas, disponibilidad, defectos, restricciones|No omitas esenciales|IMMEDIATE: pago completo|sin entregas ni envíos/);
   assert.match(copied[0], /Sin datos: Marketplace NO VERIFICADO/);
   assert.match(copied[0], /Desk Config\/marketplace-overrides\.json: distingue ya anunciados\/nuevos; precios históricos no son actuales/);
   assert.match(copied[0], /Incluye existentes; nunca dupliques un anuncio activo/);
@@ -335,7 +340,7 @@ test('DELAYED handoffs state approved global terms for blank fields while explic
   }
 });
 
-test('a representative ten-Item high-value catalog fits with every Marketplace disclosure and photo reference', async () => {
+test('a representative ten-Item high-value catalog fits with every source fact and photo reference', async () => {
   const source = (await loadBaseCatalog('https://example.test')).filter(p=>p.status==='AVAILABLE'&&p.quantityRemaining>0&&p.askingPricePYG>50000&&p.images?.length)
     .sort((a,b)=>b.askingPricePYG-a.askingPricePYG||a.itemNumber-b.itemNumber).slice(0,10);
   const packet = buildSalePulseSnapshot({products:source,purchasableInventory:new Map(source.map(p=>[p.id,{
@@ -379,7 +384,7 @@ test('missing Marketplace facts remain unknown and unsafe original photo referen
   await chatgptButton(listeners)({currentTarget:{disabled:false,textContent:''}});
   const details=handoffData(copied[0]).candidates[0].marketplace;
   assert.deepEqual(details,{additionalImages:[]});
-  assert.match(copied[0],/Ausentes\/vacíos: no verificados, nunca sin defectos/);
+  assert.match(copied[0],/Ausentes: no verificados/);
   const packet=structuredClone(handoffPacket);
   packet.marketableProducts[0].images=[packet.marketableProducts[0].mainImage,'http://example.test/unsafe.jpg'];
   let writes=0;
@@ -526,13 +531,12 @@ test('handoff requires the approved Item 274 graphic for social channels and onl
   assert.match(socialInstructions, /Mismo gráfico terminado para Instagram\/Facebook Stories y WhatsApp Status/);
   assert.match(socialInstructions, /Sin collages, capturas web, fichas de producto ni imágenes reconstruidas por IA; conserva apariencia real/);
   assert.match(socialInstructions, /Si falta la plantilla aprobada, pídela, no la reinventes/);
-  assert.match(socialInstructions, /Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales: solo Marketplace\/revisión privada/);
+  assert.match(socialInstructions, /Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales\./);
   assert.match(socialInstructions, /Gráficos sin descripciones ni URLs; enlaces solo en texto\/stickers/);
-  assert.match(socialInstructions, /Duda material de condición: revisión del dueño antes de publicar, sin engañar/);
   assert.match(socialInstructions, /vista previa nativa correcta o foto original/);
   assert.doesNotMatch(socialInstructions, /contacto opcional|conserva limitaciones materiales|\bseña\b|pago final/i);
   assert.match(marketplaceInstructions, /SOLO fotografías originales: sin gráficos promocionales, banners, texto superpuesto, capturas web ni representaciones generadas/);
-  assert.match(marketplaceInstructions, /Solo datos verificados: condición, medidas, disponibilidad, defectos, restricciones\. No omitas esenciales/);
+  assert.match(marketplaceInstructions, /condición\/medidas\/disponibilidad confirmadas y términos RETIRO POSTERIOR; sin otros auxiliares automáticos/);
   assert.match(text, /cb=fecha-hora conservando src y los demás parámetros[\s\S]*?No añadas src a mainImageUrl/);
   assert.match(text, /Borradores para aprobación de David/);
   assert.ok(text.length <= 18000);

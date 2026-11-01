@@ -1348,7 +1348,7 @@ ENTREGABLES — David.txt Y Maria.txt
 - Hasta 10 Items únicos, 5 para David y 5 para María; respeta assignments, sin rellenar ni repetir.
 - Un .txt por persona: 5 Stories, 5 Status/Updates, 4 JW y 5 entradas Marketplace de sus mismos cinco Items. No catálogos completos.
 - Gráficos: plantilla fija Item 274 aprobada, vertical 9:16. SOLO VENTA POR MUDANZA, ITEM número, fotografía original auténtica, nombre y precio actual. Mismo gráfico terminado para Instagram/Facebook Stories y WhatsApp Status. Sin collages, capturas web, fichas de producto ni imágenes reconstruidas por IA; conserva apariencia real. Si falta la plantilla aprobada, pídela, no la reinventes.
-- Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales: solo Marketplace/revisión privada. Gráficos sin descripciones ni URLs; enlaces solo en texto/stickers. Duda material de condición: revisión del dueño antes de publicar, sin engañar.
+- Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales. Gráficos sin descripciones ni URLs; enlaces solo en texto/stickers.
 - Instagram/Facebook Stories: por Item, número, archivo gráfico y URL directa src=story; sticker VER ARTÍCULO. Ya comparten automáticamente a Facebook; no crees campaña separada.
 - WhatsApp Status/Updates: mismo archivo gráfico, texto breve listo para copiar y URL directa src=story; el sticker de Instagram no conserva su enlace.
 - JW WhatsApp Group: cuatro Items por persona entre sus cinco: cuatro David y cuatro María, ocho total, escalonados; si hay menos, solo esos. Nunca una quinta entrada/foto por persona. Texto breve natural en español, nombre, precio actual y URL directa src=jw-group; vista previa nativa correcta o foto original.
@@ -1357,9 +1357,9 @@ ENTREGABLES — David.txt Y Maria.txt
 FACEBOOK MARKETPLACE — BORRADORES POR CADA ITEM ASIGNADO
 - 1. Fotos originales y referencias: mainImageUrl + additionalImages; resolver rutas relativas al sitio, conservar URLs completas. 2. Título; 3. Precio actual; 4. Categoría recomendada; 5. Condición; 6. San Lorenzo, Paraguay; 7. Descripción concisa en español, lista para copiar, y productUrl.
 - SOLO fotografías originales: sin gráficos promocionales, banners, texto superpuesto, capturas web ni representaciones generadas.
-- Solo datos verificados: condición, medidas, disponibilidad, defectos, restricciones. No omitas esenciales. IMMEDIATE: pago completo; sin entregas ni envíos.
+- TXT: campos requeridos, condición/medidas/disponibilidad confirmadas y términos RETIRO POSTERIOR; sin otros auxiliares automáticos.
 - DELAYED / RETIRO POSTERIOR: incluir "Seña: 25%" salvo excepción confirmada, y fechas aplicables. Sin dato propio: pago final 1–8 y retiro 9–12 de diciembre de 2026. Respeta valores y excepciones del Item; nunca digas que la seña es opcional.
-- Ausentes/vacíos: no verificados, nunca sin defectos. Faltantes/bloqueos: SOLO PARA EL VENDEDOR, fuera de la descripción pública.
+- Ausentes: no verificados. Conserva fuente íntegra para verificar. Defectos/restricciones materiales: SOLO PARA EL VENDEDOR, fuera del TXT; no marques listo hasta resolver con dueño divulgación necesaria sin engañar.
 - Desk Config/marketplace-overrides.json: distingue ya anunciados/nuevos; precios históricos no son actuales. Sin datos: Marketplace NO VERIFICADO, revisar con dueño. Incluye existentes; nunca dupliques un anuncio activo. Renovar solo si la opción nativa está realmente disponible. María retira vendidos; David maneja inventario web.
 - Borradores para aprobación de David. No publiques automáticamente, cambies precios ni reserves.
 
