@@ -140,11 +140,10 @@ function eligibleProducts(packet) {
 export function selectRegularCampaign(packet, history, now) {
   validateCampaignHistory(history);
   const products = eligibleProducts(packet);
-  const { posted, prepared } = coverage(history);
+  const { posted } = coverage(history);
   const firstPass = products.filter(p => !posted.has(p.productId));
   const byIdentity = (a, b) => a.itemNumber - b.itemNumber || a.productId.localeCompare(b.productId);
-  const ranked = firstPass.sort((a, b) => Number(prepared.has(a.productId)) - Number(prepared.has(b.productId)) ||
-    String(prepared.get(a.productId) || '').localeCompare(String(prepared.get(b.productId) || '')) || byIdentity(a, b));
+  const ranked = firstPass.sort((a, b) => b.askingPricePYG - a.askingPricePYG || byIdentity(a, b));
   return { phase: 'FIRST_PASS', products: ranked.slice(0, 10), eligibleUnconfirmedCount: firstPass.length, totalMarketable: products.length };
 }
 
@@ -246,8 +245,8 @@ export async function updateRegularCampaign({ body, loadPacket, store = campaign
     if (body.action === 'prepare') {
       packet = await loadPacket();
       const selected = selectRegularCampaign(packet, history, instant);
-      // Reopening today's incomplete handoff is a retry, not a new preparation.
-      batch = history.batches.findLast(b => b.passId === PRIORITY_PASS && b.date === dateInParaguay(instant) && b.phase === selected.phase &&
+      // Finish an eligible pending handoff before selecting again, even on a new date.
+      batch = history.batches.findLast(b => b.passId === PRIORITY_PASS && b.phase === selected.phase &&
         handoffCampaign(packet, history, b).regularCampaign.selectedProductIds.length);
       if (!batch) {
         if (!selected.products.length) throw fail('No quedan Items elegibles sin publicar en la pasada prioritaria. Reutilizá las fotos y mensajes existentes para nuevas publicaciones; no se preparó otro lote.');

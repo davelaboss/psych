@@ -1249,6 +1249,16 @@ const CHATGPT_MARKETING_DRIVE_URL = 'https://drive.google.com/drive/folders/13qE
 const CHATGPT_MARKETING_SITE_URL = 'https://thelabossieres.com';
 const CHATGPT_MOBILE_LIMIT = 18000;
 const CHATGPT_MOBILE_END = 'FIN DEL PAQUETE MOVIL';
+const CHATGPT_WEBSITE_MESSAGES = [
+  'Estamos de mudanza. Te compartimos la web de nuestra venta.',
+  '¿Buscás algo para tu casa? Mirá nuestra venta de mudanza.',
+  'Podés recorrer los artículos de la venta en nuestra web.',
+  'Tal vez encuentres algo que te sirva. Te dejamos la web.',
+  'Mirá las fotos y los detalles de cada artículo en la web.',
+  'Si conocés a alguien a quien le sirva, compartile nuestra web.',
+  'Te invitamos a conocer nuestra venta de mudanza.',
+  'Para consultar los artículos disponibles, entrá a nuestra web.',
+];
 
 function mobileMarketingCandidates(packet) {
   const campaign = packet.regularCampaign;
@@ -1293,6 +1303,19 @@ function mobileMarketingCandidates(packet) {
     purchasableQuantity: product.purchasableQuantity,
     productUrl: new URL(product.productUrl, CHATGPT_MARKETING_SITE_URL).href,
     mainImageUrl: new URL(product.mainImage, CHATGPT_MARKETING_SITE_URL).href,
+    marketplace: Object.fromEntries([
+      'description', 'condition', 'conditionNotes', 'knownDefects', 'includedAccessories', 'logisticsNotes',
+      'functionality', 'measurements', 'saleStructure', 'notIncludedVisible',
+      'requiresVehicle', 'requiresLoadingHelp', 'depositPercent', 'pickupAvailableDate', 'pickupWindowStart',
+      'pickupWindowEnd', 'finalPaymentWindowStart', 'finalPaymentWindowEnd',
+    ].filter(key => product[key] != null && product[key] !== '' && product[key] !== false &&
+      !(Array.isArray(product[key]) && !product[key].length)).map(key => [key, product[key]]).concat([
+      ['additionalImages', (product.images || []).filter(image => image !== product.mainImage).map(image => {
+        const url = new URL(image, CHATGPT_MARKETING_SITE_URL);
+        if (url.protocol !== 'https:') throw new Error('Faltan datos completos para las fotos originales.');
+        return image;
+      })],
+    ])),
     views7d: product.views || 0,
     cartAdds7d: product.cartAdds || 0,
     signals: ['hotUnsold', 'lowNoInterest', 'attention', 'viewedButNotAdded', 'cartInterestWithoutSale']
@@ -1310,37 +1333,44 @@ function buildChatgptMarketingHandoff(packet) {
   const limitation = candidates.length < 10
     ? `LIMITACIÓN ACTUAL: solo hay ${candidates.length} Items en esta selección del ciclo; usa únicamente estos, sin rellenar con repetidos para llegar a 5+5.\n`
     : '';
-  const instructions = `Prepara marketing actual para la venta de mudanza de David y María en Paraguay. Escribe las instrucciones para ellos en inglés sencillo y todo texto para compradores en español claro, natural, breve y amable. David tiene la aprobación final.
-
-Antes de recomendar productos, comprueba que este mensaje termina exactamente con ${CHATGPT_MOBILE_END}. Si falta, no hagas recomendaciones de productos: pide copiar el paquete otra vez.
-
-DATOS ACTUALES: este JSON es un SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUALES, no el inventario completo. Los productos omitidos no se consideran vendidos ni no disponibles por esa omisión.
+  const instructions = `Venta de mudanza de David y María, Paraguay. Instrucciones en inglés sencillo, anuncios en español natural; David aprueba.
+Comprueba el cierre ${CHATGPT_MOBILE_END}. Si falta, no hagas recomendaciones de productos: pide copiar otra vez.
+SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUALES: los productos omitidos no se consideran vendidos ni no disponibles.
 `;
   const detail = `
+FUENTES Y COBERTURA
+- Sale Pulse: autoridad FINAL. Solo selectedProductIds/assignments, sin sustituir por popularidad ni crear carritos.
+- Drive opcional: ${CHATGPT_MARKETING_DRIVE_URL}. README/manifiesto/preflight son contexto; prevalece JSON. Sitio: ${CHATGPT_MARKETING_SITE_URL}.
+- passId identifica la pasada; passStartedAt su inicio. PREPARED no es POSTED: solo publicación real confirmada cuenta. UNCONFIRMED en esta pasada no significa históricamente NEVER POSTED. No detengas por incertidumbre anterior. Los anuncios independientes no cuentan; no pidas reportarlos.
+- FIRST_PASS: MARKETABLE, comprable y estrictamente mayor a ₲50.000. Lotes nuevos: precio descendente, desempate Item; conserva pendientes, no repitas POSTED. Reutiliza fotos/mensajes; no regeneres materiales ni inicies una repetición automática.
 
-FUENTES Y AUTORIDAD
-- La consulta Sale Pulse recién copiada es la autoridad FINAL para disponibilidad, comercialización, precios, títulos y cantidades actuales. Elige exclusivamente del subconjunto JSON. No promociones Items vendidos, temporalmente reservados, pendientes de pago o no publicados. No crees carritos ni reservas para comprobar disponibilidad.
-- Si tienes acceso al Drive Personal de David, consulta el Marketing Production Desk: ${CHATGPT_MARKETING_DRIVE_URL}. Usa README, manifiesto, preflight y archivos Marketplace como contexto; este Sale Pulse prevalece. Si Drive no está disponible, usa estos datos y ${CHATGPT_MARKETING_SITE_URL}.
-- La selección y asignación del JSON ya usan el historial fiable de la pasada prioritaria passId de la campaña regular, iniciada en passStartedAt. Respétalas: no sustituyas Items ni uses visitas, anuncios independientes o interés para cambiarlas. PREPARED no es POSTED: solo la confirmación expresa de publicación real cuenta. El historial anterior se conserva, pero no satisface cobertura de esta pasada; UNCONFIRMED en esta pasada no significa históricamente NEVER POSTED. No detengas por incertidumbre anterior. Los anuncios independientes de David o María no cuentan; no los registres ni pidas reportarlos.
+ENTREGABLES SOCIALES
+- Hasta 10 Items únicos, 5 para David y 5 para María, sin repetir entre ambos; si hay menos conserva assignments, sin rellenar.
+- Un documento por persona: cinco Stories individuales y cinco WhatsApp Status de sus mismos cinco productos. Una foto auténtica por Story, sin collages; contacto opcional.
+- Instagram Stories: Link sticker al detalle con src=story y VER ARTÍCULO. Ya comparten automáticamente a Facebook; no crees campaña separada.
+- WhatsApp Status/Updates: entradas nativas individuales, URL clicable con src=story; el sticker de Instagram no conserva su enlace.
+- Grupo de WhatsApp Compras/Ventas/Servicios: src=jw-group; cuatro Items por persona entre sus cinco por potencial de venta: cuatro David y cuatro María, ocho total, escalonados. Si hay menos, solo esos. Introducción y cierre; nunca una quinta entrada/foto por persona ni fotos redundantes.
+- Stories/Status/JW: nombre, precio, texto breve veraz, foto y enlace. Omite logística rutinaria, fechas, pago y avisos administrativos; conserva limitaciones materiales. Sitio/checkout mantienen todas sus advertencias.
+- Revisa foto de cada vista previa. Si está obsoleta añade cb=fecha-hora conservando src y los demás parámetros. No añadas src a mainImageUrl.
 
-SELECCIÓN Y ENTREGABLES
-- Usa exactamente la selección y assignments del JSON: hasta 10 Items únicos, 5 para David y 5 para María, sin repetir entre ambos. Si hay menos, conserva la asignación y explica la limitación; nunca rellenes.
-- Para David y María, prepara cinco Stories individuales por persona: un producto y una foto auténtica por Story, con un solo Link sticker al detalle de ese producto, src=story y texto VER ARTÍCULO. Da textos breves en español y referencias a las fotos auténticas.
-- Entrega un documento de texto de marketing por persona: sus cinco Stories, cinco WhatsApp Status de los mismos cinco productos y las entradas JW Group indicadas abajo.
-- Una hoja de contacto de cinco imágenes es opcional para revisión interna, no un archivo necesario para publicar. Evita imágenes adjuntas redundantes, instrucciones duplicadas y documentos intermedios innecesarios.
-- FIRST_PASS incluye solo Items comercializables con unidades comprables y precio pedido actual estrictamente mayor a ₲50.000; excluye Items ya confirmados POSTED en esta pasada y prioriza los no preparados. Los nuevos Items elegibles sin cobertura entran en FIRST_PASS. Al completar la pasada, reutilicen las fotos y mensajes existentes para nueva exposición; no regeneres materiales ni inicies una repetición automática.
-- Usa solo números, títulos, precios, cantidades, URLs e imágenes auténticas actuales. No inventes condición, especificaciones, accesorios, urgencia ni popularidad, ni alteres productos en imágenes.
-- Para Stories, Status y JW Group, usa nombre, precio, descripción breve y veraz, foto auténtica y enlace directo. Omite texto rutinario sobre plazos de pago, fechas o arreglos de retiro, ubicación, entrega, transporte, objetos ajenos visibles y otros avisos administrativos. Señala una limitación material inusual si omitirla puede engañar al comprador. Conserva sin cambios las condiciones, inclusiones, exclusiones y advertencias reales en el sitio y checkout.
+TELÉFONOS
+- Android Drive: pulsación larga, seleccionar fotos, Download. Instagram: Select Multiple > fotos numeradas > Next > Separate; sticker por foto.
+- Android Marketplace: Marketplace > Sell > Create listing > One item > Add photos; Done, ordenar, Next. Precio numérico, categoría, San Lorenzo; revisar antes de Publish.
+- iPhone Drive: More > Send a copy > Save image. Indica pasos no verificados; no copies Android.
 
-ENLACES Y DATOS DE LA VENTA
-- Instagram Stories: cada foto lleva su propio Link sticker directo con src=story y VER ARTÍCULO. No agrupes varios productos en una Story.
-- WhatsApp Status/Updates: prepara entradas nativas individuales con URL directa clicable con src=story. No uses src=jw-group ni supongas que el Link sticker de Instagram sigue siendo clicable al compartir una Story en WhatsApp.
-- Grupo de WhatsApp Compras/Ventas/Servicios: añade o actualiza src=jw-group en cada productUrl. Usa solo cuatro entradas de productos por persona, elegidas entre sus cinco por probable potencial de venta; si hay menos de cuatro válidos, usa solo esos. Introducción amable y cierre en la última entrada. No agregues productos ni una quinta entrada o foto de JW Group. Con vistas previas correctas, no exijas fotos duplicadas.
-- Comprueba que cada vista previa de enlace muestre la foto del producto correcto. Si una vista previa de WhatsApp está desactualizada, añade un parámetro nuevo de caché (por ejemplo, cb=fecha-hora) al enlace del producto, conservando src y los demás parámetros; vuelve a comprobar la vista previa. No añadas src a mainImageUrl.
-- Da listas breves y separadas para Android y iPhone, en inglés cotidiano. Android: Drive, pulsación larga en primera foto, selección de las demás, Download; Instagram, Select Multiple > fotos numeradas > Next > Separate. Cada Link sticker lleva su enlace y VER ARTÍCULO. Quita pasos obsoletos.
-- Android Facebook Marketplace: Marketplace > Sell > Create listing > One item > Add photos; elige las fotos, toca Done, establece el orden con toques numerados y toca Next. Completa Title, Price, Category, Condition y Description; escribe el precio solo con números, conserva la categoría correcta si ya se seleccionó, ubica aproximadamente San Lorenzo en el mapa y revisa el anuncio completo directamente antes de Publish, sin inventar otra pantalla de vista previa.
-- iPhone: usa controles comprobados, sin copiar Android. Para una foto en Drive: More > Send a copy > Save image. Señala si no comprobaste descarga por lotes o Marketplace.
-- Prepara borradores para aprobación de David. No publiques automáticamente, cambies precios, reserves artículos ni hagas compromisos en nombre del vendedor.`;
+FACEBOOK MARKETPLACE — BORRADORES POR CADA ITEM ASIGNADO
+- Formato Item 274, usando datos propios: 1. Fotos originales y referencias (mainImageUrl + additionalImages; resolver rutas relativas al sitio, conservar URLs completas); 2. Título; 3. Precio pedido completo; 4. Categoría recomendada desde category; 5. Condición; 6. Ubicación: San Lorenzo, Paraguay; 7. Descripción completa en español y productUrl.
+- Integra todo marketplace sin inventar ni omitir defectos/restricciones. IMMEDIATE: pago completo; sin entregas ni envíos.
+- DELAYED sin dato propio: seña 25%; pago final 1–8 y retiro 9–12 de diciembre de 2026. Respeta valores y excepciones del Item.
+- Otros datos ausentes/vacíos: no verificados, nunca sin defectos. Faltantes: SOLO PARA EL VENDEDOR, fuera de la descripción pública; señala bloqueos para publicar.
+- Estado en Marketplace NO VERIFICADO: revisar anuncios/antigüedad del dueño; no duplicar. Renovar solo si la opción nativa está realmente disponible. María retira vendidos; David maneja inventario web.
+- Prepara borradores para aprobación de David. No publiques automáticamente, cambies precios, reserves ni hagas compromisos.
+
+MENSAJES GENERALES APROBADOS — REUTILIZAR TEXTUALMENTE
+Todo el sitio, incluidos Items económicos. No regenerar ni duplicar por enlace.
+${CHATGPT_WEBSITE_MESSAGES.map((message, index) => `${index + 1}. ${message}`).join('\n')}
+Stories/Status: https://www.thelabossieres.com/?src=story
+JW Group: https://www.thelabossieres.com/?src=jw-group`;
   while (candidates.length >= minimum) {
     const data = { generatedAt: packet.generatedAt, snapshotTotalMarketable: totalMarketable,
       regularCampaign: packet.regularCampaign, includedCandidates: candidates.length, candidates };
