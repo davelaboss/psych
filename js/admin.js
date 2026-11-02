@@ -1263,6 +1263,7 @@ const CHATGPT_WEBSITE_MESSAGES = [
 function mobileMarketingCandidates(packet) {
   const campaign = packet.regularCampaign;
   if (campaign?.status !== 'READY' || campaign.campaignId !== 'regular-chatgpt-daily-v1' ||
+      campaign.assignmentPolicy !== 'david-delayed-maria-immediate-v1' ||
       !campaign.cycleId || !campaign.batchId || !Number.isSafeInteger(campaign.revision) ||
       !['FIRST_PASS', 'PHASE_2'].includes(campaign.phase) ||
       !Array.isArray(campaign.selectedProductIds) || campaign.selectedProductIds.length > 10 ||
@@ -1279,7 +1280,7 @@ function mobileMarketingCandidates(packet) {
     if (!product || (product.marketabilityStatus && product.marketabilityStatus !== 'MARKETABLE') ||
       !product.productId || !Number.isInteger(Number(product.itemNumber)) || Number(product.itemNumber) <= 0 ||
       !product.title || !Number.isFinite(Number(product.askingPricePYG)) || Number(product.askingPricePYG) <= 50000 ||
-      !product.category || !product.saleMode || Number(product.purchasableQuantity) <= 0 ||
+      !product.category || !['IMMEDIATE', 'DELAYED'].includes(product.saleMode) || Number(product.purchasableQuantity) <= 0 ||
       !product.productUrl || !product.mainImage || seen.has(product.productId) ||
       seenItems.has(Number(product.itemNumber))) return false;
     try {
@@ -1293,6 +1294,9 @@ function mobileMarketingCandidates(packet) {
   const byId = new Map(products.map(product => [product.productId, product]));
   const selected = campaign.selectedProductIds.map(id => byId.get(id));
   if (selected.some(product => !product)) throw new Error('Faltan datos completos para la selección confirmada.');
+  if (campaign.assignments.Maria.some(id => byId.get(id).saleMode !== 'IMMEDIATE')) {
+    throw new Error('Asignación anterior incompatible: copiá una selección nueva; no reasignes Items manualmente.');
+  }
   return selected.map((product) => ({
     itemNumber: product.itemNumber,
     productId: product.productId,
@@ -1341,24 +1345,27 @@ SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUALES: los productos omitidos no s
 FUENTES Y COBERTURA
 - Sale Pulse: autoridad FINAL. Solo selectedProductIds/assignments; no crear carritos.
 - Drive/contexto: ${CHATGPT_MARKETING_DRIVE_URL}. Sitio: ${CHATGPT_MARKETING_SITE_URL}.
-- passId/passStartedAt: pasada/inicio. PREPARED no es POSTED; UNCONFIRMED no prueba NEVER POSTED histórico. Anuncios independientes no cuentan ni requieren informe.
+- PREPARED no es POSTED; UNCONFIRMED no prueba NEVER POSTED histórico. Anuncios independientes no cuentan ni requieren informe.
 - FIRST_PASS: MARKETABLE, comprable, > ₲50.000; precio descendente, desempate Item. Conserva pendientes, no repitas POSTED ni reinicies pasada. Reutiliza materiales.
 
 ENTREGABLES — David.txt Y Maria.txt
 - Hasta 10 Items únicos, 5 para David y 5 para María; respeta assignments, sin rellenar ni repetir.
+- David: DELAYED primero + IMMEDIATE libres. María: solo IMMEDIATE. Nunca reasignes; lotes anteriores solo para confirmar publicaciones reales.
 - Un .txt por persona: 5 Stories, 5 Status/Updates, 4 JW y 5 entradas Marketplace de sus mismos cinco Items. No catálogos completos.
-- Gráficos: plantilla fija Item 274 aprobada, vertical 9:16. SOLO VENTA POR MUDANZA, ITEM número, fotografía original auténtica, nombre y precio actual. Mismo gráfico terminado para Instagram/Facebook Stories y WhatsApp Status. Sin collages, capturas web, fichas de producto ni imágenes reconstruidas por IA; conserva apariencia real. Si falta la plantilla aprobada, pídela, no la reinventes.
+- Gráficos: plantilla fija Item 274 aprobada, vertical 9:16. SOLO VENTA POR MUDANZA, ITEM número, fotografía original auténtica, nombre y precio actual. Mismo gráfico terminado para Instagram/Facebook Stories y WhatsApp Status. Sin collages, capturas web, fichas ni reconstrucción por IA. Si falta la plantilla aprobada, pídela, no la reinventes.
 - Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales. Gráficos sin descripciones ni URLs; enlaces solo en texto/stickers.
 - Instagram/Facebook Stories: por Item, número, archivo gráfico y URL directa src=story; sticker VER ARTÍCULO. Ya comparten automáticamente a Facebook; no crees campaña separada.
 - WhatsApp Status/Updates: mismo archivo gráfico, texto breve listo para copiar y URL directa src=story; el sticker de Instagram no conserva su enlace.
 - JW WhatsApp Group: cuatro Items por persona entre sus cinco: cuatro David y cuatro María, ocho total, escalonados; si hay menos, solo esos. Nunca una quinta entrada/foto por persona. Texto breve natural en español, nombre, precio actual y URL directa src=jw-group; vista previa nativa correcta o foto original.
-- Revisa foto de cada vista previa. Si está obsoleta añade cb=fecha-hora conservando src y los demás parámetros. No añadas src a mainImageUrl.
+- Vista previa obsoleta: añade cb=fecha-hora conservando src y los demás parámetros. No añadas src a mainImageUrl.
 
 FACEBOOK MARKETPLACE — BORRADORES POR CADA ITEM ASIGNADO
-- 1. Fotos originales y referencias: mainImageUrl + additionalImages; resolver rutas relativas al sitio, conservar URLs completas. 2. Título; 3. Precio actual; 4. Categoría recomendada; 5. Condición; 6. San Lorenzo, Paraguay; 7. Descripción concisa en español, lista para copiar, y productUrl.
+- Campos: fotos mainImageUrl + additionalImages (resolver rutas relativas al sitio, conservar URLs completas); título; precio actual; categoría; condición; San Lorenzo; descripción española lista para copiar; productUrl de referencia.
 - SOLO fotografías originales: sin gráficos promocionales, banners, texto superpuesto, capturas web ni representaciones generadas.
-- TXT: campos requeridos, condición/medidas/disponibilidad confirmadas y términos RETIRO POSTERIOR; sin otros auxiliares automáticos.
-- DELAYED / RETIRO POSTERIOR: incluir "Seña: 25%" salvo excepción confirmada, y fechas aplicables. Sin dato propio: pago final 1–8 y retiro 9–12 de diciembre de 2026. Respeta valores y excepciones del Item; nunca digas que la seña es opcional.
+- TXT: campos requeridos, condición/medidas/disponibilidad confirmadas y política de venta directa Marketplace.
+- DELAYED: RETIRO POSTERIOR, retiro 9–12 diciembre 2026; respeta restricciones del Item, nunca adelantes automáticamente. "Seña: 10% obligatoria para confirmar la reserva". Saldo del 90% al retirar. Consultas/visitas sin adelanto; cita no reserva, sin seña confirmada sigue a la venta.
+- IMMEDIATE: DISPONIBLE AHORA; pago completo al retirar, consultas/revisión con cita sin adelanto.
+- Ambos: comprador organiza transporte/retiro en San Lorenzo. "No hacemos entregas ni envíos". Messenger; enlace solo referencia, no checkout. No inventes no reembolso/cancelación. Web conserva seña 25%, saldo 1–8 de diciembre y checkout; NO copies esos pagos en anuncios Marketplace ni cambies datos fuente.
 - Ausentes: no verificados. Conserva fuente íntegra para verificar. Defectos/restricciones materiales: SOLO PARA EL VENDEDOR, fuera del TXT; no marques listo hasta resolver con dueño divulgación necesaria sin engañar.
 - Desk Config/marketplace-overrides.json: distingue ya anunciados/nuevos; precios históricos no son actuales. Sin datos: Marketplace NO VERIFICADO, revisar con dueño. Incluye existentes; nunca dupliques un anuncio activo. Renovar solo si la opción nativa está realmente disponible. María retira vendidos; David maneja inventario web.
 - Borradores para aprobación de David. No publiques automáticamente, cambies precios ni reserves.
@@ -1414,7 +1421,8 @@ async function copySalePulseForChatgpt(event) {
           ? 'PAQUETE MÓVIL MUY GRANDE · NO COPIADO'
           : error?.message?.startsWith('Faltan datos completos')
             ? 'DATOS INCOMPLETOS · NO COPIADO'
-            : error?.message?.startsWith('Historial') ? 'HISTORIAL NO FIABLE · NO COPIADO' : 'NO SE PUDO ACTUALIZAR · REINTENTAR';
+            : error?.message?.startsWith('Asignación anterior') ? 'ASIGNACIÓN INCOMPATIBLE · NO COPIADO'
+              : error?.message?.startsWith('Historial') ? 'HISTORIAL NO FIABLE · NO COPIADO' : 'NO SE PUDO ACTUALIZAR · REINTENTAR';
     }
   } finally {
     button.disabled = false;
@@ -1427,6 +1435,7 @@ function regularCampaignControls() {
   if (campaign.status !== 'READY') return '<p>Historial del ciclo no disponible. No se preparará una selección hasta recuperarlo.</p>';
   return `<p>Ciclo desde ${adminEscape(salePulseDate(campaign.startedAt))}. Confirmá solo publicaciones reales de esta campaña regular; preparar, aprobar o descargar no cuenta. No informes anuncios independientes.</p>
     ${(campaign.pendingBatches || []).map(batch => `<details><summary>Lote ${adminEscape(batch.date)}</summary>
+      ${batch.requiresAssignmentReview ? '<p>Lote anterior conservado solo para confirmar publicaciones reales. Para nuevas publicaciones usá COPIAR PARA CHATGPT: David recibe retiro posterior y María solo retiro inmediato. No reutilices las asignaciones anteriores.</p>' : ''}
       ${['David', 'Maria'].filter(person => batch.assignments[person]?.length).map(person => `
         <div data-regular-assignment>
           <p>${person}: dejá marcados únicamente los Items realmente publicados. Para un lote completo basta confirmar una vez.</p>

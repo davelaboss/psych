@@ -113,13 +113,30 @@ used. Protected products follow the same eligibility rule; no prices are changed
 Lower-priced products remain in the public catalog and raw Sale Pulse packet.
 New selections rank current asking prices from highest to lowest, then Item number
 and stable product ID for ties. Preparation evidence never outranks price. Take at most
-ten, assigned five to David then five to María, with no overlap. Fewer remaining
+ten, with no overlap, using the owner-approved pickup lanes: David receives up to
+five DELAYED Items first, ranked by price. He may fill unused places with the
+highest-priced IMMEDIATE Items; María receives only the next eligible IMMEDIATE
+Items, up to five. The David-first immediate fill preserves existing ordering when
+there are no delayed Items. Surplus delayed stock remains eligible for David's next
+batch; it is never assigned to María to fill her allocation. Fewer remaining
 first-pass Items produce fewer entries, never repeat fill. Reopening, including on a later date,
 returns only still-eligible, unconfirmed assigned Items. Once those Items are all
 confirmed (or no longer eligible), another click can prepare the next batch on the
 same date: morning and afternoon need no new controls. Price changes never reshuffle
 an unfinished batch. The pass identity, old assignments and POSTED timestamps stay
 intact. Incomplete eligible product facts fail closed.
+
+New batches carry `assignmentPolicy: david-delayed-maria-immediate-v1`. Older
+untagged batches remain immutable and visible for truthful late publication
+confirmations, including any delayed Items previously assigned to María. They
+are explicitly labelled as older assignments in Admin and are not reused for new
+production. The next owner-initiated prepare creates a current-policy batch from
+eligible unposted Items, preserving the same priority pass, baseline and POSTED
+coverage. No old batch is deleted, silently reassigned, or automatically confirmed.
+If a pending current-policy María Item changes to delayed pickup, preparation
+preserves that batch and creates compatible assignments instead of returning it
+to María. The desktop rejects incompatible inputs and requests a current handoff;
+it never performs its own reassignment or history migration.
 
 When no eligible unposted Items remain, preparation stops with a Spanish message
 to reuse existing photos and messages; it creates no repeat batch or automatic
@@ -147,25 +164,35 @@ are exported. The mobile JSON retains complete nonempty listing facts in
 `additionalImages` preserves the other original references relative to the site
 (or their original absolute URLs). Only positive vehicle/loading requirements are
 included; omitted/blank facts remain unverified, never promises of no restrictions.
-For DELAYED listings only, blank terms use the approved global fallback: 25%
-deposit, final payment December 1–8, 2026, and pickup December 9–12, 2026. Explicit
-Item-specific values/exceptions, including pickupAvailableDate, take precedence.
-These are handoff instructions only; catalog, checkout and campaign records are unchanged.
+Source payment fields remain website facts for verification. They do not determine
+Marketplace direct-sale terms. Marketplace requires a 10% seña to confirm a delayed
+reservation, with the remaining 90% payable at pickup. Default pickup is December
+9–12, 2026; honor confirmed Item-specific restrictions without automatically offering
+earlier pickup. David may discuss earlier collection privately. Inquiries and
+inspections by appointment require no advance payment; an appointment is not a hold,
+and the Item stays available without a confirmed seña. No nonrefundable-deposit or
+cancellation terms are invented. Website checkout retains its 25% seña and December
+1–8 balance-payment window; this change does not modify checkout or product data.
 
 For every assigned Item the handoff requests seven Spanish Marketplace fields:
 photos/references, title, asking price, recommended category, condition, San Lorenzo
 location, and a concise ready-to-copy description. Beyond required listing fields,
 original photo references and URLs, posting TXT may include only confirmed condition,
 dimensions, availability and the delayed-pickup terms below. Do not automatically
-insert other auxiliary details, including routine defects, restrictions, immediate
-payment requirements or delivery notices. Preserve complete source facts in the
+insert other auxiliary source details or website checkout payment instructions.
+Immediate ads lead with DISPONIBLE AHORA and require full payment at pickup, with
+inquiries/inspection by appointment without advance payment. Both pickup modes
+state that the buyer arranges collection/transport in San Lorenzo and that there
+is no delivery or shipping. Coordinate the direct sale through Messenger; the
+product link is a reference, never a requirement to use website checkout on 10% terms.
+Preserve complete source facts in the
 handoff JSON for verification. Flag material defects/restrictions privately, outside
 posting TXT, and do not mark an advertisement ready until the owner has resolved
 any disclosure necessary to avoid misleading buyers.
 Marketplace uses only original photographs: no promotional graphics, overlays,
 screenshots or generated representations. DELAYED / RETIRO POSTERIOR descriptions
-include `Seña: 25%` and applicable dates, unless a confirmed Item-specific exception
-applies; never describe this disclosure as optional. Missing facts and questions
+lead with the pickup window and `Seña: 10% obligatoria para confirmar la reserva`,
+and explicitly state that the 90% balance is paid at collection. Missing facts and questions
 stay in separate private seller review, outside posting TXT. Read the Desk's existing
 `Config/marketplace-overrides.json` to distinguish already-advertised Items from
 new listings. Historical prices are not current prices. Each person's five entries
@@ -211,27 +238,24 @@ Preserve URL parameters, preview-cache safeguards and David's publication approv
 Detailed phone control walkthroughs are left to the Desk rather than repeated in
 the size-limited handoff.
 
-### Separate Desktop Production Desk adjustments still required
+### Desktop Production Desk alignment
 
-Read-only inspection found that Admin instructions alone cannot enforce image production:
+The local desk now uses the installed owner-supplied corrected green-header card
+renderer through the existing `templates/render_collages.py` batch entry point.
+This payment/assignment change leaves that renderer and its reference assets unchanged.
+`Scripts/marketplace-terms.mjs` supplies the same direct-sale policy to the existing
+`posting-copy.mjs` and `facebook-marketplace.mjs` preparation paths. New portable
+exports retain pickup mode and the assignment-policy tag; incompatible old inputs
+are rejected without changing their assignments or history. Legacy manifests stay
+readable, but stale payment text cannot be exported as new posting copy.
 
-- Local `Documents/Moving Sale/Marketing Production Desk/templates/render_collages.py`
-  still requires two or three Items per graphic, adds availability/pickup text and a
-  website footer, and uses `VENTA DE MUDANZA`. Although 1080×1920, it does not implement
-  the approved single-Item 274 template. Adapt or replace that local rendering path
-  using the approved graphic; do not regenerate the product photograph.
-- The local `START-HERE.txt` and `templates/desk-operating-instructions.txt` still
-  describe collage output. Synced `Desktop/Google Drive/Moving Sale/Marketing Production
-  Desk/Scripts/OPERATING-NOTES.txt` still requests pickup details in Status and permits
-  a fifth group photo; `Scripts/dmpd-core.mjs` embeds the old Status guidance in exports.
-  Align those instructions/exported guidance with the two TXT files, single-Item
-  graphic, four JW posts per person, social exclusions, Marketplace TXT limits/private
-  readiness review and original-only Marketplace images before producing another package.
-
-These local files and the existing Marketplace history were inspected, not changed.
-The approved sample graphic itself was not present in the inspected template paths;
-provide it to the Desk for exact visual matching. This PR changes only the Admin
-handoff, its tests and this documentation; it generates no package or graphics.
+Local START-HERE, both standing operating-instruction copies and Marketplace notes
+describe the approved policy and preserve the production stop for Governance review.
+Existing prepared Marketplace folders, archives, original photographs, configuration
+and posting history are preserved. Old prepared copy is a historical snapshot and
+must be regenerated before posting under the new terms. Website changes in this PR
+are limited to server selection, Admin handoff, focused tests and this documentation;
+the separate local installation produces verification fixtures only, not a live campaign.
 
 ### Failure and deployment boundaries
 

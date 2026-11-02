@@ -231,12 +231,16 @@ const handoffPacket = {
 };
 
 function trustedSelection(products, overrides = {}) {
-  const ids = products.slice(0, 10).map(p => p.productId);
+  const selected=products.slice(0,10),delayed=selected.filter(p=>p.saleMode==='DELAYED'),immediate=selected.filter(p=>p.saleMode==='IMMEDIATE');
+  const david=[...delayed.slice(0,5),...immediate.slice(0,5-Math.min(delayed.length,5))].map(p=>p.productId);
+  const maria=immediate.slice(5-Math.min(delayed.length,5),10-Math.min(delayed.length,5)).map(p=>p.productId);
+  const ids=[...david,...maria];
   return { status: 'READY', campaignId: 'regular-chatgpt-daily-v1', cycleId: 'synthetic-cycle',
     passId: 'priority-over-50000-v1', passStartedAt: '2026-10-30T12:00:00Z',
     batchId: 'synthetic-batch', startedAt: '2026-10-20T15:00:00Z', revision: 1,
     historicalCompleteness: 'UNRECONCILED', phase: 'FIRST_PASS',
-    selectedProductIds: ids, assignments: { David: ids.slice(0, 5), Maria: ids.slice(5) }, ...overrides };
+    assignmentPolicy:'david-delayed-maria-immediate-v1',
+    selectedProductIds: ids, assignments: { David: david, Maria: maria }, ...overrides };
 }
 handoffPacket.regularCampaign = trustedSelection(handoffPacket.marketableProducts);
 
@@ -250,6 +254,24 @@ function handoffData(text) {
   assert.ok(match);
   return JSON.parse(match[1]);
 }
+
+for(const mobile of [false,true]) test(`clipboard rejects legacy or delayed Maria assignments without rewriting them (${mobile?'mobile':'desktop'})`,async()=>{
+  for(const legacy of [false,true]) {
+    const packet=structuredClone(handoffPacket);
+    if(legacy)delete packet.regularCampaign.assignmentPolicy;
+    else {
+      packet.marketableProducts[0].saleMode='DELAYED';
+      packet.regularCampaign.assignments={David:[],Maria:['product-34']};
+    }
+    const before=structuredClone(packet),copied=[];
+    const {listeners}=overviewScenario({fetchSalePulse:async()=>pulse({marketingPacket:packet}),
+      ...(mobile?{writeClipboardItem:async([item])=>copied.push(await(await item.data['text/plain']).text())}:{writeClipboard:async text=>copied.push(text)})});
+    const button={disabled:false,textContent:''};
+    await chatgptButton(listeners)({currentTarget:button});
+    assert.equal(copied.length,0);assert.equal(button.textContent,legacy?'HISTORIAL NO FIABLE · NO COPIADO':'ASIGNACIÓN INCOMPATIBLE · NO COPIADO');
+    assert.deepEqual(packet,before);
+  }
+});
 
 function largePacket() {
   const categories = ['Muebles', 'Oficina', 'Decoración', 'Hogar', 'Jardín', 'Electrónica', 'Cocina', 'Herramientas'];
@@ -300,13 +322,13 @@ test('Marketplace handoff preserves source facts but limits posting TXT and bloc
   assert.deepEqual(candidate.marketplace, {...details,additionalImages:['https://example.test/images/side.jpg','/images/defect.jpg']});
   assert.match(copied[0],/resolver rutas relativas al sitio, conservar URLs completas/);
   assert.equal(candidate.saleMode,'DELAYED');
-  assert.match(copied[0], /1\. Fotos originales[\s\S]*2\. Título; 3\. Precio actual; 4\. Categoría recomendada[\s\S]*5\. Condición; 6\. San Lorenzo, Paraguay; 7\. Descripción concisa en español, lista para copiar/);
+  assert.match(copied[0], /Campos: fotos mainImageUrl \+ additionalImages[\s\S]*título; precio actual; categoría; condición; San Lorenzo; descripción española lista para copiar; productUrl de referencia/);
   const marketplaceInstructions = copied[0].split('FACEBOOK MARKETPLACE — BORRADORES')[1].split('MENSAJES GENERALES')[0];
-  assert.match(marketplaceInstructions, /TXT: campos requeridos, condición\/medidas\/disponibilidad confirmadas y términos RETIRO POSTERIOR; sin otros auxiliares automáticos/);
+  assert.match(marketplaceInstructions, /TXT: campos requeridos, condición\/medidas\/disponibilidad confirmadas y política de venta directa Marketplace/);
   assert.match(marketplaceInstructions, /Defectos\/restricciones materiales: SOLO PARA EL VENDEDOR, fuera del TXT/);
   assert.match(marketplaceInstructions, /no marques listo hasta resolver con dueño divulgación necesaria sin engañar/);
   assert.match(marketplaceInstructions, /Conserva fuente íntegra para verificar/);
-  assert.doesNotMatch(marketplaceInstructions, /Solo datos verificados: condición, medidas, disponibilidad, defectos, restricciones|No omitas esenciales|IMMEDIATE: pago completo|sin entregas ni envíos/);
+  assert.doesNotMatch(marketplaceInstructions, /Solo datos verificados: condición, medidas, disponibilidad, defectos, restricciones|No omitas esenciales/);
   assert.match(copied[0], /Sin datos: Marketplace NO VERIFICADO/);
   assert.match(copied[0], /Desk Config\/marketplace-overrides\.json: distingue ya anunciados\/nuevos; precios históricos no son actuales/);
   assert.match(copied[0], /Incluye existentes; nunca dupliques un anuncio activo/);
@@ -314,7 +336,7 @@ test('Marketplace handoff preserves source facts but limits posting TXT and bloc
   assert.doesNotMatch(copied[0], /PRIVATE-SELLER-QUESTION/);
 });
 
-test('DELAYED handoffs state approved global terms for blank fields while explicit Item exceptions take precedence', async () => {
+test('Marketplace handoff overrides checkout payment terms without rewriting source facts or offering earlier pickup', async () => {
   for (const exceptions of [
     {depositPercent:null,finalPaymentWindowStart:'',finalPaymentWindowEnd:null,pickupAvailableDate:'',pickupWindowStart:null,pickupWindowEnd:''},
     {depositPercent:40,finalPaymentWindowStart:'2026-11-20',finalPaymentWindowEnd:'2026-11-22',pickupAvailableDate:'2026-11-23',pickupWindowStart:'2026-11-23',pickupWindowEnd:'2026-11-24'},
@@ -326,10 +348,10 @@ test('DELAYED handoffs state approved global terms for blank fields while explic
     const {listeners}=overviewScenario({fetchSalePulse:async()=>pulse({marketingPacket:packet}),writeClipboard:async text=>copied.push(text)});
     await chatgptButton(listeners)({currentTarget:{disabled:false,textContent:''}});
     assert.equal(copied.length,1);
-    assert.match(copied[0],/DELAYED \/ RETIRO POSTERIOR: incluir "Seña: 25%" salvo excepción confirmada, y fechas aplicables/);
-    assert.match(copied[0],/Sin dato propio: pago final 1–8 y retiro 9–12 de diciembre de 2026/);
-    assert.match(copied[0],/Respeta valores y excepciones del Item/);
-    assert.match(copied[0],/nunca digas que la seña es opcional/);
+    assert.match(copied[0],/Seña: 10% obligatoria para confirmar la reserva/);
+    assert.match(copied[0],/Saldo del 90% al retirar/);
+    assert.match(copied[0],/nunca adelantes automáticamente/);
+    assert.match(copied[0],/Web conserva seña 25%, saldo 1–8 de diciembre y checkout; NO copies esos pagos en anuncios Marketplace/);
     const candidate=handoffData(copied[0]).candidates[0];
     assert.equal(candidate.saleMode,'DELAYED');
     for(const [key,value] of Object.entries(exceptions)) {
@@ -341,8 +363,9 @@ test('DELAYED handoffs state approved global terms for blank fields while explic
 });
 
 test('a representative ten-Item high-value catalog fits with every source fact and photo reference', async () => {
-  const source = (await loadBaseCatalog('https://example.test')).filter(p=>p.status==='AVAILABLE'&&p.quantityRemaining>0&&p.askingPricePYG>50000&&p.images?.length)
-    .sort((a,b)=>b.askingPricePYG-a.askingPricePYG||a.itemNumber-b.itemNumber).slice(0,10);
+  const eligible = (await loadBaseCatalog('https://example.test')).filter(p=>p.status==='AVAILABLE'&&p.quantityRemaining>0&&p.askingPricePYG>50000&&p.images?.length)
+    .sort((a,b)=>b.askingPricePYG-a.askingPricePYG||a.itemNumber-b.itemNumber);
+  const source=[...eligible.filter(p=>p.saleMode==='DELAYED').slice(0,5),...eligible.filter(p=>p.saleMode==='IMMEDIATE').slice(0,5)];
   const packet = buildSalePulseSnapshot({products:source,purchasableInventory:new Map(source.map(p=>[p.id,{
     capacity:p.quantityRemaining,committed_quantity:0,purchasable_quantity:p.quantityRemaining,cart_held_quantity:0,order_held_quantity:0,
   }]))}).marketingPacket;
@@ -529,14 +552,14 @@ test('handoff requires the approved Item 274 graphic for social channels and onl
   assert.match(socialInstructions, /plantilla fija Item 274 aprobada, vertical 9:16/);
   assert.match(socialInstructions, /SOLO VENTA POR MUDANZA, ITEM número, fotografía original auténtica, nombre y precio actual/);
   assert.match(socialInstructions, /Mismo gráfico terminado para Instagram\/Facebook Stories y WhatsApp Status/);
-  assert.match(socialInstructions, /Sin collages, capturas web, fichas de producto ni imágenes reconstruidas por IA; conserva apariencia real/);
+  assert.match(socialInstructions, /Sin collages, capturas web, fichas ni reconstrucción por IA/);
   assert.match(socialInstructions, /Si falta la plantilla aprobada, pídela, no la reinventes/);
   assert.match(socialInstructions, /Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales\./);
   assert.match(socialInstructions, /Gráficos sin descripciones ni URLs; enlaces solo en texto\/stickers/);
   assert.match(socialInstructions, /vista previa nativa correcta o foto original/);
   assert.doesNotMatch(socialInstructions, /contacto opcional|conserva limitaciones materiales|\bseña\b|pago final/i);
   assert.match(marketplaceInstructions, /SOLO fotografías originales: sin gráficos promocionales, banners, texto superpuesto, capturas web ni representaciones generadas/);
-  assert.match(marketplaceInstructions, /condición\/medidas\/disponibilidad confirmadas y términos RETIRO POSTERIOR; sin otros auxiliares automáticos/);
+  assert.match(marketplaceInstructions, /condición\/medidas\/disponibilidad confirmadas y política de venta directa Marketplace/);
   assert.match(text, /cb=fecha-hora conservando src y los demás parámetros[\s\S]*?No añadas src a mainImageUrl/);
   assert.match(text, /Borradores para aprobación de David/);
   assert.ok(text.length <= 18000);
