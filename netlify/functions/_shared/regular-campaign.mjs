@@ -5,6 +5,7 @@ import { PREPARATION_EVIDENCE } from './regular-campaign-seed.mjs';
 
 export const REGULAR_CAMPAIGN = 'regular-chatgpt-daily-v1';
 export const PRIORITY_PASS = 'priority-over-50000-v1';
+export const ASSIGNMENT_POLICY = 'david-delayed-maria-immediate-v1';
 export const LEDGER_KEY = 'history-v1.json';
 export const BASELINE_KEY = 'baseline-v1.json';
 const people = ['David', 'Maria'];
@@ -80,6 +81,7 @@ export function validateCampaignHistory(history, { allowProvisional = false } = 
         batch.cycleId !== history.cycleId || !validDate(batch.preparedAt) || Date.parse(batch.preparedAt) < Date.parse(history.startedAt) ||
         !['FIRST_PASS', 'PHASE_2'].includes(batch.phase) ||
         ![undefined, PRIORITY_PASS].includes(batch.passId) || (batch.passId === PRIORITY_PASS && batch.phase !== 'FIRST_PASS') ||
+        ![undefined, ASSIGNMENT_POLICY].includes(batch.assignmentPolicy) ||
         batch.date !== dateInParaguay(batch.preparedAt) || !batch.assignments ||
         Object.keys(batch.assignments).sort().join(',') !== 'David,Maria') {
       throw fail('Lote de campaña no fiable.');
@@ -128,7 +130,7 @@ function eligibleProducts(packet) {
     try { urlsValid = [p.productUrl, p.mainImage].every(url => typeof url === 'string' && url.length > 0 &&
       new URL(url, 'https://thelabossieres.com').protocol === 'https:'); } catch { /* fail below */ }
     if (!validId(p.productId) || ids.has(p.productId) || numbers.has(p.itemNumber) ||
-        !Number.isSafeInteger(p.itemNumber) || p.itemNumber < 1 || !p.title || !p.category || !p.saleMode ||
+        !Number.isSafeInteger(p.itemNumber) || p.itemNumber < 1 || !p.title || !p.category || !['IMMEDIATE', 'DELAYED'].includes(p.saleMode) ||
         !Number.isFinite(p.askingPricePYG) || p.askingPricePYG <= 0 || !(p.purchasableQuantity > 0) || !urlsValid) {
       throw fail('Faltan datos completos para preparar la campaña.');
     }
@@ -144,7 +146,14 @@ export function selectRegularCampaign(packet, history, now) {
   const firstPass = products.filter(p => !posted.has(p.productId));
   const byIdentity = (a, b) => a.itemNumber - b.itemNumber || a.productId.localeCompare(b.productId);
   const ranked = firstPass.sort((a, b) => b.askingPricePYG - a.askingPricePYG || byIdentity(a, b));
-  return { phase: 'FIRST_PASS', products: ranked.slice(0, 10), eligibleUnconfirmedCount: firstPass.length, totalMarketable: products.length };
+  const delayed = ranked.filter(p => p.saleMode === 'DELAYED');
+  const immediate = ranked.filter(p => p.saleMode === 'IMMEDIATE');
+  const davidDelayed = delayed.slice(0, 5);
+  // Keep David-first ordering for the permitted immediate fill; never borrow delayed stock for Maria.
+  const davidFill = immediate.slice(0, 5 - davidDelayed.length);
+  const assignments = { David: [...davidDelayed, ...davidFill], Maria: immediate.slice(davidFill.length, davidFill.length + 5) };
+  return { phase: 'FIRST_PASS', assignments, products: people.flatMap(person => assignments[person]),
+    eligibleUnconfirmedCount: firstPass.length, totalMarketable: products.length };
 }
 
 export function campaignPanel(history) {
@@ -156,6 +165,8 @@ export function campaignPanel(history) {
     startedAt: history.startedAt, historicalCompleteness: history.historicalCompleteness, revision: history.revision,
     pendingBatches: history.batches.filter(b => b.passId === PRIORITY_PASS).map(batch => ({
       id: batch.id, date: batch.date, phase: batch.phase,
+      assignmentPolicy: batch.assignmentPolicy || null,
+      requiresAssignmentReview: batch.assignmentPolicy !== ASSIGNMENT_POLICY,
       assignments: Object.fromEntries(people.map(person => [person, batch.assignments[person]
         .filter(p => !p.postedAt && (batch.phase === 'PHASE_2' || !posted.has(p.productId)))
         .map(p => ({ productId: p.productId, itemNumber: p.itemNumber }))])),
@@ -203,15 +214,17 @@ export async function readCampaignPanel({ store = campaignStore() } = {}) {
 
 function handoffCampaign(packet, history, batch) {
   const selection = selectRegularCampaign(packet, history, batch.preparedAt);
-  const marketable = new Set(eligibleProducts(packet).map(p => p.productId));
+  const marketable = new Map(eligibleProducts(packet).map(p => [p.productId, p]));
   const { posted } = coverage(history);
   const assignments = Object.fromEntries(people.map(person => [person, batch.assignments[person]
-    .filter(p => marketable.has(p.productId) && !p.postedAt && (batch.phase === 'PHASE_2' || !posted.has(p.productId)))
+    .filter(p => marketable.has(p.productId) && (person !== 'Maria' || marketable.get(p.productId).saleMode === 'IMMEDIATE') &&
+      !p.postedAt && (batch.phase === 'PHASE_2' || !posted.has(p.productId)))
     .map(p => p.productId)]));
   return {
     ...packet,
     regularCampaign: {
       ...campaignPanel(history), pendingBatches: undefined, batchId: batch.id, phase: batch.phase,
+      assignmentPolicy: batch.assignmentPolicy,
       eligibleUnconfirmedCount: selection.eligibleUnconfirmedCount, totalMarketable: selection.totalMarketable,
       assignments, selectedProductIds: people.flatMap(person => assignments[person]),
     },
@@ -246,14 +259,20 @@ export async function updateRegularCampaign({ body, loadPacket, store = campaign
       packet = await loadPacket();
       const selected = selectRegularCampaign(packet, history, instant);
       // Finish an eligible pending handoff before selecting again, even on a new date.
+      const modes = new Map(eligibleProducts(packet).map(p => [p.productId, p.saleMode]));
+      // Preserve old assignments for true late confirmations. Only current-policy, still-compatible
+      // batches may be reused for new production; never rewrite a legacy Maria assignment in place.
       batch = history.batches.findLast(b => b.passId === PRIORITY_PASS && b.phase === selected.phase &&
+        b.assignmentPolicy === ASSIGNMENT_POLICY &&
+        b.assignments.Maria.every(p => p.postedAt || !modes.has(p.productId) || modes.get(p.productId) === 'IMMEDIATE') &&
         handoffCampaign(packet, history, b).regularCampaign.selectedProductIds.length);
       if (!batch) {
         if (!selected.products.length) throw fail('No quedan Items elegibles sin publicar en la pasada prioritaria. Reutilizá las fotos y mensajes existentes para nuevas publicaciones; no se preparó otro lote.');
         batch = { id: idFactory(), campaignId: REGULAR_CAMPAIGN, cycleId: history.cycleId,
           date: dateInParaguay(instant), preparedAt: instant, phase: selected.phase, passId: PRIORITY_PASS,
-          assignments: Object.fromEntries(people.map((person, index) => [person, selected.products
-            .slice(index * 5, index * 5 + 5).map(p => ({ productId: p.productId, itemNumber: p.itemNumber, postedAt: null }))])) };
+          assignmentPolicy: ASSIGNMENT_POLICY,
+          assignments: Object.fromEntries(people.map(person => [person, selected.assignments[person]
+            .map(p => ({ productId: p.productId, itemNumber: p.itemNumber, postedAt: null }))])) };
         history.batches.push(batch); changed = true;
       }
     } else {

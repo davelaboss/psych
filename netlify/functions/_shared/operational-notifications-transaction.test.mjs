@@ -433,7 +433,8 @@ async function fixturePickup(slotKey, { timingKey = 'IMMEDIATE', buyer, items } 
   return snapshot;
 }
 
-test('reading and retaining a legacy half-day appointment never changes it or queues mail', async () => {
+test('reading and retaining a legacy half-day appointment never changes it or queues mail', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-02T07:00:00-03:00') });
   const legacy = await fixturePickup('2026-11-02|08:00-12:00');
   const before = await rows('SELECT * FROM pickup_appointments');
   const notices = await rows();
@@ -448,7 +449,8 @@ test('reading and retaining a legacy half-day appointment never changes it or qu
   assert.deepEqual(await rows(), notices);
 });
 
-test('availability counts legacy overlap, respects touching endpoints and ignores cancelled rows', async () => {
+test('availability counts legacy overlap, respects touching endpoints and ignores cancelled rows', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-02T07:00:00-03:00') });
   for (let i = 0; i < 3; i++) await fixturePickup('2026-11-02|08:00-12:00');
   await fixturePickup('2026-11-02|10:00-11:00');
   const cancelled = await fixturePickup('2026-11-02|10:00-11:00');
@@ -465,7 +467,8 @@ test('availability counts legacy overlap, respects touching endpoints and ignore
     slotKey: '2026-11-02|10:00-11:00', actor: 'ADMIN' }), /completo/);
 });
 
-test('a full legacy window permits its own replacement; failed replacement retains the appointment', async () => {
+test('a full legacy window permits its own replacement; failed replacement retains the appointment', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-02T07:00:00-03:00') });
   const legacy = [];
   for (let i = 0; i < 4; i++) legacy.push(await fixturePickup('2026-11-02|08:00-12:00'));
   for (let i = 0; i < 4; i++) await fixturePickup('2026-11-03|13:00-14:00');
@@ -483,7 +486,8 @@ test('a full legacy window permits its own replacement; failed replacement retai
   assert.equal(result.revision, 2);
 });
 
-test('failure to enqueue either pickup message rolls back the replacement and both outbox rows', async () => {
+test('failure to enqueue either pickup message rolls back the replacement and both outbox rows', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-02T07:00:00-03:00') });
   for (const failAgenda of [false, true]) {
     const legacy = await fixturePickup('2026-11-02|08:00-12:00');
     const before = await rows();
@@ -516,7 +520,8 @@ test('upcoming schedule excludes finished and cancelled appointments using Parag
   assert.deepEqual(await listUpcomingPickups({ now: new Date('2026-11-02T13:00:00-03:00') }), []);
 });
 
-test('first agenda dispatch reads all committed changes chronologically with buyer, type, item IDs and quantities', async () => {
+test('first agenda dispatch reads all committed changes chronologically with buyer, type, item IDs and quantities', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-02T07:00:00-03:00') });
   const late = await fixturePickup('2026-12-10|15:00-16:00', {
     timingKey: 'DELAYED:2026-12-09:2026-12-12', buyer: { name: 'Zulma', phone: '+595 333' },
     items: [{ productId: 'delayed-product', itemNumber: 474, quantity: 2, saleMode: 'DELAYED',

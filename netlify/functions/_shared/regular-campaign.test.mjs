@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
-import { REGULAR_CAMPAIGN, PRIORITY_PASS, LEDGER_KEY, BASELINE_KEY, updateRegularCampaign,
+import { REGULAR_CAMPAIGN, PRIORITY_PASS, ASSIGNMENT_POLICY, LEDGER_KEY, BASELINE_KEY, updateRegularCampaign,
   readCampaignPanel, selectRegularCampaign, validateCampaignHistory } from './regular-campaign.mjs';
 import { PREPARATION_EVIDENCE } from './regular-campaign-seed.mjs';
 import { loadBaseCatalog, loadCatalog } from './commerce.mjs';
@@ -65,6 +65,67 @@ function harness(count = 60, evidence = []) {
   };
 }
 const selected = result => result.packet.regularCampaign.selectedProductIds;
+
+test('pickup lanes prioritize delayed stock for David and reserve Maria for immediate stock', async () => {
+  const h=harness(18), packet=h.packet();
+  packet.marketableProducts.forEach((p,i)=>{p.saleMode=i<8?'DELAYED':'IMMEDIATE';p.askingPricePYG=100000+i*10000;});
+  const before=clone(packet);h.setPacket(packet);
+  const first=await h.prepare(), assignments=first.packet.regularCampaign.assignments;
+  assert.deepEqual(assignments.David,['product-8','product-7','product-6','product-5','product-4']);
+  assert.deepEqual(assignments.Maria,['product-18','product-17','product-16','product-15','product-14']);
+  assert.equal(new Set(selected(first)).size,10);
+  assert.equal(first.packet.regularCampaign.assignmentPolicy,ASSIGNMENT_POLICY);
+  await h.confirm(first,'David');await h.confirm(first,'Maria');
+  const second=await h.prepare();
+  assert.deepEqual(second.packet.regularCampaign.assignments.David,['product-3','product-2','product-1','product-13','product-12']);
+  assert.deepEqual(second.packet.regularCampaign.assignments.Maria,['product-11','product-10','product-9']);
+  await h.confirm(second,'David');await h.confirm(second,'Maria');
+  await assert.rejects(h.prepare(),/No quedan Items elegibles/);
+  assert.deepEqual(h.packet(),before);
+  assert.equal(new Set(h.history().batches.flatMap(b=>Object.values(b.assignments).flat().map(p=>p.productId))).size,18);
+});
+
+for (const delayed of [0,2,7,12]) test(`pickup-mode shortage remains valid with ${delayed} delayed Items`,async()=>{
+  const h=harness(12),packet=h.packet();
+  packet.marketableProducts.forEach((p,i)=>{p.saleMode=i<delayed?'DELAYED':'IMMEDIATE';});h.setPacket(packet);
+  const result=await h.prepare(),a=result.packet.regularCampaign.assignments;
+  const byId=new Map(packet.marketableProducts.map(p=>[p.productId,p]));
+  assert.ok(a.Maria.every(id=>byId.get(id).saleMode==='IMMEDIATE'));
+  assert.ok(a.David.length<=5&&a.Maria.length<=5);
+  assert.equal(a.David.filter(id=>byId.get(id).saleMode==='DELAYED').length,Math.min(5,delayed));
+  assert.equal(new Set(selected(result)).size,selected(result).length);
+  if(delayed===12){assert.equal(a.David.length,5);assert.equal(a.Maria.length,0);}
+});
+
+test('legacy pending assignments and POSTED timestamps remain intact at the pickup-policy boundary',async()=>{
+  const h=harness(12),old=await h.prepare();await h.confirm(old,'David',['product-1']);
+  delete h.store.files.get(LEDGER_KEY).data.batches[0].assignmentPolicy;
+  const packet=h.packet();packet.marketableProducts.find(p=>p.productId==='product-6').saleMode='DELAYED';h.setPacket(packet);
+  const before=h.history(),anchor=clone(h.store.files.get(BASELINE_KEY));
+  const panel=await readCampaignPanel({store:h.store});
+  assert.equal(panel.pendingBatches[0].requiresAssignmentReview,true);
+  assert.deepEqual(h.history(),before,'Passive viewing does not migrate history');
+  const current=await h.prepare();
+  assert.notEqual(current.packet.regularCampaign.batchId,old.packet.regularCampaign.batchId);
+  assert.deepEqual(h.history().batches[0],before.batches[0]);
+  assert.deepEqual(h.store.files.get(BASELINE_KEY),anchor);
+  assert.ok(!selected(current).includes('product-1'));
+  assert.ok(current.packet.regularCampaign.assignments.David.includes('product-6'));
+  assert.ok(!current.packet.regularCampaign.assignments.Maria.includes('product-6'));
+  await h.confirm(old,'Maria',['product-6']); // Only a truthful explicit late publication confirmation.
+  assert.ok(h.history().batches[0].assignments.Maria.find(p=>p.productId==='product-6').postedAt);
+  assert.ok(!selected(await h.prepare()).includes('product-6'),'Late confirmation still protects against repeats');
+});
+
+test('a changed pickup mode never returns a delayed Maria assignment or rewrites the pending batch',async()=>{
+  const h=harness(12),first=await h.prepare(),before=h.history();
+  const packet=h.packet();packet.marketableProducts.find(p=>p.productId==='product-6').saleMode='DELAYED';h.setPacket(packet);
+  const next=await h.prepare();
+  assert.notEqual(next.packet.regularCampaign.batchId,first.packet.regularCampaign.batchId);
+  assert.deepEqual(h.history().batches[0],before.batches[0]);
+  assert.ok(next.packet.regularCampaign.assignments.David.includes('product-6'));
+  assert.ok(!next.packet.regularCampaign.assignments.Maria.includes('product-6'));
+});
 
 test('new batches rank current authoritative prices descending, then Item number, without replacing pending batches', async () => {
   const h = harness(23), packet = h.packet();
