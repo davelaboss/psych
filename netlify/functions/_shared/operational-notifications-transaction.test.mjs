@@ -23,6 +23,21 @@ import {
 // constraints. No external database, blob storage, or mail provider is contacted.
 let db;
 let query;
+let pickupClockFrozen = false;
+const pickupTestNow = Date.parse('2026-11-02T07:00:00-03:00');
+
+function freezePickupClock(t) {
+  t.mock.timers.enable({ apis: ['Date'], now: pickupTestNow });
+  pickupClockFrozen = true;
+}
+
+function queryWithPickupClock(sql, params = []) {
+  if (!pickupClockFrozen || !sql.includes('clock_timestamp()')) return db.query(sql, params);
+  // Keep SQL expiry checks and fixture deadlines on the same clock as slot
+  // validation. This substitution is confined to the isolated test database.
+  return db.query(sql.replaceAll('clock_timestamp()', `$${params.length + 1}::timestamptz`),
+    [...params, new Date(Date.now())]);
+}
 const originalFetch = globalThis.fetch;
 const envKeys = ['SELLER_NOTIFICATION_TO', 'SELLER_NOTIFICATION_FROM', 'RESEND_API_KEY',
   'URL', 'DEPLOY_PRIME_URL', 'DEPLOY_URL'];
@@ -42,7 +57,8 @@ test.before(async () => {
 
 test.beforeEach(async () => {
   await db.exec('TRUNCATE cart_sessions,operational_inventory RESTART IDENTITY CASCADE');
-  query = (sql, params = []) => db.query(sql, params);
+  pickupClockFrozen = false;
+  query = queryWithPickupClock;
   setInventoryDatabaseClientForTests({ pool: {
     query: (sql, params) => query(sql, params),
     connect: async () => ({ query: (sql, params) => query(sql, params), release() {} }),
@@ -220,7 +236,8 @@ async function scheduledOrder() {
 
 for (const delayed of [false, true]) for (const actor of ['CUSTOMER', 'ADMIN']) {
   for (const amount of [0, 10_000, 25_000, 100_000]) {
-    test(`${actor} schedules/reschedules ${delayed ? 'delayed' : 'immediate'} at ${amount} paid without changing finances or inventory`, async () => {
+    test(`${actor} schedules/reschedules ${delayed ? 'delayed' : 'immediate'} at ${amount} paid without changing finances or inventory`, async t => {
+      freezePickupClock(t);
       const { order } = await created('buyer@example.com', delayed);
       if (amount) await pay(order.id, amount, delayed ? 'DEPOSIT' : 'FULL',
         amount < (delayed ? 25_000 : 100_000) ? { approvePartialPayment: true, internalNote: 'Synthetic approved partial' } : {});
@@ -251,7 +268,8 @@ for (const delayed of [false, true]) for (const actor of ['CUSTOMER', 'ADMIN']) 
   }
 }
 
-test('expired and cancelled unpaid orders cannot book or retain capacity; scheduling never renews the hold', async () => {
+test('expired and cancelled unpaid orders cannot book or retain capacity; scheduling never renews the hold', async t => {
+  freezePickupClock(t);
   const slotKey = '2026-11-03|08:00-09:00';
   const expired = await created();
   const cancelled = await created();
@@ -260,7 +278,7 @@ test('expired and cancelled unpaid orders cannot book or retain capacity; schedu
   await change(expired.order.id);
   await change(cancelled.order.id);
   await cancelOrder(cancelled.order.id);
-  await db.query("UPDATE checkout_attempts SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [expired.order.id]);
+  await query("UPDATE checkout_attempts SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [expired.order.id]);
   const before = await rows('SELECT * FROM checkout_attempts ORDER BY order_id');
   for (const { order } of [expired, cancelled]) {
     await assert.rejects(change(order.id), /no está activo/); // Includes same-slot retry.
@@ -277,18 +295,19 @@ test('expired and cancelled unpaid orders cannot book or retain capacity; schedu
   assert.equal((await getOrderSnapshot(active.order.id)).status, 'CANCELLED');
 });
 
-test('Sale Pulse counts unpaid active timing parts and excludes expired, cancelled and delivered parts', async () => {
+test('Sale Pulse counts unpaid active timing parts and excludes expired, cancelled and delivered parts', async t => {
+  freezePickupClock(t);
   const unpaid = await created();
   const delayed = await created('buyer@example.com', true);
   const expired = await created();
   const cancelled = await created();
   const delivered = await created();
   await cancelOrder(cancelled.order.id);
-  await db.query("UPDATE checkout_attempts SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [expired.order.id]);
+  await query("UPDATE checkout_attempts SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [expired.order.id]);
   const load = () => loadSalePulseSnapshot('https://example.com', {
     loadProducts: async () => [],
     query: async (sql, params) => {
-      if (sql.includes('FROM checkout_attempts') || sql.includes('FROM pickup_appointments')) return db.query(sql, params);
+      if (sql.includes('FROM checkout_attempts') || sql.includes('FROM pickup_appointments')) return query(sql, params);
       if (sql.includes('FROM fulfillment_batch_items')) return { rows: [{ order_id: delivered.order.id, timing_key: 'IMMEDIATE', all_delivered: true }] };
       return { rows: [] };
     },
@@ -302,11 +321,12 @@ test('Sale Pulse counts unpaid active timing parts and excludes expired, cancell
   assert.equal((await getOrderSnapshot(unpaid.order.id)).payments.length, 0);
 });
 
-test('independent reservation renewal never resurrects its expired appointment', async () => {
+test('independent reservation renewal never resurrects its expired appointment', async t => {
+  freezePickupClock(t);
   const { order } = await created();
   await changePickup({ orderId: order.id, timingKey: 'IMMEDIATE', slotKey: '2026-11-03|08:00-09:00', actor: 'CUSTOMER' });
-  await db.query("UPDATE checkout_attempts SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [order.id]);
-  await db.query("UPDATE inventory_reservations SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [order.id]);
+  await query("UPDATE checkout_attempts SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [order.id]);
+  await query("UPDATE inventory_reservations SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [order.id]);
   const result = await refreshOrderReservation(order.id);
   assert.equal(result.renewed, true);
   assert.equal(result.order.status, 'AWAITING_INITIAL_PAYMENT');
@@ -317,19 +337,26 @@ test('independent reservation renewal never resurrects its expired appointment',
 });
 
 test('an unpaid hold expiring while waiting for the date lock cannot save a replacement', async t => {
+  freezePickupClock(t);
   const { order } = await created();
   const original = '2026-11-03|08:00-09:00', replacement = '2026-11-03|09:00-10:00';
   await changePickup({ orderId: order.id, timingKey: 'IMMEDIATE', slotKey: original, actor: 'CUSTOMER' });
   const before = await rows('SELECT * FROM pickup_appointments');
   const notices = await rows();
   const expiry = Number(order.holdExpiresAt);
-  t.mock.timers.enable({ apis: ['Date'], now: expiry - 1 });
+  t.mock.timers.setTime(expiry - 1);
+  assert.ok(pickupSlotKeys(order, 'IMMEDIATE').includes(replacement));
+  let waitedForDateLock = false;
   query = async (sql, params) => {
-    const result = await db.query(sql, params);
-    if (sql.includes('SELECT slot_key FROM pickup_windows')) t.mock.timers.setTime(expiry + 1);
+    const result = await queryWithPickupClock(sql, params);
+    if (sql.includes('SELECT slot_key FROM pickup_windows')) {
+      waitedForDateLock = true;
+      t.mock.timers.setTime(expiry + 1);
+    }
     return result;
   };
   await assert.rejects(changePickup({ orderId: order.id, timingKey: 'IMMEDIATE', slotKey: replacement, actor: 'CUSTOMER' }), /no está disponible/);
+  assert.equal(waitedForDateLock, true);
   assert.deepEqual(await rows('SELECT * FROM pickup_appointments'), before);
   assert.deepEqual(await rows(), notices);
 });
