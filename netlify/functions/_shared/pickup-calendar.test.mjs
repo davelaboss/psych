@@ -84,6 +84,54 @@ test('preview identifies every affected buyer and legacy overlap without changin
   assert.equal((await listUpcomingPickups({ client: db, now: new Date(clock) })).filter(a => a.needsReschedule).length, 2);
 });
 
+test('calendar and conflict reads follow PR69 active-order rules while retaining all historical rows', async () => {
+  const cases = [
+    ...['AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT', 'DEPOSIT_CONFIRMED',
+      'FINAL_RECEIPT_RECEIVED', 'PAYMENT_CONFIRMED', 'PAID_IN_FULL', 'READY_TO_SCHEDULE', 'PICKUP_SCHEDULED']
+      .map(status => ({ status, active: true })),
+    ...['CANCELLED', 'EXPIRED', 'PICKED_UP', 'UNKNOWN', null].map(status => ({ status, active: false })),
+    { status: 'AWAITING_INITIAL_PAYMENT', expiry: -1, active: false },
+    { status: 'RECEIPT_RECEIVED', expiry: -1, active: false },
+    { status: 'AWAITING_INITIAL_PAYMENT', expiry: 3600, active: true },
+    { status: 'PAID_IN_FULL', expiry: -1, committed: true, active: true },
+    { status: 'PAID_IN_FULL', reservationState: 'EXPIRED', committed: true, active: false },
+    { status: 'AWAITING_INITIAL_PAYMENT', reservationState: 'EXPIRED', expiry: 3600, active: false },
+  ];
+  const expected = [];
+  for (const entry of cases) {
+    const order = await fixture(slot, { legacy: true });
+    const snapshot = { ...order, status: entry.status, ...(entry.reservationState ? { reservationState: entry.reservationState } : {}) };
+    await db.query(`UPDATE checkout_attempts SET order_snapshot=$2,
+      expires_at=CASE WHEN $3::int IS NULL THEN NULL ELSE clock_timestamp()+$3::int*interval '1 second' END,
+      committed_at=CASE WHEN $4 THEN clock_timestamp() ELSE NULL END WHERE order_id=$1`,
+    [order.id, JSON.stringify(snapshot), entry.expiry ?? null, Boolean(entry.committed)]);
+    if (entry.active) expected.push(order.id);
+  }
+  const appointmentsBefore = (await db.query('SELECT * FROM pickup_appointments ORDER BY order_id')).rows;
+  const ordersBefore = (await db.query('SELECT * FROM checkout_attempts ORDER BY order_id')).rows;
+  const calendar = await readPickupCalendar('2026-12', db);
+  const review = await changePickupBlackout(draft({ action: 'preview' }));
+  assert.deepEqual(calendar.appointments.map(a => a.orderId).sort(), expected.sort());
+  assert.deepEqual(review.conflicts.map(a => a.orderId).sort(), expected);
+  assert.equal((await changePickupBlackout(draft({ action: 'save', reviewToken: review.reviewToken }))).saved, true);
+  assert.deepEqual((await readPickupCalendar('2026-12', db)).appointments.filter(a => a.needsReschedule).map(a => a.orderId).sort(), expected);
+  assert.deepEqual((await db.query('SELECT * FROM pickup_appointments ORDER BY order_id')).rows, appointmentsBefore);
+  assert.deepEqual((await db.query('SELECT * FROM checkout_attempts ORDER BY order_id')).rows, ordersBefore);
+});
+
+test('additive migration applies to populated scheduling tables before the new calendar can run', async () => {
+  await fixture(slot, { legacy: true });
+  const appointmentsBefore = (await db.query('SELECT * FROM pickup_appointments ORDER BY order_id')).rows;
+  const ordersBefore = (await db.query('SELECT * FROM checkout_attempts ORDER BY order_id')).rows;
+  await db.exec('DROP TABLE pickup_blackouts'); // Disposable test schema only; emulate the pre-release database.
+  await assert.rejects(readPickupCalendar('2026-12', db), e => e.code === '42P01');
+  await db.exec(await readFile(new URL('../../database/migrations/20261102_pickup_blackouts.sql', import.meta.url), 'utf8'));
+  assert.equal((await readPickupCalendar('2026-12', db)).appointments.length, 1);
+  assert.deepEqual((await db.query('SELECT * FROM pickup_appointments ORDER BY order_id')).rows, appointmentsBefore);
+  assert.deepEqual((await db.query('SELECT * FROM checkout_attempts ORDER BY order_id')).rows, ordersBefore);
+  assert.equal((await db.query('SELECT * FROM pickup_blackouts')).rows.length, 0);
+});
+
 test('a booking between preview and confirmation forces review of the new actual buyer', async () => {
   const review = await changePickupBlackout(draft({ action: 'preview' }));
   const order = await fixture(); await book(order);

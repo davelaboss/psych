@@ -38,12 +38,20 @@ export function calendarAppointment(row) {
     itemNumbers: (part?.items || row.order_snapshot.items || []).map(item => item.itemNumber),
     needsReschedule: Boolean(row.needs_reschedule) };
 }
+// Match PR #69's activeOrderSql at a9667ee without importing its payment policy.
+// This filters operational views only; historical orders/appointments stay untouched.
+const activeOrderSql = `c.order_snapshot->>'status' IN (
+  'AWAITING_INITIAL_PAYMENT','RECEIPT_RECEIVED','VERIFYING_PAYMENT',
+  'DEPOSIT_CONFIRMED','FINAL_RECEIPT_RECEIVED','PAYMENT_CONFIRMED',
+  'PAID_IN_FULL','READY_TO_SCHEDULE','PICKUP_SCHEDULED')
+  AND COALESCE(c.order_snapshot->>'reservationState','') <> 'EXPIRED'
+  AND (c.committed_at IS NOT NULL OR c.expires_at IS NULL OR c.expires_at>clock_timestamp())`;
 const appointmentSelect = `SELECT a.*,c.order_snapshot,EXISTS(SELECT 1 FROM pickup_blackouts b
   WHERE b.pickup_date=split_part(a.slot_key,'|',1)::date
     AND b.start_time<split_part(split_part(a.slot_key,'|',2),'-',2)::time
     AND b.end_time>split_part(split_part(a.slot_key,'|',2),'-',1)::time) AS needs_reschedule
   FROM pickup_appointments a JOIN checkout_attempts c ON c.order_id=a.order_id
-  WHERE a.status='SCHEDULED'`;
+  WHERE a.status='SCHEDULED' AND ${activeOrderSql}`;
 
 export async function readPickupCalendar(month, client = database().pool) {
   if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)) throw fail('Mes inválido.');

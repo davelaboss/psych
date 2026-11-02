@@ -5,9 +5,23 @@ const retiroTime = minutes => `${String(Math.floor(minutes / 60)).padStart(2, '0
 const retiroMinutes = time => Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
 const retiroRange = slot => slot.split('|')[1].split('-').map(retiroMinutes);
 
+function retiroWhatsAppNumber(phone) {
+  const formatted = String(phone || '').trim();
+  // Do not silently concatenate extensions, multiple numbers or arbitrary text.
+  if (!/^\+?[\d\s().-]+$/.test(formatted)) return '';
+  let digits = formatted.replace(/\D/g, '');
+  const international = formatted.startsWith('+') || digits.startsWith('00');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (!international && /^09\d{8}$/.test(digits)) return `595${digits.slice(1)}`;
+  if (/^5959\d{8}$/.test(digits)) return digits;
+  // Other Paraguayan formats are uncertain here; keep the original phone visible.
+  if (digits.startsWith('595')) return '';
+  return international && /^[1-9]\d{7,14}$/.test(digits) ? digits : '';
+}
+
 function retiroAppointmentCard(item) {
   const phone = String(item.buyerPhone || '');
-  const digits = phone.replace(/\D/g, '');
+  const digits = retiroWhatsAppNumber(phone);
   return `<article class="retiro-appointment${item.needsReschedule ? ' needs-reschedule' : ''}">
     <strong>${adminEscape(item.slotKey.replace('|', ' · '))} · ${adminEscape(item.buyer)}</strong>
     ${item.needsReschedule ? '<strong class="retiro-warning">Necesita reprogramar</strong>' : ''}

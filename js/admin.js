@@ -744,10 +744,6 @@ function adminTabButton(
 
 
 function renderAdminTab() {
-  if (ADMIN_STATE.activeTab === 'retiros') {
-    renderRetirosTab();
-    return;
-  }
   document
     .querySelectorAll(
       '[data-admin-tab]'
@@ -763,6 +759,11 @@ function renderAdminTab() {
         );
       }
     );
+
+  if (ADMIN_STATE.activeTab === 'retiros') {
+    renderRetirosTab();
+    return;
+  }
 
   if (
     ADMIN_STATE.activeTab ===

@@ -34,7 +34,7 @@ async function seed() {
   const orders = [];
   for (const [id, name, time] of [['VM-DEMO-001', 'Ana (demostración)', '09:00-10:00'], ['VM-DEMO-002', 'Bruno (demostración)', '08:00-12:00']]) {
     const session = randomUUID();
-    const order = { id, createdAt: Date.parse('2026-11-01T12:00:00Z'), status: 'PAID_IN_FULL', buyer: { name, phone: '+595 000 123456', email: '' },
+    const order = { id, createdAt: Date.parse('2026-11-01T12:00:00Z'), status: 'PAID_IN_FULL', buyer: { name, phone: id === 'VM-DEMO-001' ? '(0981) 123-456' : '+595 982 234 567', email: '' },
       totals: { totalPYG: 100000, dueNowPYG: 100000, futureBalancePYG: 0 },
       items: [{ productId: 'synthetic', itemNumber: 381, title: 'Artículo de demostración', quantity: 1, saleMode: 'IMMEDIATE', unitPricePYG: 100000, dueNowPYG: 100000 }],
       payments: [{ id: 'paid', type: 'FULL', amountPYG: 100000, amountSource: 'ADMIN_VERIFIED', verifiedBy: 'ADMIN', verificationStatus: 'CONFIRMED' }], paymentAdjustments: [] };
@@ -76,10 +76,13 @@ for (const mobile of [false, true]) test(`Retiros ${mobile ? 'mobile' : 'desktop
   });
   await page.goto('http://retiros.test/admin');
   await page.evaluate(orders => {
-    ADMIN_STATE.token = 'synthetic-owner'; ADMIN_STATE.activeTab = 'retiros'; ADMIN_STATE.orders = orders;
+    ADMIN_STATE.token = 'synthetic-owner'; ADMIN_STATE.activeTab = 'orders'; ADMIN_STATE.orders = orders;
     ADMIN_STATE.stats = { review: 0, awaitingPayment: 0, totalProducts: 0 }; renderAdminShell();
   }, orders);
+  assert.deepEqual(await page.locator('[data-admin-tab].active').evaluateAll(buttons => buttons.map(b => b.dataset.adminTab)), ['orders']);
+  await page.locator('[data-admin-tab="retiros"]').click();
   await page.locator('[data-retiro-date="2026-11-01"]').waitFor();
+  assert.deepEqual(await page.locator('[data-admin-tab].active').evaluateAll(buttons => buttons.map(b => b.dataset.adminTab)), ['retiros']);
   assert.deepEqual(await page.locator('[data-admin-tab]').evaluateAll(buttons => buttons.map(b => b.dataset.adminTab)),
     ['overview', 'retiros', 'orders', 'buyer-sheets', 'inventory', 'pricing', 'batches', 'marketing', 'review']);
   await page.getByRole('button', { name: 'Mes anterior' }).click();
@@ -97,6 +100,8 @@ for (const mobile of [false, true]) test(`Retiros ${mobile ? 'mobile' : 'desktop
   await review.getByText('Compradores afectados', { exact: true }).waitFor();
   assert.equal(await review.locator('.retiro-appointment').count(), 2);
   assert.equal(await review.getByRole('link', { name: 'WhatsApp' }).count(), 2);
+  assert.deepEqual((await review.getByRole('link', { name: 'WhatsApp' }).evaluateAll(links => links.map(a => a.href))).sort(),
+    ['https://wa.me/595981123456', 'https://wa.me/595982234567']);
   assert.equal(await review.getByRole('button', { name: 'Abrir pedido' }).count(), 2);
   assert.match(await review.innerText(), /Ana.*|Bruno/); assert.match(await review.innerText(), /Item 381|Items 381/);
   assert.equal((await db.query('SELECT * FROM pickup_blackouts')).rows.length, 0);
@@ -126,6 +131,7 @@ for (const mobile of [false, true]) test(`Retiros ${mobile ? 'mobile' : 'desktop
   assert.equal((await db.query('SELECT * FROM pickup_blackouts')).rows.length, 0);
   await page.locator('[data-retiros-day] [data-retiro-order="VM-DEMO-001"]').click();
   await page.locator('[data-admin-detail="VM-DEMO-001"] #admin-pickup-editor').waitFor();
+  assert.deepEqual(await page.locator('[data-admin-tab].active').evaluateAll(buttons => buttons.map(b => b.dataset.adminTab)), ['orders']);
   assert.ok(requests.some(r => r.path === '/api/admin/order'));
   assert.equal(await page.locator('#admin-upcoming-pickups').count(), 0, 'upcoming list moved out of Pedidos');
   assert.deepEqual(errors, []);
