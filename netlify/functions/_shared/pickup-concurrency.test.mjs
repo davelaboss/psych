@@ -6,6 +6,7 @@ import pg from 'pg';
 import { changePickup } from './pickup.mjs';
 import { setInventoryDatabaseClientForTests } from './inventory-database.mjs';
 import { drainSellerNotifications } from './seller-notifications.mjs';
+import { changePickupBlackout } from './pickup-calendar.mjs';
 
 // Optional real PostgreSQL coverage for row blocking and independent workers.
 // Run with PICKUP_TEST_DATABASE_URL pointing to an expendable local database
@@ -29,18 +30,75 @@ test.before(async () => {
   await control.query(`CREATE SCHEMA ${schema}`);
   pool = new pg.Pool({ connectionString, max: 12, options: `-c search_path=${schema}` });
   for (const migration of ['20261001_operational_inventory', '20261005_pickup_notifications',
-    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts']) {
+    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts']) {
     await pool.query(await readFile(new URL(`../../database/migrations/${migration}.sql`, import.meta.url), 'utf8'));
   }
   setInventoryDatabaseClientForTests({ pool });
 });
 
 test.beforeEach(async () => {
-  if (pool) await pool.query('TRUNCATE cart_sessions CASCADE');
+  if (pool) await pool.query('TRUNCATE cart_sessions,pickup_blackouts,pickup_windows CASCADE');
   process.env.SELLER_NOTIFICATION_TO = 'seller@example.com';
   process.env.SELLER_NOTIFICATION_FROM = 'test@example.com';
   process.env.RESEND_API_KEY = 'mock-key';
   globalThis.fetch = async () => { throw new Error('Unexpected external request'); };
+});
+
+// Keep every independent-worker scenario valid after the calendar's actual dates pass.
+test.beforeEach(t => t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-01T12:00:00Z') }));
+
+test('blackout commits while a booking waits for its date lock; booking is rejected', { skip: !connectionString }, async () => {
+  const buyer = await fixture();
+  const body = { date: day, start: '08:30', end: '09:30', action: 'preview' };
+  const preview = await changePickupBlackout(body);
+  let releaseLock, acquired;
+  const held = new Promise(resolve => { acquired = resolve; });
+  const release = new Promise(resolve => { releaseLock = resolve; });
+  const blocker = changePickupBlackout({ ...body, action: 'save', reviewToken: preview.reviewToken }, {
+    transaction: async operation => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await operation(client); acquired(); await release;
+        await client.query('COMMIT'); return result;
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
+    },
+  });
+  await held;
+  let reachedDateLock;
+  const waiting = new Promise(resolve => { reachedDateLock = resolve; });
+  const booking = change(buyer, hourly, { transaction: async operation => {
+    const client = await pool.connect();
+    const wrapper = { query: (sql, params) => {
+      if (sql.includes('INSERT INTO pickup_windows')) reachedDateLock();
+      return client.query(sql, params);
+    } };
+    try { await client.query('BEGIN'); const result = await operation(wrapper); await client.query('COMMIT'); return result; }
+    catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  } });
+  const rejected = assert.rejects(booking, /bloqueado/);
+  await waiting; releaseLock(); await blocker; await rejected;
+  assert.equal((await pool.query('SELECT * FROM pickup_appointments')).rows.length, 0);
+  assert.equal((await notices()).length, 0);
+});
+
+test('booking commits while blackout confirmation waits; new buyer must be reviewed', { skip: !connectionString }, async () => {
+  const buyer = await fixture();
+  const body = { date: day, allDay: true, action: 'preview' };
+  const preview = await changePickupBlackout(body);
+  const gate = await pool.connect();
+  await gate.query('BEGIN');
+  await gate.query('INSERT INTO pickup_windows(slot_key) VALUES($1) ON CONFLICT DO NOTHING', [day]);
+  await gate.query('SELECT slot_key FROM pickup_windows WHERE slot_key=$1 FOR UPDATE', [day]);
+  // Hold the actual date row while committing a valid booking through that same client.
+  await change(buyer, hourly, { transaction: operation => operation(gate) });
+  const confirming = changePickupBlackout({ ...body, action: 'save', reviewToken: preview.reviewToken });
+  await gate.query('COMMIT'); gate.release();
+  const result = await confirming;
+  assert.equal(result.saved, false); assert.equal(result.conflicts[0].orderId, buyer);
+  assert.equal((await pool.query('SELECT * FROM pickup_blackouts')).rows.length, 0);
+  assert.equal((await pool.query('SELECT status FROM pickup_appointments')).rows[0].status, 'SCHEDULED');
 });
 
 test.after(async () => {

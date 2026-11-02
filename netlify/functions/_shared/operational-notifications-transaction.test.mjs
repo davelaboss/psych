@@ -32,7 +32,7 @@ test.before(async () => {
   db = new PGlite();
   for (const migration of ['20261001_operational_inventory', '20261002_cart_extension',
     '20261004_order_reservation_events', '20261005_pickup_notifications',
-    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts']) {
+    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts']) {
     await db.exec(await readFile(new URL(`../../database/migrations/${migration}.sql`, import.meta.url), 'utf8'));
   }
 });

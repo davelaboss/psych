@@ -4,7 +4,8 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 
 const customer = await readFile(new URL('../../../js/checkout.js', import.meta.url), 'utf8');
-const admin = await readFile(new URL('../../../js/admin.js', import.meta.url), 'utf8');
+const admin = await readFile(new URL('../../../js/admin.js', import.meta.url), 'utf8') + '\n' +
+  await readFile(new URL('../../../js/admin-retiros.js', import.meta.url), 'utf8');
 const oldSlot = '2026-11-02|08:00-12:00';
 const newSlot = '2026-11-03|13:00-14:00';
 const part = () => ({ timingKey: 'IMMEDIATE', timingLabel: 'Retiro inmediato', eligible: true,
@@ -23,7 +24,7 @@ function scenario(kind, { fail = false, data = part() } = {}) {
     querySelectorAll: () => [button, select],
     querySelector: selector => selector === 'form' ? form : selector.includes('error') ? error : null };
   const target = { innerHTML: '', querySelectorAll: () => kind === 'admin' ? [partElement] : [form] };
-  const upcoming = { innerHTML: '' };
+  const upcoming = { innerHTML: '', querySelectorAll: () => [] };
   const escape = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
   const context = {
