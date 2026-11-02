@@ -5451,9 +5451,7 @@ function renderAdminOrderDetail(
     <article class="admin-fulfillment-part ${part.timingKey === 'IMMEDIATE' ? 'is-immediate' : 'is-delayed'}">
       <header>
         <div><span class="section-kicker">${adminEscape(part.timingLabel).toUpperCase()}</span>
-          <strong>${part.eligible ? 'Pago actual satisfecho · listo para agendar' :
-            part.timingKey === 'IMMEDIATE' ? 'Falta completar el pago exigible ahora' :
-              `Saldo pendiente del pedido ${adminMoney(part.orderRemainingBalancePYG)}`}</strong></div>
+          <strong>${part.schedulingEligible ? 'Listo para agendar o cambiar sin pago previo' : 'Agendamiento no disponible para este pedido'}</strong></div>
         <div><span>A pagar ahora: ${adminMoney(part.dueNowPYG)}</span>
           ${Number(part.futureBalancePYG || 0) > 0 ? `<span>Saldo futuro de estos artículos: ${adminMoney(part.futureBalancePYG)}</span>` : ''}</div>
       </header>
@@ -5857,6 +5855,8 @@ function renderAdminOrderDetail(
         ` : ''}
 
         <div class="admin-detail-card"><h3>9. Acciones / contacto</h3>
+        <button class="secondary-action" type="button" data-copy-private-order-link>Copiar enlace privado del pedido</button>
+        <p data-private-order-link-status role="status"></p>
         ${canCancel ? `
           <div>
             <button class="secondary-action" type="button" data-cancel-order>
@@ -5884,6 +5884,8 @@ function renderAdminOrderDetail(
   `;
 
   setupAdminPickup(order);
+  target.querySelector('[data-copy-private-order-link]')?.addEventListener('click', event =>
+    copyAdminPrivateOrderLink(order.id, event.currentTarget, target.querySelector('[data-private-order-link-status]')));
 
   const updateBuyerGroup = async (action, targetBuyerGroupId = null) => {
     const errorBox = target.querySelector('[data-buyer-group-error]');
@@ -6040,6 +6042,29 @@ function renderAdminOrderDetail(
 
 }
 
+async function copyAdminPrivateOrderLink(orderId, button, status) {
+  button.disabled = true;
+  status.textContent = '';
+  try {
+    const result = adminFetch(`/api/admin/order-link?id=${encodeURIComponent(orderId)}`);
+    const link = result.then(data => data.privateOrderLink);
+    // Clipboard permission may fail before its deferred data is consumed.
+    link.catch(() => {});
+    if (typeof ClipboardItem === 'function' && typeof navigator.clipboard?.write === 'function') {
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'text/plain': link.then(text => new Blob([text], { type: 'text/plain' })) }),
+      ]);
+    } else {
+      await navigator.clipboard.writeText(await link);
+    }
+    status.textContent = 'Enlace privado copiado. Podés pegarlo en WhatsApp.';
+  } catch {
+    status.textContent = 'No se pudo copiar el enlace privado. Intentá de nuevo.';
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function loadUpcomingPickups() {
   const target = document.getElementById('admin-upcoming-pickups');
   if (!target) return;
@@ -6056,16 +6081,15 @@ async function setupAdminPickup(order) {
   try {
     const data = await adminFetch(`/api/admin/pickup?id=${encodeURIComponent(order.id)}`);
     target.innerHTML = `<h3>5. Retiros</h3><p>Hora de Paraguay. Nuevos turnos de una hora.</p><div class="admin-pickup-parts">
+      <p>Agendar no confirma pagos, modifica saldos ni autoriza una entrega anticipada. David y María deben verificar las obligaciones de pago antes de entregar los artículos.</p>
       ${(data.fulfillments || []).map(part => {
         const appointment = part.appointment?.status === 'SCHEDULED' ? part.appointment : null;
         return `<article class="admin-pickup-part" data-admin-pickup-part="${adminEscapeAttribute(part.timingKey)}">
           <h4>${adminEscape(part.timingLabel)}</h4>
           <p>Artículos: ${(part.items || []).map(item => adminEscape(adminFormatItem(item.itemNumber))).join(', ')}</p>
           ${appointment ? `<p><strong>Agendado:</strong> ${adminEscape(appointment.slotKey.replace('|', ' · '))}</p>` : '<p>Sin horario agendado.</p>'}
-          ${part.eligible ? `<p><strong>Pago satisfecho. Listo para agendar.</strong></p>` : `<p>${part.timingKey === 'IMMEDIATE'
-            ? 'Falta completar el importe exigible ahora.'
-            : `Todavía no disponible para retiro. Saldo pendiente del pedido: ${adminMoney(part.orderRemainingBalancePYG)}.`}</p>`}
-          ${part.slots.length ? `<form data-admin-pickup-form>
+          ${part.schedulingEligible ? '<p><strong>Listo para agendar o cambiar sin pago previo.</strong></p>' : '<p>Agendamiento no disponible: revisá si el pedido sigue activo o si la reserva venció.</p>'}
+          ${part.schedulingEligible && part.slots.length ? `<form data-admin-pickup-form>
             <label>Horario <select name="slotKey" required><option value="">Seleccioná fecha y horario</option>
               ${part.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
                 `<option value="${adminEscapeAttribute(slot.key)}"${slot.selected ? ' selected' : ''}>${adminEscape(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}</select></label>

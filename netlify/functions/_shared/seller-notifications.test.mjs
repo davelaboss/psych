@@ -153,12 +153,12 @@ test('full payment for immediate and delayed orders links directly to the pickup
     }, { paymentState: 'FULLY_PAID', verifiedAmountPYG: 100_000, previousConfirmedPaidPYG: 0 });
     assertEnvelope(text);
     assert.match(text, /Confirmamos el pago total de tu pedido VM-2026-TEST\./);
-    assert.match(text, /Ya podés elegir el horario de retiro desde este enlace:/);
+    assert.match(text, /Podés elegir o cambiar el horario de retiro desde este enlace:/);
     assertOneOrderAction(text, true);
   }
 });
 
-test('deposit confirmation keeps delayed orders on the private order page', () => {
+test('deposit confirmation links delayed orders to the payment-independent scheduler', () => {
   const text = render('PAYMENT_CONFIRMED', {
     remainingBalancePYG: 75_000,
     paidAmountPYG: 25_000,
@@ -167,7 +167,7 @@ test('deposit confirmation keeps delayed orders on the private order page', () =
   }, { paymentState: 'DEPOSIT_SATISFIED', verifiedAmountPYG: 25_000, previousConfirmedPaidPYG: 0 });
   assertEnvelope(text);
   assert.match(text, /La seña de tu pedido VM-2026-TEST está completa/);
-  assertOneOrderAction(text);
+  assertOneOrderAction(text, true);
 });
 
 test('mixed-order due-now confirmation links to the immediate scheduler without claiming delayed is ready', () => {
@@ -184,8 +184,8 @@ test('mixed-order due-now confirmation links to the immediate scheduler without 
         dueNowPYG: 12_500, futureBalancePYG: 37_500 },
     ],
   }, { paymentState: 'DEPOSIT_SATISFIED', verifiedAmountPYG: 72_500, previousConfirmedPaidPYG: 0 });
-  assert.match(text, /Los artículos de retiro inmediato ya se pueden agendar/);
-  assert.match(text, /El retiro posterior seguirá esperando el pago final/);
+  assert.match(text, /retiros inmediatos y posteriores sin pago previo/);
+  assert.match(text, /Agendar no confirma pagos ni autoriza la entrega/);
   assertOneOrderAction(text, true);
 });
 

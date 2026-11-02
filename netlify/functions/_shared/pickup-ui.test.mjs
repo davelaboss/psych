@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
+import { deriveOrderFulfillmentParts } from './order-fulfillments.mjs';
 
 const customer = await readFile(new URL('../../../js/checkout.js', import.meta.url), 'utf8');
 const admin = await readFile(new URL('../../../js/admin.js', import.meta.url), 'utf8');
 const oldSlot = '2026-11-02|08:00-12:00';
 const newSlot = '2026-11-03|13:00-14:00';
-const part = () => ({ timingKey: 'IMMEDIATE', timingLabel: 'Retiro inmediato', eligible: true,
+const part = () => ({ timingKey: 'IMMEDIATE', timingLabel: 'Retiro inmediato', schedulingEligible: true, eligible: false,
   items: [{ itemNumber: 381, quantity: 2 }],
   appointment: { status: 'SCHEDULED', slotKey: oldSlot, revision: 4 },
   slots: [{ key: newSlot, remaining: 1 }, { key: '2026-11-03|14:00-15:00', remaining: 0 }] });
@@ -58,6 +59,23 @@ function scenario(kind, { fail = false, data = part() } = {}) {
 }
 
 for (const kind of ['customer', 'admin']) {
+  for (const saleMode of ['IMMEDIATE', 'DELAYED']) for (const amount of [0, 10, 25, 100]) {
+    test(`${kind} offers ${saleMode} scheduling with ${amount}% confirmed payment`, async () => {
+      const [fulfillment] = deriveOrderFulfillmentParts({
+        status: amount === 0 ? 'AWAITING_INITIAL_PAYMENT' : amount === 100 ? 'PAID_IN_FULL' : 'DEPOSIT_CONFIRMED',
+        holdExpiresAt: Date.now() + 3600000,
+        items: [{ saleMode, quantity: 1, itemNumber: 381, unitPricePYG: 100 }],
+        totals: { totalPYG: 100, dueNowPYG: saleMode === 'DELAYED' ? 25 : 100 },
+        payments: amount ? [{ amountPYG: amount, verificationStatus: 'CONFIRMED' }] : [],
+      });
+      const s = scenario(kind, { data: { ...part(), ...fulfillment } });
+      await s.setup({ id: 'VM-TEST' }, 'synthetic-access');
+      assert.match(s.target.innerHTML, /<form/);
+      assert.match(s.target.innerHTML, /sin pago previo|Agendar no confirma pagos/);
+      assert.doesNotMatch(s.target.innerHTML, /Pago satisfecho|requiere.*pago|Disponible cuando se complete/);
+      assert.ok(s.calls.every(call => !call.payload));
+    });
+  }
   test(`${kind} shows the legacy appointment and available hourly options without writing on view`, async () => {
     const s = scenario(kind);
     await s.setup({ id: 'VM-TEST' }, 'synthetic-access');
@@ -98,8 +116,8 @@ for (const kind of ['customer', 'admin']) {
     assert.match(s.target.innerHTML, /2026-11-03 · 13:00-14:00/);
   });
 
-  test(`${kind} retains a legacy appointment when payment eligibility no longer offers slots`, async () => {
-    const s = scenario(kind, { data: { ...part(), eligible: false, slots: [] } });
+  test(`${kind} retains appointment history for an inactive order without offering scheduling`, async () => {
+    const s = scenario(kind, { data: { ...part(), schedulingEligible: false, slots: [] } });
     await s.setup({ id: 'VM-TEST' }, 'synthetic-access');
     assert.match(s.target.innerHTML, /2026-11-02 · 08:00-12:00/);
     assert.doesNotMatch(s.target.innerHTML, /<form/);

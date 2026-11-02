@@ -873,13 +873,12 @@ function displayOrder(
     ? order.fulfillments
     : [{ timingKey: 'IMMEDIATE', timingLabel: 'Retiro', items: order.items,
         dueNowPYG: dueNow, futureBalancePYG: Number(order.totals.futureBalancePYG || 0),
-        eligible: remainingBalance === 0 }];
+        schedulingEligible: false }];
   const items = fulfillmentParts.map(part => `
     <section class="order-fulfillment-part ${part.timingKey === 'IMMEDIATE' ? 'is-immediate' : 'is-delayed'}">
       <header>
         <span class="section-kicker">${escapeHtml(part.timingLabel).toUpperCase()}</span>
-        <strong>${part.eligible ? 'Pago confirmado · listo para agendar' :
-          part.timingKey === 'IMMEDIATE' ? 'Pendiente de completar el pago requerido ahora' : 'Saldo pendiente'}</strong>
+        <strong>${part.schedulingEligible ? 'Podés agendar o cambiar el retiro sin pago previo' : 'Agendamiento no disponible para este pedido'}</strong>
       </header>
       <div class="fulfillment-financials">
         <span>Pago requerido ahora: ${formatPYG(part.dueNowPYG)}</span>
@@ -1215,6 +1214,7 @@ async function setupPickupScheduler(order, access) {
     if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los horarios.');
     target.innerHTML = `<h2>Retiro</h2>
       <p>Hora de Paraguay. Nuevos turnos de una hora.</p>
+      <p>Podés agendar o cambiar el horario sin pago previo. Agendar no confirma el pago ni modifica el saldo o las fechas de retiro. David y María verificarán los pagos antes de entregar los artículos.</p>
       <div class="pickup-fulfillment-list">
         ${(data.fulfillments || []).map((part, index) => {
           const appointment = part.appointment?.status === 'SCHEDULED' ? part.appointment : null;
@@ -1224,7 +1224,7 @@ async function setupPickupScheduler(order, access) {
             <h3>${escapeHtml(part.timingLabel)}</h3>
             <p>Artículos: ${(part.items || []).map(item => escapeHtml(orderItemLabel(item))).join(', ')}</p>
             ${appointment ? `<p><strong>Horario confirmado:</strong> ${escapeHtml(current)}</p>` : ''}
-            ${part.eligible ? `<form id="${formId}" data-pickup-timing-key="${escapeHtml(part.timingKey)}">
+            ${part.schedulingEligible ? `<form id="${formId}" data-pickup-timing-key="${escapeHtml(part.timingKey)}">
               <label>${appointment ? 'Cambiar horario' : 'Elegí un horario'}
                 <select name="slotKey" required>
                   <option value="">Seleccioná fecha y horario</option>
@@ -1234,9 +1234,7 @@ async function setupPickupScheduler(order, access) {
               </label>
               <button class="primary-action" type="submit">${appointment ? 'Cambiar retiro' : 'Agendar retiro'}</button>
               <p class="form-error" role="alert" hidden></p>
-            </form>` : `<p>${part.status === 'CANCELLED' ? 'Pedido cancelado.' : part.timingKey === 'IMMEDIATE'
-              ? 'Disponible cuando se complete el importe requerido ahora.'
-              : `Todavía no disponible para retiro. Saldo pendiente del pedido: ${formatPYG(part.orderRemainingBalancePYG)}.`}</p>`}
+            </form>` : `<p>${part.status === 'CANCELLED' ? 'Pedido cancelado.' : 'Agendamiento no disponible: revisá si el pedido sigue activo o si la reserva venció.'}</p>`}
           </section>`;
         }).join('')}
       </div>`;

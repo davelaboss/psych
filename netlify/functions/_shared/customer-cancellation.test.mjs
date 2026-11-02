@@ -53,6 +53,7 @@ class FakeCancellationDatabase {
         { order_id: snapshot.id, event_type: 'ORDER_RESERVATION_EXPIRING', cancelled_at: null, processed_at: null },
         { order_id: snapshot.id, event_type: 'ORDER_RESERVATION_EXPIRED', cancelled_at: null, processed_at: null },
       ],
+      appointments: [{ order_id: snapshot.id, status: 'SCHEDULED', slot_key: '2026-11-03|08:00-09:00', revision: 1 }],
     };
     this.pool = {
       connect: async () => ({
@@ -120,6 +121,16 @@ class FakeCancellationDatabase {
       this.state.events.forEach(event => {
         if (event.order_id === values[0] && !event.cancelled_at && !event.processed_at) {
           event.cancelled_at = new Date(this.state.now);
+        }
+      });
+      return { rows: [] };
+    }
+    if (normalized.startsWith("UPDATE pickup_appointments SET status='CANCELLED',slot_key=NULL")) {
+      this.state.appointments.forEach(appointment => {
+        if (appointment.order_id === values[0] && appointment.status === 'SCHEDULED') {
+          appointment.status = 'CANCELLED';
+          appointment.slot_key = null;
+          appointment.revision += 1;
         }
       });
       return { rows: [] };
@@ -221,6 +232,8 @@ test('locked customer cancellation releases inventory, cancels events, clears th
   assert.equal(database.state.reservations.length, 0);
   assert.equal(database.available('A'), 1);
   assert.equal(database.pendingEvents().length, 0);
+  assert.equal(database.state.appointments[0].status, 'CANCELLED');
+  assert.equal(database.state.appointments[0].slot_key, null);
   assert.equal(database.state.attempt.projection_version, 8);
 });
 

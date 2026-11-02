@@ -30,7 +30,7 @@ function mixed(payments, overrides = {}) {
   };
 }
 
-test('real mixed-order fixture unlocks immediate but not delayed after all due-now money is confirmed', () => {
+test('mixed order keeps immediate and delayed handover payment checks separate from scheduling', () => {
   const parts = deriveOrderFulfillmentParts(mixed([confirmed('deposit', 72_500)]));
   assert.equal(parts.length, 2);
   assert.deepEqual(parts[0].itemIds, ['381', '449']);
@@ -42,6 +42,25 @@ test('real mixed-order fixture unlocks immediate but not delayed after all due-n
   assert.equal(parts[1].futureBalancePYG, 37_500);
   assert.equal(parts[1].eligible, false);
   assert.equal(parts[1].orderRemainingBalancePYG, 37_500);
+  assert.deepEqual(parts.map(part => part.schedulingEligible), [true, true]);
+  assert.deepEqual(parts.map(part => part.handoverEligible), [true, false]);
+});
+
+test('zero payment allows both mixed-order appointments without granting handover', () => {
+  const order = mixed([], { status: 'AWAITING_INITIAL_PAYMENT', holdExpiresAt: Date.now() + 3600000 });
+  const before = structuredClone(order);
+  const parts = deriveOrderFulfillmentParts(order);
+  assert.deepEqual(parts.map(part => part.schedulingEligible), [true, true]);
+  assert.deepEqual(parts.map(part => part.handoverEligible), [false, false]);
+  assert.deepEqual(order, before);
+});
+
+test('cancelled, expired, completed and unknown orders cannot schedule', () => {
+  for (const status of ['CANCELLED', 'RESERVATION_EXPIRED', 'PICKED_UP', 'UNKNOWN']) {
+    assert.ok(deriveOrderFulfillmentParts(mixed([], { status })).every(part => !part.schedulingEligible), status);
+  }
+  assert.ok(deriveOrderFulfillmentParts(mixed([], { status: 'AWAITING_INITIAL_PAYMENT',
+    holdExpiresAt: Date.now() - 1 })).every(part => !part.schedulingEligible));
 });
 
 test('shortfall, pending receipt, approved short payment, and voided payment never unlock immediate', () => {
