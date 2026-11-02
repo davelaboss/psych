@@ -88,7 +88,7 @@ function overviewScenario({
       constructor(data) { this.data = data; }
     };
   }
-  runInNewContext(`${adminSource}\n;globalThis.__adminOverview = { ADMIN_STATE, renderOverviewTab, confirmRegularCampaign };`, context);
+  runInNewContext(`${adminSource}\n;globalThis.__adminOverview = { ADMIN_STATE, renderOverviewTab, confirmRegularCampaign, buildChatgptMarketingHandoff };`, context);
   Object.assign(context.__adminOverview.ADMIN_STATE, {
     stats: {
       totalProducts: 305,
@@ -109,7 +109,8 @@ function overviewScenario({
   });
   context.__adminOverview.renderOverviewTab();
   return { html: target.innerHTML, listeners, state: context.__adminOverview.ADMIN_STATE,
-    confirmRegularCampaign: context.__adminOverview.confirmRegularCampaign };
+    confirmRegularCampaign: context.__adminOverview.confirmRegularCampaign,
+    buildHandoff: context.__adminOverview.buildChatgptMarketingHandoff };
 }
 
 test('Resumen puts Sale Pulse before collapsed technical information', () => {
@@ -320,19 +321,20 @@ test('Marketplace handoff preserves source facts but limits posting TXT and bloc
   await chatgptButton(listeners)({currentTarget:{disabled:false,textContent:''}});
   const candidate = handoffData(copied[0]).candidates[0];
   assert.deepEqual(candidate.marketplace, {...details,additionalImages:['https://example.test/images/side.jpg','/images/defect.jpg']});
-  assert.match(copied[0],/resolver rutas relativas al sitio, conservar URLs completas/);
+  assert.match(copied[0],/rutas al sitio, URLs completas/);
   assert.equal(candidate.saleMode,'DELAYED');
-  assert.match(copied[0], /Campos: fotos mainImageUrl \+ additionalImages[\s\S]*título; precio actual; categoría; condición; San Lorenzo; descripción española lista para copiar; productUrl de referencia/);
+  assert.match(copied[0], /TXT: fotos originales \(mainImageUrl \+ additionalImages[\s\S]*título, precio actual, categoría, condición\/medidas\/disponibilidad verificadas, San Lorenzo, descripción española lista para copiar y productUrl de referencia/);
   const marketplaceInstructions = copied[0].split('FACEBOOK MARKETPLACE — BORRADORES')[1].split('MENSAJES GENERALES')[0];
-  assert.match(marketplaceInstructions, /TXT: campos requeridos, condición\/medidas\/disponibilidad confirmadas y política de venta directa Marketplace/);
+  assert.match(marketplaceInstructions, /condición\/medidas\/disponibilidad verificadas/);
   assert.match(marketplaceInstructions, /Defectos\/restricciones materiales: SOLO PARA EL VENDEDOR, fuera del TXT/);
-  assert.match(marketplaceInstructions, /no marques listo hasta resolver con dueño divulgación necesaria sin engañar/);
-  assert.match(marketplaceInstructions, /Conserva fuente íntegra para verificar/);
+  assert.match(marketplaceInstructions, /no marques listo hasta resolver divulgación necesaria con el dueño/);
+  assert.match(marketplaceInstructions, /Conserva fuente íntegra/);
   assert.doesNotMatch(marketplaceInstructions, /Solo datos verificados: condición, medidas, disponibilidad, defectos, restricciones|No omitas esenciales/);
   assert.match(copied[0], /Sin datos: Marketplace NO VERIFICADO/);
-  assert.match(copied[0], /Desk Config\/marketplace-overrides\.json: distingue ya anunciados\/nuevos; precios históricos no son actuales/);
-  assert.match(copied[0], /Incluye existentes; nunca dupliques un anuncio activo/);
-  assert.match(copied[0], /Renovar solo si la opción nativa está realmente disponible/);
+  assert.match(copied[0], /Config\/marketplace-overrides\.json: revisar existentes\/nuevos/);
+  assert.match(copied[0], /Precios históricos no son actuales/);
+  assert.match(copied[0], /nunca dupliques un anuncio activo/);
+  assert.match(copied[0], /Renew solo si Facebook lo ofrece/);
   assert.doesNotMatch(copied[0], /PRIVATE-SELLER-QUESTION/);
 });
 
@@ -382,6 +384,33 @@ test('a representative ten-Item high-value catalog fits with every source fact a
     if(product.knownDefects)assert.equal(candidate.marketplace.knownDefects,product.knownDefects);
     assert.deepEqual(candidate.marketplace.additionalImages,product.images.filter(image=>image!==product.images[0]));
   }
+});
+
+for(const mobile of [false,true])for(const overflow of [false,true])test(`realistic high-photo ten-Item batch ${overflow?'refuses overflow':'fits intact'} (${mobile?'mobile':'desktop'})`,async()=>{
+  const eligible=(await loadBaseCatalog('https://example.test')).filter(p=>p.status==='AVAILABLE'&&p.quantityRemaining>0&&p.askingPricePYG>50000&&p.images?.length&&![327,360].includes(p.itemNumber))
+    .sort((a,b)=>b.images.length-a.images.length||b.askingPricePYG-a.askingPricePYG||a.itemNumber-b.itemNumber);
+  const source=[...eligible.filter(p=>p.saleMode==='DELAYED').slice(0,5),...eligible.filter(p=>p.saleMode==='IMMEDIATE').slice(0,5)];
+  if(overflow)source[0]={...source[0],description:source[0].description+' Detalle adicional verificado para la prueba de límite.'.repeat(30)};
+  assert.equal(source.length,10);assert.ok(source.reduce((n,p)=>n+p.images.length,0)>=80);
+  const packet=buildSalePulseSnapshot({products:source,purchasableInventory:new Map(source.map(p=>[p.id,{
+    capacity:p.quantityRemaining,committed_quantity:0,purchasable_quantity:p.quantityRemaining,cart_held_quantity:0,order_held_quantity:0,
+  }]))}).marketingPacket;
+  packet.regularCampaign=trustedSelection(packet.marketableProducts);
+  Object.assign(packet.regularCampaign,{cycleId:'00000000-0000-4000-8000-000000000001',batchId:'00000000-0000-4000-8000-000000000002',revision:28,
+    passStartedAt:'2026-10-30T12:00:00.000Z',startedAt:'2026-10-20T15:00:00.000Z',eligibleUnconfirmedCount:71,totalMarketable:113});
+  const before=structuredClone(packet),copied=[];
+  const scenario=overviewScenario({fetchSalePulse:async()=>pulse({marketingPacket:packet}),
+    ...(mobile?{writeClipboardItem:async([item])=>copied.push(await(await item.data['text/plain']).text())}:{writeClipboard:async text=>copied.push(text)})});
+  if(overflow)assert.throws(()=>scenario.buildHandoff(packet),error=>error.requiredCharacters>18000&&error.characterLimit===18000&&/no se copió ningún dato incompleto/.test(error.message));
+  const button={disabled:false,textContent:''};await chatgptButton(scenario.listeners)({currentTarget:button});
+  if(overflow){assert.equal(copied.length,0);assert.equal(button.textContent,'PAQUETE MÓVIL MUY GRANDE · NO COPIADO');}
+  else {
+    assert.equal(copied.length,1);assert.ok(copied[0].length<=18000);
+    const data=handoffData(copied[0]);assert.equal(data.candidates.length,10);assert.deepEqual(data.regularCampaign,packet.regularCampaign);
+    for(const p of source){const c=data.candidates.find(i=>i.productId===p.id);assert.equal(c.marketplace.description,p.description);assert.deepEqual(c.marketplace.additionalImages,p.images.filter(i=>i!==p.images[0]));if(p.depositPercent!=null)assert.equal(c.marketplace.depositPercent,p.depositPercent);}
+  }
+  assert.deepEqual(packet,before);assert.equal(packet.regularCampaign.selectedProductIds.length,10);
+  for(const p of source){const retained=packet.marketableProducts.find(i=>i.productId===p.id);assert.deepEqual(retained.images,p.images);assert.equal(retained.description,p.description||'');}
 });
 
 test('eight approved website messages are copied verbatim once with shared channel links', async () => {
@@ -457,16 +486,16 @@ test('ChatGPT handoff fetches fresh authenticated Sale Pulse and copies complete
   assert.doesNotMatch(copied[0], /STALE PRODUCT|secret-admin-token|x-admin-token|cookie|session ID|receipt|bank/i);
   assert.match(copied[0], /drive\.google\.com\/drive\/folders\/13qE2dHUjJBr1TOBUX7omaWr7r1k2nfct/);
   assert.match(copied[0], /autoridad FINAL/);
-  assert.match(copied[0], /SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUALES/);
-  assert.match(copied[0], /Hasta 10 Items únicos, 5 para David y 5 para María/);
+  assert.match(copied[0], /Solo selección actual: productos omitidos no se consideran vendidos ni no disponibles/);
+  assert.match(copied[0], /Hasta 5 David y 5 María: Items únicos según assignments/);
   assert.match(copied[0], /ENTREGABLES — David\.txt Y Maria\.txt/);
   assert.match(copied[0], /Un \.txt por persona: 5 Stories, 5 Status\/Updates, 4 JW y 5 entradas Marketplace de sus mismos cinco Items/);
-  assert.match(copied[0], /Instagram\/Facebook Stories: por Item, número, archivo gráfico y URL directa src=story; sticker VER ARTÍCULO/);
+  assert.match(copied[0], /Instagram\/Facebook Stories: archivo numerado por Item, Link directo src=story, sticker VER ARTÍCULO/);
   assert.doesNotMatch(copied[0], /propone un collage de 3 productos|crear collages/);
-  assert.match(copied[0], /Ya comparten automáticamente a Facebook; no crees campaña separada/);
-  assert.match(copied[0], /WhatsApp Status\/Updates: mismo archivo gráfico, texto breve listo para copiar y URL directa src=story/);
+  assert.match(copied[0], /Facebook automático, sin campaña separada/);
+  assert.match(copied[0], /WhatsApp Status\/Updates: mismo gráfico, texto breve listo para copiar y URL src=story/);
   assert.match(copied[0], /el sticker de Instagram no conserva su enlace/);
-  assert.match(copied[0], /Texto breve natural en español, nombre, precio actual y URL directa src=jw-group/);
+  assert.match(copied[0], /Español natural breve, nombre, precio y URL src=jw-group/);
   assert.match(copied[0], /No publiques automáticamente/);
   const data = handoffData(copied[0]);
   assert.equal(data.generatedAt, handoffPacket.generatedAt);
@@ -516,7 +545,7 @@ test('420-product snapshot copies exactly the authoritative ten including Items 
   }
   assert.doesNotMatch(copied[0], /Unavailable|secret-admin-token|private@example.com|"products"|storyUrl|whatsappGroupUrl/);
   assert.match(copied[0], /productos omitidos no se consideran vendidos ni no disponibles/);
-  assert.match(copied[0], /Si falta, no hagas recomendaciones de productos/);
+  assert.match(copied[0], /Si falta, pide copiar otra vez; no recomiendes productos/);
 });
 
 test('handoff caps each person at four JW entries from their own five products', async () => {
@@ -527,10 +556,10 @@ test('handoff caps each person at four JW entries from their own five products',
   });
   await chatgptButton(listeners)({ currentTarget: { disabled: false, textContent: '' } });
   const text = copied[0];
-  assert.match(text, /Hasta 10 Items únicos, 5 para David y 5 para María; respeta assignments, sin rellenar ni repetir/);
+  assert.match(text, /Hasta 5 David y 5 María: Items únicos según assignments, sin rellenar ni repetir/);
   assert.match(text, /Un \.txt por persona: 5 Stories, 5 Status\/Updates, 4 JW y 5 entradas Marketplace de sus mismos cinco Items/);
-  assert.match(text, /cuatro Items por persona entre sus cinco/);
-  assert.match(text, /cuatro David y cuatro María, ocho total, escalonados/);
+  assert.match(text, /cuatro Items de sus cinco por persona/);
+  assert.match(text, /cuatro David, cuatro María, ocho total\), escalonados/);
   assert.match(text, /si hay menos, solo esos/);
   assert.match(text, /Nunca una quinta entrada\/foto por persona/);
   assert.match(text, /JW WhatsApp Group:[\s\S]*?Nunca una quinta entrada\/foto por persona[\s\S]*?src=jw-group/);
@@ -550,18 +579,18 @@ test('handoff requires the approved Item 274 graphic for social channels and onl
   const socialInstructions = text.split('ENTREGABLES —')[1].split('FACEBOOK MARKETPLACE —')[0];
   const marketplaceInstructions = text.split('FACEBOOK MARKETPLACE — BORRADORES')[1].split('MENSAJES GENERALES')[0];
   assert.match(socialInstructions, /plantilla fija Item 274 aprobada, vertical 9:16/);
-  assert.match(socialInstructions, /SOLO VENTA POR MUDANZA, ITEM número, fotografía original auténtica, nombre y precio actual/);
-  assert.match(socialInstructions, /Mismo gráfico terminado para Instagram\/Facebook Stories y WhatsApp Status/);
-  assert.match(socialInstructions, /Sin collages, capturas web, fichas ni reconstrucción por IA/);
+  assert.match(socialInstructions, /SOLO VENTA POR MUDANZA, Item, foto original auténtica, nombre y precio actual/);
+  assert.match(socialInstructions, /Mismo archivo para Stories\/Status/);
+  assert.match(socialInstructions, /Sin collages, capturas web, fichas ni IA/);
   assert.match(socialInstructions, /Si falta la plantilla aprobada, pídela, no la reinventes/);
-  assert.match(socialInstructions, /Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales\./);
-  assert.match(socialInstructions, /Gráficos sin descripciones ni URLs; enlaces solo en texto\/stickers/);
-  assert.match(socialInstructions, /vista previa nativa correcta o foto original/);
+  assert.match(socialInstructions, /Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales/);
+  assert.match(socialInstructions, /sin descripciones en gráficos\. URLs solo en texto\/stickers/);
+  assert.match(socialInstructions, /vista previa correcta o foto original/);
   assert.doesNotMatch(socialInstructions, /contacto opcional|conserva limitaciones materiales|\bseña\b|pago final/i);
-  assert.match(marketplaceInstructions, /SOLO fotografías originales: sin gráficos promocionales, banners, texto superpuesto, capturas web ni representaciones generadas/);
-  assert.match(marketplaceInstructions, /condición\/medidas\/disponibilidad confirmadas y política de venta directa Marketplace/);
-  assert.match(text, /cb=fecha-hora conservando src y los demás parámetros[\s\S]*?No añadas src a mainImageUrl/);
-  assert.match(text, /Borradores para aprobación de David/);
+  assert.match(marketplaceInstructions, /SOLO fotos originales, sin gráficos, banners, texto superpuesto, capturas web ni IA/);
+  assert.match(marketplaceInstructions, /condición\/medidas\/disponibilidad verificadas/);
+  assert.match(text, /cb=fecha-hora conservando src y demás parámetros; nunca src en mainImageUrl/);
+  assert.match(text, /David aprueba/);
   assert.ok(text.length <= 18000);
   handoffData(text);
 });

@@ -1338,51 +1338,50 @@ function buildChatgptMarketingHandoff(packet) {
     ? `LIMITACIÓN ACTUAL: solo hay ${candidates.length} Items en esta selección del ciclo; usa únicamente estos, sin rellenar con repetidos para llegar a 5+5.\n`
     : '';
   const instructions = `Venta de mudanza David/María. Instrucciones en inglés sencillo; anuncios en español natural; David aprueba.
-Comprueba el cierre ${CHATGPT_MOBILE_END}. Si falta, no hagas recomendaciones de productos: pide copiar otra vez.
-SUBCONJUNTO DE CANDIDATOS COMERCIALIZABLES ACTUALES: los productos omitidos no se consideran vendidos ni no disponibles.
+Comprueba ${CHATGPT_MOBILE_END}. Si falta, pide copiar otra vez; no recomiendes productos.
+Solo selección actual: productos omitidos no se consideran vendidos ni no disponibles.
 `;
   const detail = `
 FUENTES Y COBERTURA
 - Sale Pulse: autoridad FINAL. Solo selectedProductIds/assignments; no crear carritos.
-- Drive/contexto: ${CHATGPT_MARKETING_DRIVE_URL}. Sitio: ${CHATGPT_MARKETING_SITE_URL}.
+- Drive: ${CHATGPT_MARKETING_DRIVE_URL}.
 - PREPARED no es POSTED; UNCONFIRMED no prueba NEVER POSTED histórico. Anuncios independientes no cuentan ni requieren informe.
 - FIRST_PASS: MARKETABLE, comprable, > ₲50.000; precio descendente, desempate Item. Conserva pendientes, no repitas POSTED ni reinicies pasada. Reutiliza materiales.
 
 ENTREGABLES — David.txt Y Maria.txt
-- Hasta 10 Items únicos, 5 para David y 5 para María; respeta assignments, sin rellenar ni repetir.
+- Hasta 5 David y 5 María: Items únicos según assignments, sin rellenar ni repetir.
 - David: DELAYED primero + IMMEDIATE libres. María: solo IMMEDIATE. Nunca reasignes; lotes anteriores solo para confirmar publicaciones reales.
 - Un .txt por persona: 5 Stories, 5 Status/Updates, 4 JW y 5 entradas Marketplace de sus mismos cinco Items. No catálogos completos.
-- Gráficos: plantilla fija Item 274 aprobada, vertical 9:16. SOLO VENTA POR MUDANZA, ITEM número, fotografía original auténtica, nombre y precio actual. Mismo gráfico terminado para Instagram/Facebook Stories y WhatsApp Status. Sin collages, capturas web, fichas ni reconstrucción por IA. Si falta la plantilla aprobada, pídela, no la reinventes.
-- Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales. Gráficos sin descripciones ni URLs; enlaces solo en texto/stickers.
-- Instagram/Facebook Stories: por Item, número, archivo gráfico y URL directa src=story; sticker VER ARTÍCULO. Ya comparten automáticamente a Facebook; no crees campaña separada.
-- WhatsApp Status/Updates: mismo archivo gráfico, texto breve listo para copiar y URL directa src=story; el sticker de Instagram no conserva su enlace.
-- JW WhatsApp Group: cuatro Items por persona entre sus cinco: cuatro David y cuatro María, ocho total, escalonados; si hay menos, solo esos. Nunca una quinta entrada/foto por persona. Texto breve natural en español, nombre, precio actual y URL directa src=jw-group; vista previa nativa correcta o foto original.
-- Vista previa obsoleta: añade cb=fecha-hora conservando src y los demás parámetros. No añadas src a mainImageUrl.
+- Gráficos: plantilla fija Item 274 aprobada, vertical 9:16. SOLO VENTA POR MUDANZA, Item, foto original auténtica, nombre y precio actual. Mismo archivo para Stories/Status. Sin collages, capturas web, fichas ni IA. Si falta la plantilla aprobada, pídela, no la reinventes.
+- Sin condición, defectos, medidas, disponibilidad, retiro ni auxiliares en sociales; sin descripciones en gráficos. URLs solo en texto/stickers.
+- Instagram/Facebook Stories: archivo numerado por Item, Link directo src=story, sticker VER ARTÍCULO; Facebook automático, sin campaña separada.
+- WhatsApp Status/Updates: mismo gráfico, texto breve listo para copiar y URL src=story; el sticker de Instagram no conserva su enlace.
+- JW WhatsApp Group: cuatro Items de sus cinco por persona (cuatro David, cuatro María, ocho total), escalonados; si hay menos, solo esos. Nunca una quinta entrada/foto por persona. Español natural breve, nombre, precio y URL src=jw-group; vista previa correcta o foto original.
+- Vista previa obsoleta: cb=fecha-hora conservando src y demás parámetros; nunca src en mainImageUrl.
 
 FACEBOOK MARKETPLACE — BORRADORES POR CADA ITEM ASIGNADO
-- Campos: fotos mainImageUrl + additionalImages (resolver rutas relativas al sitio, conservar URLs completas); título; precio actual; categoría; condición; San Lorenzo; descripción española lista para copiar; productUrl de referencia.
-- SOLO fotografías originales: sin gráficos promocionales, banners, texto superpuesto, capturas web ni representaciones generadas.
-- TXT: campos requeridos, condición/medidas/disponibilidad confirmadas y política de venta directa Marketplace.
+- TXT: fotos originales (mainImageUrl + additionalImages; rutas al sitio, URLs completas), título, precio actual, categoría, condición/medidas/disponibilidad verificadas, San Lorenzo, descripción española lista para copiar y productUrl de referencia.
+- SOLO fotos originales, sin gráficos, banners, texto superpuesto, capturas web ni IA.
 - DELAYED: RETIRO POSTERIOR, retiro 9–12 diciembre 2026; respeta restricciones del Item, nunca adelantes automáticamente. "Seña: 10% obligatoria para confirmar la reserva". Saldo del 90% al retirar. Consultas/visitas sin adelanto; cita no reserva, sin seña confirmada sigue a la venta.
 - IMMEDIATE: DISPONIBLE AHORA; pago completo al retirar, consultas/revisión con cita sin adelanto.
 - Ambos: comprador organiza transporte/retiro en San Lorenzo. "No hacemos entregas ni envíos". Messenger; enlace solo referencia, no checkout. No inventes no reembolso/cancelación. Web conserva seña 25%, saldo 1–8 de diciembre y checkout; NO copies esos pagos en anuncios Marketplace ni cambies datos fuente.
-- Ausentes: no verificados. Conserva fuente íntegra para verificar. Defectos/restricciones materiales: SOLO PARA EL VENDEDOR, fuera del TXT; no marques listo hasta resolver con dueño divulgación necesaria sin engañar.
-- Desk Config/marketplace-overrides.json: distingue ya anunciados/nuevos; precios históricos no son actuales. Sin datos: Marketplace NO VERIFICADO, revisar con dueño. Incluye existentes; nunca dupliques un anuncio activo. Renovar solo si la opción nativa está realmente disponible. María retira vendidos; David maneja inventario web.
-- Borradores para aprobación de David. No publiques automáticamente, cambies precios ni reserves.
+- Ausentes: no verificados. Conserva fuente íntegra. Defectos/restricciones materiales: SOLO PARA EL VENDEDOR, fuera del TXT; no marques listo hasta resolver divulgación necesaria con el dueño.
+- Config/marketplace-overrides.json: revisar existentes/nuevos; nunca dupliques un anuncio activo. Renew solo si Facebook lo ofrece. Precios históricos no son actuales. Sin datos: Marketplace NO VERIFICADO. María retira vendidos; David maneja inventario web.
+- David aprueba. No publiques automáticamente ni cambies precios ni reserves.
 
-MENSAJES GENERALES APROBADOS — REUTILIZAR TEXTUALMENTE
+MENSAJES GENERALES — REUTILIZAR TEXTUALMENTE
 Todo el sitio, incluidos Items económicos. No regenerar ni duplicar por enlace.
 ${CHATGPT_WEBSITE_MESSAGES.map((message, index) => `${index + 1}. ${message}`).join('\n')}
 Stories/Status: https://www.thelabossieres.com/?src=story
 JW Group: https://www.thelabossieres.com/?src=jw-group`;
-  while (candidates.length >= minimum) {
-    const data = { generatedAt: packet.generatedAt, snapshotTotalMarketable: totalMarketable,
-      regularCampaign: packet.regularCampaign, includedCandidates: candidates.length, candidates };
-    const text = `${instructions}${limitation}\nCANDIDATOS_JSON\n${JSON.stringify(data)}\nFIN_CANDIDATOS_JSON\n${detail}\n\n${CHATGPT_MOBILE_END}`;
-    if (text.length <= CHATGPT_MOBILE_LIMIT) return text;
-    candidates.pop();
+  const data = { generatedAt: packet.generatedAt, snapshotTotalMarketable: totalMarketable,
+    regularCampaign: packet.regularCampaign, includedCandidates: candidates.length, candidates };
+  const text = `${instructions}${limitation}\nCANDIDATOS_JSON\n${JSON.stringify(data)}\nFIN_CANDIDATOS_JSON\n${detail}\n\n${CHATGPT_MOBILE_END}`;
+  if (text.length > CHATGPT_MOBILE_LIMIT) {
+    throw Object.assign(new Error('El paquete móvil supera el límite seguro; no se copió ningún dato incompleto.'),
+      { requiredCharacters: text.length, characterLimit: CHATGPT_MOBILE_LIMIT });
   }
-  throw new Error('El paquete móvil supera el límite seguro; no se copió ningún dato incompleto.');
+  return text;
 }
 
 async function copySalePulseForChatgpt(event) {

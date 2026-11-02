@@ -153,6 +153,14 @@ is copied. The regular ledger reads neither independent advertisements, email
 delivery history nor Sale Pulse traffic/cart metrics. No independent-post action,
 import field or reporting requirement exists.
 
+The size check constructs the entire payload once; it never pops selected candidates
+or shortens source facts. Repeated guidance was compacted without changing the policy
+or approved reusable buyer messages. A realistic ten-Item fixture with 93 original photo
+references and full-length batch IDs fits in 17,872 characters, with every source fact.
+An extended-description stress case exceeds the unchanged 18,000 limit and is rejected
+on both clipboard paths with no partial write. Larger batches remain intact; future
+source changes may still require refusal rather than an abbreviated disclosure.
+
 ### Marketplace drafts and reusable website messages
 
 The existing public Sale Pulse allowlist now includes descriptions, condition and
@@ -256,6 +264,15 @@ and posting history are preserved. Old prepared copy is a historical snapshot an
 must be regenerated before posting under the new terms. Website changes in this PR
 are limited to server selection, Admin handoff, focused tests and this documentation;
 the separate local installation produces verification fixtures only, not a live campaign.
+
+Both exported README templates explicitly distinguish Marketplace's mandatory 10%
+reservation / 90% at pickup from unchanged website checkout terms. A new package
+validates carried-forward listing metadata, canonical buyer descriptions and actual
+ad text. Obsolete/unverified copy is withheld in the new package and any READY/DRAFT
+state is demoted for review; sold/hold restrictions and owner decisions are preserved.
+Original listing/ad bytes remain in the previous package/archive, and original photo
+bytes remain unchanged. Read-only legacy validation is explicit, never a current-copy
+approval. An unchanged social fingerprint cannot bypass these checks or stale READMEs.
 
 ### Failure and deployment boundaries
 
