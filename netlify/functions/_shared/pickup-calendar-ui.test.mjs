@@ -103,7 +103,7 @@ for (const mobile of [false, true]) test(`Retiros ${mobile ? 'mobile' : 'desktop
   const output = process.env.RETIROS_DEMO_OUTPUT_DIR;
   if (output) {
     await mkdir(output, { recursive: true });
-    await page.locator('.retiros-shell').screenshot({ path: path.join(output, `retiros-${mobile ? 'mobile' : 'desktop'}-review.png`) });
+    await page.locator('.admin-shell-v2').screenshot({ path: path.join(output, `retiros-${mobile ? 'mobile' : 'desktop'}-review.png`) });
     await page.locator('.admin-tabs-v2').screenshot({ path: path.join(output, `retiros-${mobile ? 'mobile' : 'desktop'}-navigation.png`) });
   }
   await review.locator('[data-retiro-confirm]').click();
@@ -111,7 +111,7 @@ for (const mobile of [false, true]) test(`Retiros ${mobile ? 'mobile' : 'desktop
   assert.equal(await page.locator('[data-retiros-day] .needs-reschedule').count(), 2);
   assert.equal((await db.query("SELECT * FROM pickup_appointments WHERE status='SCHEDULED'")).rows.length, 2);
   assert.ok(await page.locator('[data-retiro-date="2026-12-01"]').getAttribute('aria-label').then(t => t.includes('1 bloqueos')));
-  if (output) await page.locator('.retiros-shell').screenshot({ path: path.join(output, `retiros-${mobile ? 'mobile' : 'desktop'}-saved.png`) });
+  if (output) await page.locator('.admin-shell-v2').screenshot({ path: path.join(output, `retiros-${mobile ? 'mobile' : 'desktop'}-saved.png`) });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile page must not overflow horizontally');
   assert.ok(await page.locator('.retiro-date').evaluateAll(days => days.every(day => day.scrollWidth <= day.clientWidth)), 'calendar labels must fit within their day');
   await page.locator('[data-retiro-edit]').click();

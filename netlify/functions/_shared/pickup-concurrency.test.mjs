@@ -93,7 +93,23 @@ test('booking commits while blackout confirmation waits; new buyer must be revie
   await gate.query('SELECT slot_key FROM pickup_windows WHERE slot_key=$1 FOR UPDATE', [day]);
   // Hold the actual date row while committing a valid booking through that same client.
   await change(buyer, hourly, { transaction: operation => operation(gate) });
-  const confirming = changePickupBlackout({ ...body, action: 'save', reviewToken: preview.reviewToken });
+  let reachedDateLock;
+  const waiting = new Promise(resolve => { reachedDateLock = resolve; });
+  const confirming = changePickupBlackout({ ...body, action: 'save', reviewToken: preview.reviewToken }, {
+    transaction: async operation => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await operation({ query: (sql, params) => {
+          if (sql.includes('INSERT INTO pickup_windows') && params?.[0] === day) reachedDateLock();
+          return client.query(sql, params);
+        } });
+        await client.query('COMMIT'); return result;
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
+    },
+  });
+  await waiting;
   await gate.query('COMMIT'); gate.release();
   const result = await confirming;
   assert.equal(result.saved, false); assert.equal(result.conflicts[0].orderId, buyer);
