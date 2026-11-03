@@ -15,6 +15,7 @@
 /api/orders/pickup             /.netlify/functions/customer-pickup          200
 /api/orders/cancel             /.netlify/functions/customer-cancel-order    200
 /api/admin/pickup              /.netlify/functions/admin-pickup             200
+/api/admin/pickup-calendar     /.netlify/functions/admin-pickup-calendar    200
 /api/orders/receipt            /.netlify/functions/upload-receipt           200
 /api/admin/legacy-inventory    /.netlify/functions/admin-legacy-inventory   200
 /api/admin/marketing-preview   /.netlify/functions/admin-marketing-preview  200

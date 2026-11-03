@@ -1,6 +1,6 @@
 # Psych Website — Project Master
 
-Last updated: 2026-10-05
+Last updated: 2026-11-02
 
 This file is the authoritative human-readable project record for the Psych website.
 
@@ -1575,3 +1575,20 @@ Format:
 - Browser inspection used the actual deployed assets through a private localhost protection proxy: remote catalog/assets were GET-only, operational writes/analytics were blocked, and cart calls used an ephemeral PGlite database with the repository inventory functions. Checked representative cards, owner-selected cover/lightbox, lot 510, confirmed defects 522/592, measurements 534, exclusion 585 and corrected copy 526/573. Item 597 quantity five totals Gs. 25.000; adding delayed Item 526 yields Gs. 40.000 total, Gs. 28.750 due now and Gs. 11.250 later. Checkout was inspected without submitting an order. The local disposable cart was cleared through the UI afterward.
 - Staging limitation: Netlify preview database/Blob isolation is not independently established; treat its operational endpoints as potentially live and do not place test orders or payments there. No production operational mutations were performed. Owner-review publicationAllowed remains false. The integration is ready for separate final Governance authorization; production merge/deployment and owner production NOMINAL verification remain pending.
 - Future held-Item releases retain original IDs and append only newly approved records without resetting the original 102. Recovery must preserve later transactions: revert activation only if no new orders exist; otherwise retain identities and pause new sales through supported controls, never restore an old database over new activity.
+
+## 2026-11-02 — Retiros calendar and owner blackouts ready for Governance review
+
+- Scope: Consolidated revised pickup-calendar request; supersedes the earlier blackout proposal. Isolated branch `feat/retiros-calendar-owner-blackouts` based on main `4ca6fced73dceb328e1a50799fdf62ba88db64c3`. Draft delivery only; merge, hosted migration/deployment and owner production NOMINAL acceptance remain pending.
+- Implemented: Retiros immediately after Resumen; Revisión retained after Marketing; upcoming pickups moved from Pedidos; month calendar, daily buyer/contact/order agenda, and persistent multiple/full-day/time-range owner blackouts with optional private reasons. Existing per-order pickup editors remain intact.
+- Safeguards: Show every affected buyer before confirmation; re-review if appointments change while confirming. Shared server date locks synchronize booking and blackout writes. Existing appointments retain their original state and show Necesita reprogramar when overlapping. No payment, inventory, order-status or notification redesign. Contacts/reasons remain authenticated and Admin-only.
+- Base availability: December 1, 5, 8 and 12, 2026 only, 08:00–20:00 America/Asuncion. Preserve immediate through December 8 and delayed December 9–12 with narrower Item restrictions. New migration `20261102_pickup_blackouts.sql` is additive and has not been run against any hosted database.
+- Regression: 774 tests passed with zero failures/skips, including independent local PostgreSQL workers and desktop/390px mobile browser flows. A local-only clean combination with draft PR #69 at `a9667ee4345de31b02e083bd0ab48a046b544270` passed all 816 tests. The calendar branch leaves payment gating as implemented on current main; #69's separate scheduling policy remains under its own draft review. Older future-scheduling notes above are historical.
+- Evidence/release notes: `docs/retiros-calendar.md` and synthetic desktop/mobile captures. No live appointments, orders, inventory, payments or notifications were read or changed. No merge/deployment authorized; `[skip netlify]` delivery markers suppress automatic previews.
+
+## 2026-11-02 — PR #70 targeted Governance corrections ready for final review
+
+- Corrected only the three requested behaviors: update active-tab classes before rendering Retiros; filter calendar/conflict appointments with PR #69's active status, explicit expiry and committed/deadline rules; normalize recognized Paraguayan mobile phone formats for WhatsApp while retaining uncertain numbers visibly without a link. No calendar redesign or new feature scope.
+- Preservation: inactive-order filtering is read-only; historical appointments/orders are neither deleted nor rewritten. Desktop/mobile tests exercise Pedidos → Retiros highlighting and opening the corresponding order. Phone tests cover 09, +595, 595, 00595, separators, malformed/ambiguous values and extensions.
+- Validation: 108 focused branch checks passed; a clean local-only combination with unchanged draft #69 head `a9667ee4345de31b02e083bd0ab48a046b544270` passed 218 focused checks, zero failures/skips. Includes independent-worker PostgreSQL races, notifications, scheduling eligibility, history preservation and browser flows.
+- Migration/release: `20261102_pickup_blackouts.sql` remains unchanged and additive. A populated-database test verifies preservation and confirms the new calendar requires this schema. After final Governance authorization, apply and verify this migration first; only then integrate/deploy the approved application heads. The exact sequence is recorded in `docs/retiros-calendar.md`.
+- State: PR #70 remains draft with [skip netlify] delivery markers. No hosted migration, merge, deployment, live appointment read or operational mutation was performed. Final Governance release decision and owner production acceptance remain pending.

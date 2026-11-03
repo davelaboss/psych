@@ -1,0 +1,46 @@
+.retiros-shell { display: grid; gap: 1.5rem; }
+.retiro-month-nav, .retiro-actions, .retiro-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.retiro-month-nav { justify-content: space-between; }
+.retiro-month-nav h3 { margin: 0; text-transform: capitalize; }
+.retiro-legend span:nth-child(1), .retiro-available { color: #256346; }
+.retiro-legend span:nth-child(2), .retiro-booked { color: #245b86; }
+.retiro-legend span:nth-child(3), .retiro-blocked { color: #8b4314; }
+.retiro-calendar { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: .35rem; }
+.retiro-weekday { text-align: center; font-size: .85rem; font-weight: 700; }
+.retiro-date { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; border: 1px solid #c7d3cc; border-radius: .65rem; background: #fff; min-height: 106px; padding: .6rem; text-align: left; cursor: pointer; }
+.retiro-date strong { font-size: 1rem; }
+.retiro-date span { display: block; font-size: .78rem; margin-top: .2rem; }
+.retiro-date i { font-style: normal; }
+.retiro-short { display: none; }
+.retiro-date.selected { outline: 3px solid #275e48; outline-offset: -3px; background: #f1f8f3; }
+.retiro-muted { color: #666; }
+.retiro-daily-layout { display: grid; grid-template-columns: minmax(0,1.25fr) minmax(280px,1fr); gap: 1.5rem; }
+.retiro-agenda { list-style: none; padding: 0; display: grid; gap: .65rem; }
+.retiro-appointment, .retiro-block, .retiro-block-editor { display: grid; gap: .55rem; border: 1px solid #ccd8df; background: #f5f9fc; border-radius: .75rem; padding: 1rem; overflow-wrap: anywhere; }
+.retiro-block, .retiro-range.is-blocked { background: #fff2e6; border-color: #dca776; }
+.retiro-warning { color: #9c351c; }
+.needs-reschedule { border-left: 5px solid #b34e24; }
+.retiro-range { padding: .6rem .8rem; background: #edf6ef; border-radius: .5rem; }
+.retiro-range strong { margin-right: .5rem; }
+.retiro-block-editor { background: #faf8f2; align-self: start; }
+.retiro-block-editor form, .retiro-block-editor label { display: grid; gap: .4rem; }
+.retiro-block-editor form { gap: .9rem; }
+.retiro-block-editor .retiro-checkbox { display: flex; align-items: center; gap: .5rem; }
+.retiro-checkbox input { width: auto; min-height: 22px; }
+.retiro-block-editor input, .retiro-block-editor textarea { box-sizing: border-box; min-width: 0; max-width: 100%; width: 100%; padding: .65rem; border: 1px solid #acb8ae; border-radius: .4rem; font: inherit; }
+.retiro-block-editor .retiro-checkbox input { width: 22px; }
+.retiro-time-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .6rem; }
+[data-retiro-review] { display: grid; gap: .6rem; }
+[data-retiro-form-error]:empty { display: none; }
+#admin-upcoming-pickups { display: grid; gap: .7rem; }
+@media (max-width: 700px) {
+  .retiro-daily-layout { grid-template-columns: minmax(0,1fr); }
+  .retiro-calendar { gap: .2rem; }
+  .retiro-date { min-height: 92px; padding: .35rem .2rem; }
+  .retiro-date span { font-size: .65rem; line-height: 1.25; }
+  .retiro-date .retiro-warning { font-size: .6rem; }
+  .retiro-date .retiro-long { display: none; }
+  .retiro-date .retiro-short { display: inline; white-space: nowrap; }
+  .retiro-legend { font-size: .8rem; }
+  .retiro-appointment, .retiro-block, .retiro-block-editor { padding: .8rem; }
+}

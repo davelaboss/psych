@@ -67,7 +67,11 @@ export async function pickupAvailability(order, timingKey, appointment = null) {
   if (!keys.length) return [];
   // Half-day appointments occupy every hourly slot they overlap. Excluding this
   // timing part also lets its buyer replace a legacy window when it is full.
-  const { rows } = await database().pool.query(`SELECT candidate.slot_key, count(a.order_id)::int AS occupied
+  const { rows } = await database().pool.query(`SELECT candidate.slot_key, count(a.order_id)::int AS occupied,
+    EXISTS(SELECT 1 FROM pickup_blackouts b
+      WHERE b.pickup_date=split_part(candidate.slot_key,'|',1)::date
+        AND b.start_time<split_part(split_part(candidate.slot_key,'|',2),'-',2)::time
+        AND b.end_time>split_part(split_part(candidate.slot_key,'|',2),'-',1)::time) AS blocked
     FROM unnest($1::text[]) AS candidate(slot_key)
     LEFT JOIN pickup_appointments a ON a.status='SCHEDULED'
       AND EXISTS (SELECT 1 FROM checkout_attempts c WHERE c.order_id=a.order_id AND ${activeOrderSql('c')})
@@ -77,7 +81,8 @@ export async function pickupAvailability(order, timingKey, appointment = null) {
       AND NOT (a.order_id=$2 AND a.timing_key=$3)
     GROUP BY candidate.slot_key`, [keys, order.id, timingKey]);
   const counts = new Map(rows.map(row => [row.slot_key, Number(row.occupied)]));
-  return keys.map(key => ({ key, remaining: Math.max(0, PICKUP_RULES.defaultCapacityPerWindow - (counts.get(key) || 0)),
+  const blocked = new Set(rows.filter(row => row.blocked).map(row => row.slot_key));
+  return keys.filter(key => !blocked.has(key)).map(key => ({ key, remaining: Math.max(0, PICKUP_RULES.defaultCapacityPerWindow - (counts.get(key) || 0)),
     selected: appointment?.status === 'SCHEDULED' && appointment.slotKey === key }));
 }
 
@@ -137,6 +142,12 @@ export async function changePickup({ orderId, timingKey, slotKey, actor }, depen
       if (!allowedSlotKeys(order, normalizedTimingKey).includes(slotKey)) {
         throw conflict('El horario de retiro no está disponible para esta parte del pedido.');
       }
+      // Use the same date lock as blackout confirmation. Never expose private reasons.
+      const blocked = (await client.query(`SELECT id FROM pickup_blackouts
+        WHERE pickup_date=split_part($1,'|',1)::date
+          AND start_time<split_part(split_part($1,'|',2),'-',2)::time
+          AND end_time>split_part(split_part($1,'|',2),'-',1)::time LIMIT 1`, [slotKey])).rows.length;
+      if (blocked) throw conflict('Este horario está bloqueado. Elegí otro.');
       await client.query('INSERT INTO pickup_windows(slot_key) VALUES($1) ON CONFLICT DO NOTHING', [slotKey]);
       const occupied = Number((await client.query(`SELECT count(*)::int AS count FROM pickup_appointments
         WHERE status='SCHEDULED' AND split_part(slot_key,'|',1)=split_part($1,'|',1)
@@ -162,7 +173,11 @@ export async function changePickup({ orderId, timingKey, slotKey, actor }, depen
 }
 
 export async function listUpcomingPickups({ client = database().pool, now = new Date() } = {}) {
-  const { rows } = await client.query(`SELECT a.slot_key, a.order_id, a.timing_key, c.order_snapshot
+  const { rows } = await client.query(`SELECT a.slot_key, a.order_id, a.timing_key, c.order_snapshot,
+    EXISTS(SELECT 1 FROM pickup_blackouts b
+      WHERE b.pickup_date=split_part(a.slot_key,'|',1)::date
+        AND b.start_time<split_part(split_part(a.slot_key,'|',2),'-',2)::time
+        AND b.end_time>split_part(split_part(a.slot_key,'|',2),'-',1)::time) AS needs_reschedule
     FROM pickup_appointments a JOIN checkout_attempts c ON c.order_id=a.order_id
     WHERE a.status='SCHEDULED' AND ${activeOrderSql('c')} AND (split_part(a.slot_key,'|',1)>$1
       OR (split_part(a.slot_key,'|',1)=$1 AND split_part(split_part(a.slot_key,'|',2),'-',2)>$2))
@@ -170,6 +185,7 @@ export async function listUpcomingPickups({ client = database().pool, now = new 
   return rows.map(row => {
     const part = orderFulfillmentPart(row.order_snapshot, row.timing_key);
     return { slotKey: row.slot_key, orderId: row.order_id, timingKey: row.timing_key,
+      needsReschedule: Boolean(row.needs_reschedule),
       timingLabel: part?.timingLabel || row.timing_key,
       buyer: row.order_snapshot.buyer?.name || '',
       buyerPhone: row.order_snapshot.buyer?.phone || '',

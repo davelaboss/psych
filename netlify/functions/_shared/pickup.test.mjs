@@ -115,6 +115,7 @@ test('scheduling and cancelling one timing key never alter the other appointment
   const client = { async query(sql, params = []) {
     if (sql.includes('FROM checkout_attempts')) return { rows: [{ order_snapshot: mixedPaid }] };
     if (sql.includes('WHERE order_id=$1 AND timing_key=$2')) return { rows: rows.has(params[1]) ? [rows.get(params[1])] : [] };
+    if (sql.includes('SELECT id FROM pickup_blackouts')) return { rows: [] };
     if (sql.includes('count(*)::int')) return { rows: [{ count: 0 }] };
     if (sql.includes('INSERT INTO pickup_windows') || sql.includes('SELECT slot_key FROM pickup_windows')) return { rows: [] };
     if (sql.includes('INSERT INTO pickup_appointments')) {
@@ -164,9 +165,9 @@ for (const [weekday, day, expected] of [
   assert.deepEqual(keys.filter(key => key.startsWith(`${day}|`)), expected.map(time => `${day}|${time}`));
 });
 
-test('December 8 exception and immediate end date remain unchanged', () => {
+test('December 8 opens 08–20 while the immediate end date remains unchanged', () => {
   const keys = pickupSlotKeys(paidImmediate(), 'IMMEDIATE', '2026-12-08', '00:00');
-  assert.deepEqual(keys, hourly(13, 17).map(time => `2026-12-08|${time}`));
+  assert.deepEqual(keys, hourly(8, 20).map(time => `2026-12-08|${time}`));
   assert.deepEqual(pickupSlotKeys(paidImmediate(), 'IMMEDIATE', '2026-12-09', '00:00'), []);
 });
 
@@ -177,7 +178,7 @@ test('delayed eligibility and order-specific date boundaries remain unchanged', 
   assert.deepEqual([...new Set(keys.map(slot => slot.split('|')[0]))],
     ['2026-12-09', '2026-12-10', '2026-12-11', '2026-12-12']);
   assert.deepEqual(keys.filter(slot => slot.startsWith('2026-12-12|')),
-    hourly(14, 17).map(time => `2026-12-12|${time}`));
+    hourly(8, 20).map(time => `2026-12-12|${time}`));
   const narrow = { ...delayed, items: [{ saleMode: 'DELAYED',
     pickupWindowStart: '2026-12-10', pickupWindowEnd: '2026-12-11' }] };
   assert.deepEqual([...new Set(pickupSlotKeys(narrow, 'DELAYED:2026-12-10:2026-12-11',

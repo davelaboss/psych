@@ -617,9 +617,8 @@ function renderAdminShell() {
         )}
 
         ${adminTabButton(
-          'review',
-          'Revisión',
-          ADMIN_STATE.stats.review
+          'retiros',
+          'Retiros'
         )}
 
         ${adminTabButton(
@@ -658,6 +657,7 @@ function renderAdminShell() {
           'marketing',
           'Marketing'
         )}
+        ${adminTabButton('review', 'Revisión', ADMIN_STATE.stats.review)}
       </nav>
 
       <div
@@ -759,6 +759,11 @@ function renderAdminTab() {
         );
       }
     );
+
+  if (ADMIN_STATE.activeTab === 'retiros') {
+    renderRetirosTab();
+    return;
+  }
 
   if (
     ADMIN_STATE.activeTab ===
@@ -4878,8 +4883,6 @@ function renderOrdersTab({ preserveDetails = false } = {}) {
     ? target.querySelector('[data-admin-detail]:not([hidden])') : null;
   const reconciliation = preserveDetails
     ? document.getElementById('admin-legacy-reconciliation-review') : null;
-  const pickups = preserveDetails
-    ? document.getElementById('admin-upcoming-pickups') : null;
 
   const normalizedSearch = adminNormalizeSearch(
     ADMIN_STATE.orderSearch
@@ -5078,9 +5081,6 @@ function renderOrdersTab({ preserveDetails = false } = {}) {
       <div class="admin-order-list-v2">
         ${rows}
       </div>
-      <section class="admin-content-v2" id="admin-upcoming-pickups">
-        <h2>Próximos retiros</h2><p>Cargando…</p>
-      </section>
     </section>
   `;
 
@@ -5088,11 +5088,6 @@ function renderOrdersTab({ preserveDetails = false } = {}) {
     document.getElementById('admin-legacy-reconciliation-review').replaceWith(reconciliation);
   } else {
     loadLegacyReconciliationReviewQueue();
-  }
-  if (pickups) {
-    document.getElementById('admin-upcoming-pickups').replaceWith(pickups);
-  } else {
-    loadUpcomingPickups();
   }
   if (openDetail) {
     const orderId = CSS.escape(openDetail.getAttribute('data-admin-detail'));
@@ -6078,8 +6073,8 @@ async function loadUpcomingPickups() {
   if (!target) return;
   try {
     const data = await adminFetch('/api/admin/pickup');
-    target.innerHTML = `<h2>Próximos retiros</h2>${data.upcoming.length ? `<ol>${data.upcoming.map(item =>
-      `<li><strong>${adminEscape(item.slotKey.replace('|', ' · '))}</strong> · ${adminEscape(item.timingLabel)} · ${adminEscape(item.orderId)} · ${adminEscape(item.buyer)} · Items ${item.itemNumbers.map(n => adminEscape(String(n).padStart(3, '0'))).join(', ')}</li>`).join('')}</ol>` : '<p>No hay retiros próximos.</p>'}`;
+    target.innerHTML = `<h2>Próximos retiros</h2>${data.upcoming.length ? data.upcoming.map(retiroAppointmentCard).join('') : '<p>No hay retiros próximos.</p>'}`;
+    bindRetirosOrders(target);
   } catch (error) { target.innerHTML = `<h2>Próximos retiros</h2><p>${adminEscape(error.message)}</p>`; }
 }
 
