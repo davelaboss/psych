@@ -19,7 +19,8 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/.netlify/functions/volume2-catalog') return json({ products: [product] });
   if (url.pathname === '/api/cart/reservation') return json({ lease: { expiresAt: Date.now() + 7200000, items: { 'fixture-product': 1 } } });
   if (url.pathname === '/api/orders/get') return json({ order });
-  if (url.pathname === '/api/orders/pickup') return json({ fulfillments: [{ timingKey: 'IMMEDIATE', timingLabel: 'Retiro', eligible: true, slots: [{ key: 'LOCAL', label: '9 de diciembre, 09:00–10:00', remaining: 1 }] }] });
+  // The unpaid fixture may schedule; payment/delivery eligibility remains false.
+  if (url.pathname === '/api/orders/pickup') return json({ fulfillments: [{ timingKey: 'IMMEDIATE', timingLabel: 'Retiro', eligible: false, schedulingEligible: true, slots: [{ key: 'LOCAL', label: '9 de diciembre, 09:00–10:00', remaining: 1 }] }] });
   if (url.pathname.startsWith('/api/')) return json({ ok: true });
   if (/^\/(assets|images|inventory)\//.test(url.pathname) || url.pathname === '/.netlify/images') {
     try {
@@ -215,7 +216,9 @@ try {
         check(`${width}: checkout required field Spanish`, await page.locator('input[name=name]').evaluate(el => el.validationMessage === 'Completa este campo.'));
       }
       if (route.startsWith('/pedido/')) {
-        check(`${width}: pickup selector visible`, await page.locator('select[name=slotKey]').isVisible());
+        const pickupSelector = page.locator('#pickup-scheduler select[name=slotKey]');
+        await pickupSelector.waitFor({ state: 'visible' });
+        check(`${width}: pickup selector visible`, await pickupSelector.isVisible());
         await page.getByRole('button', { name: 'Cancelar pedido', exact: true }).click();
         check(`${width}: cancellation confirmation Spanish`, await page.getByRole('dialog').isVisible());
         await page.getByRole('button', { name: /mantener pedido/i }).click();
