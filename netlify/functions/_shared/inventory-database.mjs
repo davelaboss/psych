@@ -122,7 +122,7 @@ async function scheduleOrderReservationEvents(client, orderId, expiresAt) {
   }
 }
 
-function snapshotWithReservation(row) {
+export function snapshotWithReservation(row) {
   if (!row) return null;
   const snapshot = row.order_snapshot;
   const expiresAt = ms(row.expires_at);
@@ -331,6 +331,10 @@ async function reclaimExpiredOrderLocked(client, locked, timestamp) {
   }
 
   const renewedExpiresAt = new Date(timestamp + ORDER_HOLD_MS);
+  // An independently renewed reservation must not resurrect an appointment
+  // whose expired hold already stopped consuming pickup capacity.
+  await client.query(`UPDATE pickup_appointments SET status='CANCELLED',slot_key=NULL,
+    revision=revision+1,updated_at=clock_timestamp() WHERE order_id=$1 AND status='SCHEDULED'`, [row.order_id]);
   const snapshot = {
     ...current,
     status: 'AWAITING_INITIAL_PAYMENT',
@@ -565,6 +569,8 @@ async function cancelOrderAsActor(orderId, actor) {
       cancelledBy: actor, inventoryReleasedAt: timestamp, holdExpiresAt: null,
       ...(actor === 'CUSTOMER' ? { reservationState: null } : {}), updatedAt: timestamp };
     await client.query("DELETE FROM inventory_reservations WHERE order_id=$1 AND phase='ORDER'", [orderId]);
+    await client.query(`UPDATE pickup_appointments SET status='CANCELLED',slot_key=NULL,
+      revision=revision+1,updated_at=clock_timestamp() WHERE order_id=$1 AND status='SCHEDULED'`, [orderId]);
     await cancelOrderReservationEvents(client, orderId);
     await client.query('UPDATE checkout_attempts SET order_snapshot=$2,expires_at=$3,projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1',
       [orderId, JSON.stringify(snapshot), new Date(timestamp)]);

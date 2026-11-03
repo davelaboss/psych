@@ -1,6 +1,6 @@
-import { database, inventoryTransaction } from './inventory-database.mjs';
+import { database, inventoryTransaction, snapshotWithReservation } from './inventory-database.mjs';
 import { PICKUP_RULES } from './commerce.mjs';
-import { deriveOrderFulfillmentParts, orderFulfillmentPart } from './order-fulfillments.mjs';
+import { deriveOrderFulfillmentParts, orderFulfillmentPart, SCHEDULABLE_ORDER_STATUSES } from './order-fulfillments.mjs';
 import { queueOrderNotifications } from './seller-notifications.mjs';
 
 const conflict = message => Object.assign(new Error(message), { status: 409 });
@@ -12,6 +12,12 @@ const timeLocal = (now = new Date()) => new Intl.DateTimeFormat('en-GB', { timeZ
 const dateAt = value => new Date(`${value}T12:00:00Z`);
 const addDay = value => new Date(dateAt(value).getTime() + 86400000).toISOString().slice(0, 10);
 
+// Ignore cancelled/completed orders and expired holds in capacity and agendas.
+// Expiration remains passive: no reservation, payment or inventory writes here.
+const activeOrderSql = alias => `${alias}.order_snapshot->>'status' IN (${SCHEDULABLE_ORDER_STATUSES.map(status => `'${status}'`).join(',')})
+  AND COALESCE(${alias}.order_snapshot->>'reservationState','') <> 'EXPIRED'
+  AND (${alias}.committed_at IS NOT NULL OR ${alias}.expires_at IS NULL OR ${alias}.expires_at>clock_timestamp())`;
+
 const appointmentJson = row => row ? {
   timingKey: row.timing_key,
   slotKey: row.slot_key,
@@ -21,9 +27,9 @@ const appointmentJson = row => row ? {
 } : null;
 
 export function pickupEligible(order, timingKey) {
-  if (timingKey) return Boolean(orderFulfillmentPart(order, timingKey)?.eligible);
+  if (timingKey) return Boolean(orderFulfillmentPart(order, timingKey)?.schedulingEligible);
   const parts = deriveOrderFulfillmentParts(order);
-  return parts.length > 0 && parts.every(part => part.eligible);
+  return parts.length > 0 && parts.every(part => part.schedulingEligible);
 }
 
 export function pickupSlotKeys(order, timingKey, today, currentTime) {
@@ -31,13 +37,13 @@ export function pickupSlotKeys(order, timingKey, today, currentTime) {
   today ??= todayLocal(now);
   currentTime ??= timeLocal(now);
   const part = orderFulfillmentPart(order, timingKey);
-  if (!part?.eligible) return [];
+  if (!part?.schedulingEligible) return [];
   const delayed = timingKey !== 'IMMEDIATE';
   const start = delayed
-    ? part.pickupWindow?.startDate || PICKUP_RULES.delayedPickup.startDate
+    ? [part.pickupWindow?.startDate, PICKUP_RULES.delayedPickup.startDate].filter(Boolean).sort().at(-1)
     : windows.startDate;
   const end = delayed
-    ? part.pickupWindow?.endDate || PICKUP_RULES.delayedPickup.endDate
+    ? [part.pickupWindow?.endDate, PICKUP_RULES.delayedPickup.endDate].filter(Boolean).sort()[0]
     : windows.endDate;
   const result = [];
   for (let day = start; day <= end; day = addDay(day)) {
@@ -64,6 +70,7 @@ export async function pickupAvailability(order, timingKey, appointment = null) {
   const { rows } = await database().pool.query(`SELECT candidate.slot_key, count(a.order_id)::int AS occupied
     FROM unnest($1::text[]) AS candidate(slot_key)
     LEFT JOIN pickup_appointments a ON a.status='SCHEDULED'
+      AND EXISTS (SELECT 1 FROM checkout_attempts c WHERE c.order_id=a.order_id AND ${activeOrderSql('c')})
       AND split_part(a.slot_key,'|',1)=split_part(candidate.slot_key,'|',1)
       AND split_part(split_part(a.slot_key,'|',2),'-',1)<split_part(split_part(candidate.slot_key,'|',2),'-',2)
       AND split_part(split_part(a.slot_key,'|',2),'-',2)>split_part(split_part(candidate.slot_key,'|',2),'-',1)
@@ -101,20 +108,18 @@ export async function changePickup({ orderId, timingKey, slotKey, actor }, depen
   const queueNotifications = dependencies.queueNotifications || queueOrderNotifications;
   const allowedSlotKeys = dependencies.slotKeys || pickupSlotKeys;
   return runTransaction(async client => {
-    const orderRow = (await client.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
+    const orderRow = (await client.query('SELECT * FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
     if (!orderRow) throw Object.assign(new Error('Pedido no encontrado.'), { status: 404 });
-    const order = orderRow.order_snapshot;
+    const order = snapshotWithReservation(orderRow);
     const part = orderFulfillmentPart(order, normalizedTimingKey);
     if (!part) throw Object.assign(new Error('El tipo de retiro no pertenece a este pedido.'), { status: 404 });
     const existing = (await client.query(`SELECT * FROM pickup_appointments
       WHERE order_id=$1 AND timing_key=$2 FOR UPDATE`, [orderId, normalizedTimingKey])).rows[0];
     const oldKey = existing?.status === 'SCHEDULED' ? existing.slot_key : null;
-    if (slotKey === oldKey) return appointmentJson(existing);
-    if (slotKey != null && !part.eligible) {
-      throw conflict(normalizedTimingKey === 'IMMEDIATE'
-        ? 'El retiro inmediato requiere que se complete el importe exigible ahora.'
-        : 'El retiro posterior requiere el pago total confirmado por el vendedor.');
+    if (slotKey != null && !part.schedulingEligible) {
+      throw conflict('Este pedido no está activo para agendar. Revisá si la reserva venció o fue cancelada.');
     }
+    if (slotKey === oldKey) return appointmentJson(existing);
     if (slotKey != null && (typeof slotKey !== 'string' || !slotKey)) {
       throw conflict('El horario de retiro no está disponible para esta parte del pedido.');
     }
@@ -135,6 +140,7 @@ export async function changePickup({ orderId, timingKey, slotKey, actor }, depen
       await client.query('INSERT INTO pickup_windows(slot_key) VALUES($1) ON CONFLICT DO NOTHING', [slotKey]);
       const occupied = Number((await client.query(`SELECT count(*)::int AS count FROM pickup_appointments
         WHERE status='SCHEDULED' AND split_part(slot_key,'|',1)=split_part($1,'|',1)
+          AND EXISTS (SELECT 1 FROM checkout_attempts c WHERE c.order_id=pickup_appointments.order_id AND ${activeOrderSql('c')})
           AND split_part(split_part(slot_key,'|',2),'-',1)<split_part(split_part($1,'|',2),'-',2)
           AND split_part(split_part(slot_key,'|',2),'-',2)>split_part(split_part($1,'|',2),'-',1)
           AND NOT (order_id=$2 AND timing_key=$3)`, [slotKey, orderId, normalizedTimingKey])).rows[0].count);
@@ -158,7 +164,7 @@ export async function changePickup({ orderId, timingKey, slotKey, actor }, depen
 export async function listUpcomingPickups({ client = database().pool, now = new Date() } = {}) {
   const { rows } = await client.query(`SELECT a.slot_key, a.order_id, a.timing_key, c.order_snapshot
     FROM pickup_appointments a JOIN checkout_attempts c ON c.order_id=a.order_id
-    WHERE a.status='SCHEDULED' AND (split_part(a.slot_key,'|',1)>$1
+    WHERE a.status='SCHEDULED' AND ${activeOrderSql('c')} AND (split_part(a.slot_key,'|',1)>$1
       OR (split_part(a.slot_key,'|',1)=$1 AND split_part(split_part(a.slot_key,'|',2),'-',2)>$2))
     ORDER BY a.slot_key, a.order_id, a.timing_key`, [todayLocal(now), timeLocal(now)]);
   return rows.map(row => {

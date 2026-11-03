@@ -14,7 +14,8 @@ test('customer portal renders and schedules each fulfillment timing independentl
   assert.match(checkout, /Saldo posterior de estos artículos/);
   assert.match(checkout, /data-pickup-timing-key/);
   assert.match(checkout, /timingKey: form\.dataset\.pickupTimingKey/);
-  assert.match(checkout, /Todavía no disponible para retiro/);
+  assert.match(checkout, /Agendamiento no disponible/);
+  assert.match(checkout, /part\.schedulingEligible/);
 });
 
 test('customer and admin pickup endpoints preserve their existing authorization boundaries', () => {

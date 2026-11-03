@@ -3,7 +3,7 @@ import {
   jsonResponse,
   loadCatalog,
 } from './_shared/commerce.mjs';
-import { database, readPurchasableInventory } from './_shared/inventory-database.mjs';
+import { database, readPurchasableInventory, snapshotWithReservation } from './_shared/inventory-database.mjs';
 import { deriveOrderFulfillmentParts } from './_shared/order-fulfillments.mjs';
 import { readCampaignPanel, updateRegularCampaign } from './_shared/regular-campaign.mjs';
 import {
@@ -38,14 +38,15 @@ function operationalCounts(orderRows, appointmentRows, fulfillmentRows) {
   let eligiblePickupsUnscheduled = 0;
   let scheduledPickupsPending = 0;
 
-  for (const row of orderRows.filter((candidate) => candidate.committed_at)) {
-    const order = { ...(row.order_snapshot || {}), id: row.order_id };
+  for (const row of orderRows) {
+    const order = { ...snapshotWithReservation(row), id: row.order_id };
     for (const part of deriveOrderFulfillmentParts(order)) {
+      if (!part.schedulingEligible) continue;
       const key = `${row.order_id}\0${part.timingKey}`;
       if (delivered.has(key)) continue;
       const scheduled = appointments.get(key)?.status === 'SCHEDULED';
       if (scheduled) scheduledPickupsPending += 1;
-      else if (part.eligible) eligiblePickupsUnscheduled += 1;
+      else eligiblePickupsUnscheduled += 1;
     }
   }
 
@@ -71,7 +72,8 @@ export async function loadSalePulseSnapshot(origin, dependencies = {}) {
       FROM sale_analytics_events
       WHERE occurred_at >= clock_timestamp() - interval '7 days'
       ORDER BY occurred_at,event_id`),
-    query(`SELECT order_id,committed_at,order_snapshot
+    query(`SELECT order_id,committed_at,expires_at,order_snapshot,
+        expires_at IS NOT NULL AND expires_at<=clock_timestamp() AS reservation_expired
       FROM checkout_attempts ORDER BY created_at,order_id`),
     query(`SELECT order_id,timing_key,status
       FROM pickup_appointments`),

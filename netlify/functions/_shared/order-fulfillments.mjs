@@ -1,6 +1,19 @@
 import { timingKeyForItem, timingLabel } from './fulfillment-batches-core.mjs';
 import { withPaymentState } from './order-payments.mjs';
 
+export const SCHEDULABLE_ORDER_STATUSES = Object.freeze([
+  'AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT',
+  'DEPOSIT_CONFIRMED', 'FINAL_RECEIPT_RECEIVED', 'PAYMENT_CONFIRMED',
+  'PAID_IN_FULL', 'READY_TO_SCHEDULE', 'PICKUP_SCHEDULED',
+]);
+
+export function orderSchedulingEligible(order, now = Date.now()) {
+  if (!SCHEDULABLE_ORDER_STATUSES.includes(order?.status) || order.reservationState === 'EXPIRED') return false;
+  // Booking never renews an unpaid hold. Protected/committed orders have no deadline.
+  return order.status !== 'AWAITING_INITIAL_PAYMENT' || !order.holdExpiresAt ||
+    Number(order.holdExpiresAt) > Number(now);
+}
+
 const pyg = value => {
   const amount = Number(value);
   return Number.isSafeInteger(amount) && amount >= 0 ? amount : 0;
@@ -53,7 +66,10 @@ export function deriveOrderFulfillmentParts(order) {
     const status = fulfillmentStatus(current, part.timingKey);
     return {
       ...part,
+      // Preserve the legacy payment-readiness contract for existing consumers.
       eligible: status === 'READY_FOR_PICKUP',
+      handoverEligible: status === 'READY_FOR_PICKUP',
+      schedulingEligible: orderSchedulingEligible(current),
       status,
       orderRemainingBalancePYG: pyg(current.remainingBalancePYG),
     };
