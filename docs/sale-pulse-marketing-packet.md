@@ -29,6 +29,65 @@ resolves.
 
 ## Regular ChatGPT campaign: coverage, preparation and publication
 
+### Explicit pending-assignment supersession
+
+The operator-only `tools/campaign-reconciliation/reconcile.mjs` supports the
+reviewed November 2, 2026 Maria correction. It defaults to an offline plan;
+there is no new HTTP action, automatic correction or publication. Production
+application requires separate Governance authorization after compatible code
+has been published. The final marketing package is outside this operation.
+
+The existing `history-v1.json` key gains schemaVersion 2 and an append-only
+`supersessions` audit event. Original batch arrays, assignment identities,
+preparation dates and POSTED records remain unchanged. `baseline-v1.json` is
+never written. New readers accept v1 and v2; older code rejects v2 instead of
+silently offering superseded assignments. Never downgrade the ledger to v1.
+
+Maria's pending 113 and 425 occurrences are explicitly superseded, not POSTED.
+The active target list becomes 486, 095, 394. David remains
+443, 101, 322, 367, 357. Existing POSTED history for 019 and 039 remains the sole
+confirmation for those Items; no duplicate assignment or confirmation is added.
+Admin retains a read-only audit detail even after the pending batch completes.
+
+Panel, handoff, pickup-mode compatibility and confirmation membership all omit
+superseded occurrences. Stale submissions containing one are rejected atomically.
+The explicitly withdrawn products are also excluded from fresh automatic
+selection in this cycle's priority pass, separately from POSTED coverage. This
+prevents a new batch from immediately recreating the erroneous assignments;
+it does not change inventory, prices or publication claims. Once remaining
+valid Items are confirmed or ineligible, normal preparation advances.
+
+The operation pins cycle, batch, person, product IDs, expected revision and ETag,
+reason and approval reference. It writes one ledger CAS, verifies strong readback
+including the audit event and all existing confirmations, and is idempotent by
+event ID. A 412 or changed revision requires a refreshed, reviewed operation;
+there is no blind reconciliation retry. Uncertain committed outcomes are read
+and verified using the same ID. New confirmations are never restored over.
+The actor `GOVERNANCE_OPERATOR` describes the credentialed operator; the approval
+reference records the owner's decision without claiming personal authentication.
+
+Offline planning, using a sanitized read-only snapshot with ledger/baseline
+data and ETags:
+
+```sh
+node tools/campaign-reconciliation/reconcile.mjs --operation OPERATION.json --snapshot SNAPSHOT.json
+```
+
+After separate release and production-data authorization, use the same reviewed
+operation with `--apply --backup NEW_BACKUP.json --published-commit AUTHORIZED_SHA`
+instead of `--snapshot`. `NETLIFY_AUTH_TOKEN` must be provided securely. The tool
+checks the exact production site, published revision and locked state, saves raw
+ledger/baseline strings, hashes and ETags to a new backup before any write, and
+refuses any target other than this correction. Code deployment alone does not
+apply data. Never use the production Sale Pulse GET for a strictly read-only
+integrity check: its snapshot loader also performs analytics-retention cleanup.
+
+Keep automatic publishing locked. The lock does not freeze runtime ledger
+writes; CAS remains mandatory. Rollback after activation must retain v2 support
+or accept campaign operations failing closed. Never remove supersession, reset
+coverage or restore a pre-correction ledger over subsequent legitimate POSTED
+records. Prefer a reviewed forward fix. No SQL migration is involved.
+
 The authenticated existing Sale Pulse endpoint now supports two explicit POST
 actions for campaignId regular-chatgpt-daily-v1: prepare and confirm. GET remains
 passive for campaign history. Only COPIAR PARA CHATGPT requests prepare; report,

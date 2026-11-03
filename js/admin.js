@@ -1446,7 +1446,12 @@ function regularCampaignControls() {
           ${batch.assignments[person].map(item => `<label><input type="checkbox" data-regular-product value="${adminEscape(item.productId)}" checked> Item ${String(item.itemNumber).padStart(3, '0')}</label>`).join(' ')}
           <button type="button" class="secondary-action" data-confirm-regular-campaign data-batch="${adminEscape(batch.id)}" data-cycle="${adminEscape(campaign.cycleId)}" data-person="${person}">CONFIRMO PUBLICADOS — ${person}</button>
         </div>`).join('')}
-      </details>`).join('') || '<p>No hay lotes pendientes de confirmación.</p>'}`;
+      </details>`).join('') || '<p>No hay lotes pendientes de confirmación.</p>'}
+    ${(campaign.supersessions || []).map(event => `<details><summary>Asignaciones sustituidas — ${adminEscape(event.date)}</summary>
+      <p>${adminEscape(event.person)}: Items ${event.itemNumbers.map(n => String(n).padStart(3, '0')).join(', ')}.
+      Sustituidas, sin confirmar como publicadas. ${adminEscape(event.reason)}</p>
+      <p>Registrado: ${adminEscape(salePulseDate(event.recordedAt))}. Referencia: ${adminEscape(event.approvalReference)}.</p>
+    </details>`).join('')}`;
 }
 
 function renderRegularCampaignStatus() {

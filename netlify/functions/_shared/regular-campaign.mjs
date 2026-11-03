@@ -25,9 +25,11 @@ function campaignStore() {
 }
 
 function includesHistoryWrite(actual, expected) {
-  const { revision, batches, initialization, ...fixed } = expected;
-  const { revision: currentRevision, batches: currentBatches, initialization: currentInitialization, ...currentFixed } = actual;
-  if (currentRevision < revision || !isDeepStrictEqual(currentFixed, fixed) ||
+  const { revision, batches, initialization, schemaVersion, supersessions = [], ...fixed } = expected;
+  const { revision: currentRevision, batches: currentBatches, initialization: currentInitialization,
+    schemaVersion: currentSchema, supersessions: currentSupersessions = [], ...currentFixed } = actual;
+  if (currentRevision < revision || currentSchema < schemaVersion || !isDeepStrictEqual(currentFixed, fixed) ||
+      !supersessions.every(event => currentSupersessions.some(current => isDeepStrictEqual(current, event))) ||
       !(initialization === 'PROVISIONAL' ? ['PROVISIONAL', 'ESTABLISHED'] :
         initialization === 'ESTABLISHED' ? ['ESTABLISHED'] : [undefined, 'ESTABLISHED']).includes(currentInitialization)) return false;
   const immutableBatch = batch => ({ ...batch, assignments: Object.fromEntries(people.map(person =>
@@ -58,7 +60,10 @@ async function writeCampaignFile(store, key, data, conditions) {
 }
 
 export function validateCampaignHistory(history, { allowProvisional = false } = {}) {
-  if (!history || history.schemaVersion !== 1 || history.campaignId !== REGULAR_CAMPAIGN ||
+  if (!history || ![1, 2].includes(history.schemaVersion) || history.campaignId !== REGULAR_CAMPAIGN ||
+      (history.schemaVersion === 1 && history.supersessions !== undefined) ||
+      (history.schemaVersion === 2 && (history.initialization === 'PROVISIONAL' ||
+        !Array.isArray(history.supersessions) || !history.supersessions.length)) ||
       !validId(history.cycleId) || !validDate(history.startedAt) ||
       history.historicalCompleteness !== 'UNRECONCILED' ||
       !Number.isSafeInteger(history.revision) || history.revision < 1 ||
@@ -100,7 +105,33 @@ export function validateCampaignHistory(history, { allowProvisional = false } = 
     }
     if (!ids.size) throw fail('Lote vacío no válido.');
   }
+  const eventIds = new Set(), targets = new Set();
+  for (const event of history.supersessions || []) {
+    const batch = history.batches.find(b => b.id === event?.batchId);
+    if (!event || Object.keys(event).sort().join(',') !==
+        'approvalReference,batchId,id,person,productIds,reason,recordedAt,recordedBy,sourceRevision' ||
+        !validId(event.id) || eventIds.has(event.id) || !batch || batch.passId !== PRIORITY_PASS ||
+        !people.includes(event.person) || !validDate(event.recordedAt) || Date.parse(event.recordedAt) < Date.parse(batch.preparedAt) ||
+        event.recordedBy !== 'GOVERNANCE_OPERATOR' || !Number.isSafeInteger(event.sourceRevision) ||
+        event.sourceRevision < 1 || event.sourceRevision >= history.revision ||
+        ![event.reason, event.approvalReference].every(s => typeof s === 'string' && s.trim().length > 0 && s.length <= 1000) ||
+        !Array.isArray(event.productIds) || !event.productIds.length || event.productIds.length > 5 ||
+        new Set(event.productIds).size !== event.productIds.length) throw fail('Sustitución de asignaciones no fiable.');
+    eventIds.add(event.id);
+    for (const id of event.productIds) {
+      const item = batch.assignments[event.person].find(p => p.productId === id);
+      const target = `${batch.id}/${event.person}/${id}`;
+      if (!item || item.postedAt !== null || targets.has(target)) throw fail('No se puede sustituir una publicación confirmada o una asignación inexistente.');
+      targets.add(target);
+    }
+  }
   return history;
+}
+
+function activeAssignments(history, batch, person) {
+  const excluded = new Set((history.supersessions || []).filter(event =>
+    event.batchId === batch.id && event.person === person).flatMap(event => event.productIds));
+  return batch.assignments[person].filter(item => !excluded.has(item.productId));
 }
 
 function coverage(history) {
@@ -143,7 +174,9 @@ export function selectRegularCampaign(packet, history, now) {
   validateCampaignHistory(history);
   const products = eligibleProducts(packet);
   const { posted } = coverage(history);
-  const firstPass = products.filter(p => !posted.has(p.productId));
+  // Explicit withdrawals apply to this cycle's priority pass, never inventory or POSTED coverage.
+  const withdrawn = new Set((history.supersessions || []).flatMap(event => event.productIds));
+  const firstPass = products.filter(p => !posted.has(p.productId) && !withdrawn.has(p.productId));
   const byIdentity = (a, b) => a.itemNumber - b.itemNumber || a.productId.localeCompare(b.productId);
   const ranked = firstPass.sort((a, b) => b.askingPricePYG - a.askingPricePYG || byIdentity(a, b));
   const delayed = ranked.filter(p => p.saleMode === 'DELAYED');
@@ -163,11 +196,16 @@ export function campaignPanel(history) {
     status: 'READY', campaignId: REGULAR_CAMPAIGN, cycleId: history.cycleId,
     passId: PRIORITY_PASS, passStartedAt: history.batches.find(b => b.passId === PRIORITY_PASS)?.preparedAt || null,
     startedAt: history.startedAt, historicalCompleteness: history.historicalCompleteness, revision: history.revision,
+    ...(history.supersessions ? { supersessions: history.supersessions.map(event => ({ ...event,
+      date: history.batches.find(batch => batch.id === event.batchId).date,
+      itemNumbers: event.productIds.map(id => history.batches.find(batch => batch.id === event.batchId)
+        .assignments[event.person].find(item => item.productId === id).itemNumber),
+    })) } : {}),
     pendingBatches: history.batches.filter(b => b.passId === PRIORITY_PASS).map(batch => ({
       id: batch.id, date: batch.date, phase: batch.phase,
       assignmentPolicy: batch.assignmentPolicy || null,
       requiresAssignmentReview: batch.assignmentPolicy !== ASSIGNMENT_POLICY,
-      assignments: Object.fromEntries(people.map(person => [person, batch.assignments[person]
+      assignments: Object.fromEntries(people.map(person => [person, activeAssignments(history, batch, person)
         .filter(p => !p.postedAt && (batch.phase === 'PHASE_2' || !posted.has(p.productId)))
         .map(p => ({ productId: p.productId, itemNumber: p.itemNumber }))])),
     })).filter(batch => people.some(person => batch.assignments[person].length)),
@@ -216,7 +254,7 @@ function handoffCampaign(packet, history, batch) {
   const selection = selectRegularCampaign(packet, history, batch.preparedAt);
   const marketable = new Map(eligibleProducts(packet).map(p => [p.productId, p]));
   const { posted } = coverage(history);
-  const assignments = Object.fromEntries(people.map(person => [person, batch.assignments[person]
+  const assignments = Object.fromEntries(people.map(person => [person, activeAssignments(history, batch, person)
     .filter(p => marketable.has(p.productId) && (person !== 'Maria' || marketable.get(p.productId).saleMode === 'IMMEDIATE') &&
       !p.postedAt && (batch.phase === 'PHASE_2' || !posted.has(p.productId)))
     .map(p => p.productId)]));
@@ -264,7 +302,7 @@ export async function updateRegularCampaign({ body, loadPacket, store = campaign
       // batches may be reused for new production; never rewrite a legacy Maria assignment in place.
       batch = history.batches.findLast(b => b.passId === PRIORITY_PASS && b.phase === selected.phase &&
         b.assignmentPolicy === ASSIGNMENT_POLICY &&
-        b.assignments.Maria.every(p => p.postedAt || !modes.has(p.productId) || modes.get(p.productId) === 'IMMEDIATE') &&
+        activeAssignments(history, b, 'Maria').every(p => p.postedAt || !modes.has(p.productId) || modes.get(p.productId) === 'IMMEDIATE') &&
         handoffCampaign(packet, history, b).regularCampaign.selectedProductIds.length);
       if (!batch) {
         if (!selected.products.length) throw fail('No quedan Items elegibles sin publicar en la pasada prioritaria. Reutilizá las fotos y mensajes existentes para nuevas publicaciones; no se preparó otro lote.');
@@ -282,7 +320,7 @@ export async function updateRegularCampaign({ body, loadPacket, store = campaign
         throw fail('Confirmá únicamente los Items realmente publicados de este lote regular.', 400);
       }
       batch = history.batches.find(b => b.id === body.batchId);
-      if (!batch || body.productIds.some(id => !batch.assignments[body.person].some(p => p.productId === id))) {
+      if (!batch || body.productIds.some(id => !activeAssignments(history, batch, body.person).some(p => p.productId === id))) {
         throw fail('Los Items no pertenecen a la persona y lote indicados.', 400);
       }
       for (const item of batch.assignments[body.person]) if (body.productIds.includes(item.productId) && !item.postedAt) {
@@ -306,4 +344,37 @@ export async function updateRegularCampaign({ body, loadPacket, store = campaign
     return { campaign: campaignPanel(history), packet: packet ? handoffCampaign(packet, history, batch) : undefined };
   }
   throw fail('El historial cambió en otra sesión. Volvé a intentar con datos actuales.');
+}
+
+// Operator-only: no HTTP action, selection, publication, baseline write or automatic execution.
+export async function supersedeCampaignAssignments({ operation, store = campaignStore(),
+  now = () => new Date().toISOString() }) {
+  if (!operation || Object.keys(operation).sort().join(',') !==
+      'approvalReference,batchId,campaignId,cycleId,expectedEtag,expectedRevision,id,person,productIds,reason' ||
+      operation.campaignId !== REGULAR_CAMPAIGN || !validEtag(operation.expectedEtag) ||
+      !Number.isSafeInteger(operation.expectedRevision)) throw fail('Operación de conciliación no válida.', 400);
+  const row = await readHistory(store);
+  if (!row || row.data.initialization === 'PROVISIONAL' || row.data.cycleId !== operation.cycleId) {
+    throw fail('No coincide el ciclo establecido.');
+  }
+  const { id, batchId, person, productIds, reason, approvalReference } = operation;
+  const eventFields = { id, batchId, person, productIds, reason, approvalReference,
+    sourceRevision: operation.expectedRevision, recordedBy: 'GOVERNANCE_OPERATOR' };
+  const prior = row.data.supersessions?.find(event => event.id === id);
+  if (prior) {
+    const { recordedAt, ...persisted } = prior;
+    if (!isDeepStrictEqual(persisted, eventFields)) throw fail('El identificador ya pertenece a otra conciliación.');
+    return { changed: false, history: row.data, campaign: campaignPanel(row.data) };
+  }
+  if (row.etag !== operation.expectedEtag || row.data.revision !== operation.expectedRevision) {
+    throw fail('El historial cambió. Revisá y autorizá nuevamente la operación.');
+  }
+  const history = structuredClone(row.data);
+  history.schemaVersion = 2;
+  history.revision++;
+  history.supersessions = [...(history.supersessions || []), { ...eventFields, recordedAt: now() }];
+  validateCampaignHistory(history);
+  const saved = await writeCampaignFile(store, LEDGER_KEY, history, { onlyIfMatch: row.etag });
+  if (!saved.modified) throw fail('El historial cambió. Revisá y autorizá nuevamente la operación.');
+  return { changed: true, history: saved.readback, campaign: campaignPanel(saved.readback) };
 }
