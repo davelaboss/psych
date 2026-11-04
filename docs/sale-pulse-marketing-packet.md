@@ -496,3 +496,10 @@ authority, and fallback participation in all five signal lists.
 
 Browser checks should use controlled fixtures where possible. Never manipulate
 live buyer reservations or use Add to Cart to validate availability.
+
+For regular-campaign eligibility diagnostics, explicit next-batch advancement,
+pending-assignment protection and separately approved deferrals, see
+[campaign progression](campaign-progression.md). Passive GET does not allocate a
+batch or change publication history. A short batch can reflect exhausted fresh
+priority inventory; inspect current eligible/unassigned counts before diagnosing
+an advancement bottleneck.

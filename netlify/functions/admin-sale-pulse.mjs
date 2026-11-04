@@ -136,7 +136,7 @@ export function createAdminSalePulseHandler({
       }
       const snapshot = await loadSnapshot(origin);
       // A failed campaign read must not disable inventory/analytics or authorize selection.
-      try { snapshot.regularCampaign = await loadCampaign(); }
+      try { snapshot.regularCampaign = await loadCampaign({ packet: snapshot.marketingPacket }); }
       catch { snapshot.regularCampaign = { status: 'UNAVAILABLE' }; }
       return jsonResponse({
         ok: true,
