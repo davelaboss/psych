@@ -12,7 +12,7 @@ const oldEnv = process.env.NODE_ENV;
 process.env.NODE_ENV = 'test';
 const { getStore } = await import('@netlify/blobs');
 const { REGULAR_CAMPAIGN, PRIORITY_PASS, ASSIGNMENT_POLICY, LEDGER_KEY, BASELINE_KEY,
-  campaignPanel, validateCampaignHistory, updateRegularCampaign, supersedeCampaignAssignments } = await import('./regular-campaign.mjs');
+  campaignPanel, validateCampaignHistory, updateRegularCampaign, supersedeCampaignAssignments, deferCampaignAssignments } = await import('./regular-campaign.mjs');
 if (oldEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = oldEnv;
 const clone = structuredClone;
 const id = n => `item-${n}`;
@@ -237,4 +237,27 @@ test('confirmation readback accepts concurrent append-only supersession without 
   assert.equal(result.campaign.supersessions.length, 1);
   assert.ok(h.history().batches[1].assignments.David[0].postedAt);
   assert.deepEqual(result.campaign.pendingBatches[0].assignments.Maria.map(item => item.itemNumber), [486,95,394]);
+});
+
+test('real SDK deferral verifies append-only readback alongside a concurrent earlier publication', async () => {
+  const h = fixture();
+  h.afterPut = () => { h.afterPut = null; const row = h.files.get(LEDGER_KEY);
+    row.data.batches[1].assignments.David[0] = entry(443, '2026-11-03T18:00:00Z');
+    row.data.revision++; row.etag = 'concurrent-publication'; };
+  const result = await deferCampaignAssignments({ operation: h.operation, store: h.store, now: () => '2026-11-03T19:00:00Z' });
+  assert.equal(result.history.schemaVersion, 3);
+  assert.equal(result.history.deferrals.length, 1);
+  assert.ok(result.history.batches[1].assignments.David[0].postedAt);
+  assert.deepEqual(result.history.batches[1].assignments.Maria, h.initial.batches[1].assignments.Maria);
+  assert.deepEqual(h.files.get(BASELINE_KEY), h.anchor);
+  assert.ok(h.requests.filter(r => r.method === 'PUT').every(r => r.key === LEDGER_KEY));
+});
+
+test('real SDK deferral refuses unverifiable writes and missing audit events on readback', async () => {
+  for (const lost of [false, true]) {
+    const h = fixture();
+    if (lost) h.afterPut = () => { h.files.set(LEDGER_KEY, { data: { ...clone(h.initial), revision: 12 }, etag: 'lost-event' }); };
+    else h.fault = { status: 503 };
+    await assert.rejects(deferCampaignAssignments({ operation: h.operation, store: h.store, now: () => '2026-11-03T19:00:00Z' }));
+  }
 });

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import { REGULAR_CAMPAIGN, PRIORITY_PASS, ASSIGNMENT_POLICY, LEDGER_KEY, BASELINE_KEY, updateRegularCampaign,
-  readCampaignPanel, selectRegularCampaign, validateCampaignHistory } from './regular-campaign.mjs';
+  readCampaignPanel, selectRegularCampaign, validateCampaignHistory, deferCampaignAssignments } from './regular-campaign.mjs';
 import { PREPARATION_EVIDENCE } from './regular-campaign-seed.mjs';
 import { loadBaseCatalog, loadCatalog } from './commerce.mjs';
 import { buildSalePulseSnapshot } from './sale-pulse.mjs';
@@ -66,6 +66,151 @@ function harness(count = 60, evidence = []) {
 }
 const selected = result => result.packet.regularCampaign.selectedProductIds;
 
+function advance(h, result, reason = 'Continue production; retain earlier pending assignments') {
+  return h.run({ action: 'advance', cycleId: result.campaign.cycleId, batchId: result.campaign.latestBatchId,
+    expectedRevision: result.campaign.revision, reason });
+}
+function deferral(h, result, person, productIds) {
+  return { campaignId: REGULAR_CAMPAIGN, cycleId: result.campaign.cycleId,
+    expectedRevision: h.history().revision, expectedEtag: h.store.files.get(LEDGER_KEY).etag,
+    id: 'governance-deferral', batchId: result.packet.regularCampaign.batchId, person, productIds,
+    reason: 'Owner reviewed pending assignment; defer for this pass', approvalReference: 'Synthetic Governance approval' };
+}
+
+test('60 eligible products and one remaining assignment: retry is stable, explicit advancement supplies five each', async () => {
+  const h = harness(60), first = await h.prepare();
+  await h.confirm(first, 'David', first.packet.regularCampaign.assignments.David.slice(0, 4));
+  await h.confirm(first, 'Maria');
+  h.setDay(4);
+  const before = h.history(), anchor = clone(h.store.files.get(BASELINE_KEY));
+  const retry = await h.prepare();
+  assert.deepEqual(selected(retry), ['product-5']);
+  assert.equal(retry.campaign.diagnostics.progression, 'PENDING_WITH_FRESH_INVENTORY');
+  assert.equal(retry.campaign.diagnostics.eligibleUnassigned, 50);
+  const next = await advance(h, retry);
+  assert.equal(next.packet.regularCampaign.assignments.David.length, 5);
+  assert.equal(next.packet.regularCampaign.assignments.Maria.length, 5);
+  assert.deepEqual(selected(next), Array.from({ length: 10 }, (_, i) => `product-${i + 11}`));
+  assert.deepEqual(h.history().batches[0], before.batches[0]);
+  assert.deepEqual(h.store.files.get(BASELINE_KEY), anchor);
+  assert.equal(h.history().batches[1].advancement.sourceRevision, before.revision);
+  assert.equal(next.campaign.pendingBatches.length, 2);
+  assert.equal(next.campaign.confirmedPostedCount, 9);
+  assert.deepEqual(selected(await h.prepare()), selected(next), 'Copy retry does not allocate again');
+});
+
+for (const immediate of [0, 3, 20]) test(`advancement respects pickup lanes with ${immediate} immediate products`, async () => {
+  const h = harness(60), packet = h.packet();
+  packet.marketableProducts.forEach((p, i) => { p.saleMode = i < immediate ? 'IMMEDIATE' : 'DELAYED'; });
+  h.setPacket(packet);
+  const first = await h.prepare(), next = await advance(h, first);
+  const a = next.packet.regularCampaign.assignments;
+  assert.equal(a.David.length, 5);
+  assert.equal(a.Maria.length, immediate === 20 ? 5 : 0);
+  assert.ok(a.David.every(id => packet.marketableProducts.find(p => p.productId === id).saleMode === 'DELAYED'));
+  assert.ok(!selected(next).some(id => selected(first).includes(id)));
+});
+
+test('partial confirmation and explicit deferral preserve history, never falsely POSTED, and permit truthful earlier publication', async () => {
+  const h = harness(60), first = await h.prepare();
+  h.setTime('2026-10-28T17:00:00Z'); await h.confirm(first, 'David', ['product-1']);
+  const before = h.history(), operation = deferral(h, first, 'David', ['product-2']);
+  const result = await deferCampaignAssignments({ operation, store: h.store, now: () => '2026-10-28T18:00:00Z' });
+  assert.deepEqual(result.history.batches, before.batches);
+  assert.equal(result.campaign.confirmedPostedCount, 1);
+  assert.equal(result.campaign.deferrals[0].itemNumbers[0], 2);
+  const once = h.history();
+  assert.equal((await deferCampaignAssignments({ operation, store: h.store })).changed, false);
+  assert.deepEqual(h.history(), once);
+  h.setTime('2026-10-28T19:00:00Z');
+  await assert.rejects(h.confirm(first, 'David', ['product-2']));
+  await assert.rejects(h.run({ action: 'confirm', cycleId: first.campaign.cycleId, batchId: first.packet.regularCampaign.batchId,
+    person: 'David', productIds: ['product-2'], confirmation: 'PUBLISHED_REGULAR_CAMPAIGN', publishedAt: '2026-10-28T18:30:00Z' }));
+  await h.run({ action: 'confirm', cycleId: first.campaign.cycleId, batchId: first.packet.regularCampaign.batchId,
+    person: 'David', productIds: ['product-2'], confirmation: 'PUBLISHED_REGULAR_CAMPAIGN', publishedAt: '2026-10-28T17:30:00Z' });
+  assert.equal(h.history().batches[0].assignments.David[1].postedAt, '2026-10-28T17:30:00Z');
+  assert.deepEqual(h.history().deferrals, once.deferrals);
+  assert.equal(h.history().batches[0].assignments.David[0].postedAt, before.batches[0].assignments.David[0].postedAt);
+});
+
+test('advancement revalidates prices, availability and pickup; unavailable pending products cannot become duplicate active assignments', async () => {
+  const h = harness(60), first = await h.prepare(), packet = h.packet();
+  packet.marketableProducts[0].marketabilityStatus = 'TEMPORARILY_RESERVED';
+  packet.marketableProducts[10].askingPricePYG = 50000;
+  packet.marketableProducts[11].purchasableQuantity = 0;
+  packet.marketableProducts[12].marketabilityStatus = 'SOLD';
+  packet.marketableProducts[13].saleMode = 'DELAYED';
+  h.setPacket(packet);
+  const next = await advance(h, first);
+  assert.equal(next.packet.regularCampaign.assignments.David[0], 'product-14');
+  assert.ok(!selected(next).some(id => ['product-1', 'product-11', 'product-12', 'product-13'].includes(id)));
+  packet.marketableProducts[0].marketabilityStatus = 'MARKETABLE'; h.setPacket(packet);
+  const third = await advance(h, await h.prepare());
+  assert.ok(!selected(third).includes('product-1'));
+  const pending = third.campaign.pendingBatches.flatMap(b => Object.values(b.assignments).flat().map(p => p.productId));
+  assert.equal(new Set(pending).size, pending.length);
+  assert.deepEqual(h.packet(), packet);
+});
+
+test('inventory exhaustion is distinguished from stale batch progression without repeating posted products', async () => {
+  const h = harness(10), first = await h.prepare();
+  await h.confirm(first, 'David', ['product-1', 'product-2', 'product-3', 'product-4']);
+  await h.confirm(first, 'Maria');
+  const retry = await h.prepare(), before = h.history();
+  assert.equal(retry.campaign.diagnostics.progression, 'PENDING_ONLY');
+  assert.equal(retry.campaign.diagnostics.eligibleUnassigned, 0);
+  await assert.rejects(advance(h, retry), /sin asignación/);
+  assert.deepEqual(h.history(), before);
+});
+
+test('concurrent advancement and confirmation preserve publication history and prevent duplicate allocations', async () => {
+  const h = harness(60), first = await h.prepare();
+  const results = await Promise.allSettled([advance(h, first), advance(h, first), h.confirm(first, 'David', ['product-1'])]);
+  assert.equal(results[2].status, 'fulfilled');
+  assert.ok(results.slice(0, 2).filter(r => r.status === 'fulfilled').length <= 1);
+  if (h.history().batches.length === 1) await advance(h, await h.prepare());
+  assert.equal(h.history().batches.length, 2);
+  assert.ok(h.history().batches[0].assignments.David[0].postedAt);
+  const assignments = h.history().batches.flatMap(b => Object.values(b.assignments).flat());
+  assert.equal(new Set(assignments.map(p => p.productId)).size, assignments.length);
+  const before = h.history();
+  await assert.rejects(advance(h, first), /cambió/);
+  assert.deepEqual(h.history(), before);
+});
+
+test('deferral fails closed on concurrent changes and never overwrites a newer confirmation', async () => {
+  const h = harness(60), first = await h.prepare(), operation = deferral(h, first, 'David', ['product-1']);
+  h.store.beforeSet = async () => {
+    h.store.beforeSet = null;
+    await h.confirm(first, 'David', ['product-1']);
+  };
+  await assert.rejects(deferCampaignAssignments({ operation, store: h.store, now: () => '2026-10-28T18:00:00Z' }), /cambió/);
+  assert.ok(h.history().batches[0].assignments.David[0].postedAt);
+  assert.equal(h.history().deferrals, undefined);
+});
+
+test('Admin advance control sends the reviewed revision and reason through the authenticated endpoint', async () => {
+  const h = harness(60), first = await h.prepare();
+  const handler = createAdminSalePulseHandler({ authorized: req => req.headers.get('x-admin-token') === 'synthetic',
+    loadSnapshot: async () => ({ marketingPacket: h.packet() }),
+    updateCampaign: args => updateRegularCampaign({ ...args, store: h.store, now: () => '2026-11-04T15:00:00Z', idFactory: () => 'ui-advance' }) });
+  const source = await readFile(new URL('../../../js/admin.js', import.meta.url), 'utf8');
+  const start = source.indexOf('async function advanceRegularCampaign('), end = source.indexOf('\nasync function confirmRegularCampaign', start);
+  const state = { salePulse: { regularCampaign: first.campaign } };
+  let rendered = false;
+  const context = { ADMIN_STATE: state, window: { prompt: () => 'Reviewed production continuation' },
+    renderOverviewTab: () => { rendered = true; },
+    adminFetch: async (url, options) => { const req = new Request(new URL(url, 'https://example.test'), options);
+      req.headers.set('x-admin-token', 'synthetic'); const r = await handler(req); if (!r.ok) throw Error((await r.json()).error); return r.json(); } };
+  const button = { disabled: false, textContent: '' };
+  await runInNewContext(source.slice(start, end) + '\nadvanceRegularCampaign', context)({ currentTarget: button });
+  assert.equal(rendered, true);
+  assert.equal(h.history().batches.length, 2);
+  assert.equal(h.history().batches[1].advancement.reason, 'Reviewed production continuation');
+  assert.equal(state.salePulse.marketingPacket.regularCampaign.selectedProductIds.length, 10);
+  assert.equal(h.history().batches[0].assignments.David[0].postedAt, null);
+});
+
 test('pickup lanes prioritize delayed stock for David and reserve Maria for immediate stock', async () => {
   const h=harness(18), packet=h.packet();
   packet.marketableProducts.forEach((p,i)=>{p.saleMode=i<8?'DELAYED':'IMMEDIATE';p.askingPricePYG=100000+i*10000;});
@@ -110,7 +255,7 @@ test('legacy pending assignments and POSTED timestamps remain intact at the pick
   assert.deepEqual(h.history().batches[0],before.batches[0]);
   assert.deepEqual(h.store.files.get(BASELINE_KEY),anchor);
   assert.ok(!selected(current).includes('product-1'));
-  assert.ok(current.packet.regularCampaign.assignments.David.includes('product-6'));
+  assert.ok(!selected(current).includes('product-6'), 'An older pending assignment reserves its product until reconciliation');
   assert.ok(!current.packet.regularCampaign.assignments.Maria.includes('product-6'));
   await h.confirm(old,'Maria',['product-6']); // Only a truthful explicit late publication confirmation.
   assert.ok(h.history().batches[0].assignments.Maria.find(p=>p.productId==='product-6').postedAt);
@@ -123,7 +268,7 @@ test('a changed pickup mode never returns a delayed Maria assignment or rewrites
   const next=await h.prepare();
   assert.notEqual(next.packet.regularCampaign.batchId,first.packet.regularCampaign.batchId);
   assert.deepEqual(h.history().batches[0],before.batches[0]);
-  assert.ok(next.packet.regularCampaign.assignments.David.includes('product-6'));
+  assert.ok(!selected(next).includes('product-6'), 'A pickup change cannot create a second active assignment');
   assert.ok(!next.packet.regularCampaign.assignments.Maria.includes('product-6'));
 });
 

@@ -1209,6 +1209,7 @@ function renderOverviewTab() {
   target.querySelectorAll('[data-confirm-regular-campaign]').forEach(button => {
     button.addEventListener('click', () => confirmRegularCampaign(button));
   });
+  target.querySelector('[data-advance-regular-campaign]')?.addEventListener('click', advanceRegularCampaign);
 
   target
     .querySelectorAll('[data-go-tab]')
@@ -1437,7 +1438,16 @@ function regularCampaignControls() {
   const campaign = ADMIN_STATE.salePulse?.regularCampaign;
   if (!campaign || campaign.status === 'UNINITIALIZED') return '<p>La primera copia inicia un ciclo de cobertura fechado; el historial anterior queda sin conciliar.</p>';
   if (campaign.status !== 'READY') return '<p>Historial del ciclo no disponible. No se preparará una selección hasta recuperarlo.</p>';
+  const d = campaign.diagnostics;
   return `<p>Ciclo desde ${adminEscape(salePulseDate(campaign.startedAt))}. Confirmá solo publicaciones reales de esta campaña regular; preparar, aprobar o descargar no cuenta. No informes anuncios independientes.</p>
+    ${d ? `<p>Elegibles sobre Gs. 50.000: ${d.eligible} (${d.delayed} retiro posterior, ${d.immediate} inmediato).
+      Ya publicados elegibles: ${d.eligiblePosted}. Pendientes elegibles: ${d.eligiblePending}.
+      Retirados elegibles: ${d.eligibleWithdrawn}. Aplazados elegibles: ${d.eligibleDeferred}.
+      Sin asignar: ${d.eligibleUnassigned}.</p>
+      ${d.eligibleUnassigned ? `<p>Otro lote puede incluir David: ${d.nextBatchCounts.David}, María: ${d.nextBatchCounts.Maria}.
+        Las asignaciones anteriores siguen pendientes y no se repiten.</p>
+        <button type="button" class="secondary-action" data-advance-regular-campaign>PREPARAR SIGUIENTE LOTE</button>` :
+        '<p>No hay inventario prioritario sin asignar. Un lote corto no demuestra un bloqueo de avance. No se reinicia el historial.</p>'}` : ''}
     ${(campaign.pendingBatches || []).map(batch => `<details><summary>Lote ${adminEscape(batch.date)}</summary>
       ${batch.requiresAssignmentReview ? '<p>Lote anterior conservado solo para confirmar publicaciones reales. Para nuevas publicaciones usá COPIAR PARA CHATGPT: David recibe retiro posterior y María solo retiro inmediato. No reutilices las asignaciones anteriores.</p>' : ''}
       ${['David', 'Maria'].filter(person => batch.assignments[person]?.length).map(person => `
@@ -1447,6 +1457,11 @@ function regularCampaignControls() {
           <button type="button" class="secondary-action" data-confirm-regular-campaign data-batch="${adminEscape(batch.id)}" data-cycle="${adminEscape(campaign.cycleId)}" data-person="${person}">CONFIRMO PUBLICADOS — ${person}</button>
         </div>`).join('')}
       </details>`).join('') || '<p>No hay lotes pendientes de confirmación.</p>'}
+    ${(campaign.deferrals || []).map(event => `<details><summary>Asignaciones aplazadas — ${adminEscape(event.date)}</summary>
+      <p>${adminEscape(event.person)}: Items ${event.itemNumbers.map(n => String(n).padStart(3, '0')).join(', ')}.
+      Aplazadas; no cuentan como publicadas. ${adminEscape(event.reason)}</p>
+      <p>Registrado: ${adminEscape(salePulseDate(event.recordedAt))}. Referencia: ${adminEscape(event.approvalReference)}.</p>
+    </details>`).join('')}
     ${(campaign.supersessions || []).map(event => `<details><summary>Asignaciones sustituidas — ${adminEscape(event.date)}</summary>
       <p>${adminEscape(event.person)}: Items ${event.itemNumbers.map(n => String(n).padStart(3, '0')).join(', ')}.
       Sustituidas, sin confirmar como publicadas. ${adminEscape(event.reason)}</p>
@@ -1461,6 +1476,28 @@ function renderRegularCampaignStatus() {
   target.querySelectorAll('[data-confirm-regular-campaign]').forEach(button => {
     button.addEventListener('click', () => confirmRegularCampaign(button));
   });
+  target.querySelector('[data-advance-regular-campaign]')?.addEventListener('click', advanceRegularCampaign);
+}
+
+async function advanceRegularCampaign(event) {
+  const campaign = ADMIN_STATE.salePulse?.regularCampaign;
+  if (!campaign?.diagnostics?.eligibleUnassigned) return;
+  const reason = window.prompt('Motivo del nuevo lote. Los Items pendientes se conservan; ninguno se marca como publicado.');
+  if (!reason?.trim()) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const data = await adminFetch('/api/admin/sale-pulse', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'advance', campaignId: campaign.campaignId, cycleId: campaign.cycleId,
+        batchId: campaign.latestBatchId, expectedRevision: campaign.revision, reason: reason.trim() }),
+    });
+    ADMIN_STATE.salePulse = data.salePulse;
+    renderOverviewTab();
+  } catch (error) {
+    button.textContent = error?.message || 'NO SE PUDO AVANZAR · ACTUALIZÁ EL PULSO';
+    button.disabled = false;
+  }
 }
 
 async function confirmRegularCampaign(button) {
