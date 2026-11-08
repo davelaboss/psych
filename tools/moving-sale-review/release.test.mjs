@@ -67,7 +67,7 @@ test('projection preserves exact public fields, unit pricing, selected cover ord
   for (const row of result.projection) for (const key of ['ownerNotes', 'pricing', 'pricingDecision', 'confirmedFields', 'sourceGroupId', 'questions']) assert.equal(Object.hasOwn(row, key), false);
 });
 test('adding the candidate changes no previous batch product and never labels Volume 5 as Volume 4', () => {
-  const base = catalogBatchProducts([]), candidate = releaseCandidate(sample(), []), after = catalogBatchProducts(candidate.products);
+  const base = catalogBatchProducts([], []), candidate = releaseCandidate(sample(), []), after = catalogBatchProducts(candidate.products, []);
   for (const old of base) assert.deepEqual(after.find(p => p.id === old.id), old);
   assert.equal(after.length, base.length + 102); assert.ok(after.filter(p => p.itemNumber >= 510).every(p => p.tags.includes('volumen 5') && !p.tags.includes('volumen 4')));
 });

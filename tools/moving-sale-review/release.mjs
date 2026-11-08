@@ -48,16 +48,17 @@ export function appendVolume5Batch(previous, additions) {
 }
 
 export function activationPatch(source) {
-  const before = 'export function catalogBatchProducts(additionalVolume5Items = []) {';
-  if (source.includes('export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS) {')) return '';
-  assert(source.includes(before), 'Revise manualmente la integración actual del catálogo.');
+  if (source.includes('export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS')) return '';
+  const before = source.match(/^export function catalogBatchProducts\(additionalVolume5Items = \[\](?:, additionalVolume6Items = VOLUME6_ITEMS)?\) \{$/m)?.[0];
+  assert(before, 'Revise manualmente la integración actual del catálogo.');
+  const after = before.replace('additionalVolume5Items = []', 'additionalVolume5Items = VOLUME5_ITEMS');
   const lines = source.replace(/\r\n/g, '\n').split('\n'), index = lines.indexOf(before), start = index - 3;
   assert(start >= 0, 'Contexto insuficiente para la integración.');
   const context = lines.slice(start, index + 3);
   return 'diff --git a/netlify/functions/_shared/volume2-public.mjs b/netlify/functions/_shared/volume2-public.mjs\n' +
     '--- a/netlify/functions/_shared/volume2-public.mjs\n+++ b/netlify/functions/_shared/volume2-public.mjs\n' +
-    '@@ -1,3 +1,4 @@\n+import { VOLUME5_ITEMS } from \'../../../source/lib/volume5-batch.mjs\';\n import {\n   VOLUME2_BATCH_ITEMS,\n } from \'../../../source/lib/volume2-batch.ts\';\n' +
-    `@@ -${start + 1},${context.length} +${start + 2},${context.length} @@\n` + context.map(line => line === before ? '-' + line + '\n+export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS) {\n' : ' ' + line + '\n').join('');
+    '@@ -1,3 +1,4 @@\n+import { VOLUME5_ITEMS } from \'../../../source/lib/volume5-batch.mjs\';\n' + lines.slice(0, 3).map(line => ' ' + line + '\n').join('') +
+    `@@ -${start + 1},${context.length} +${start + 2},${context.length} @@\n` + context.map(line => line === before ? '-' + line + '\n+' + after + '\n' : ' ' + line + '\n').join('');
 }
 
 export async function prepareRelease({ root, outputDir, releaseDir, ...options }) {
