@@ -1,4 +1,5 @@
 import { VOLUME5_ITEMS } from '../../../source/lib/volume5-batch.mjs';
+import { VOLUME6_ITEMS } from '../../../source/lib/volume6-batch.mjs';
 import {
   VOLUME2_BATCH_ITEMS,
 } from '../../../source/lib/volume2-batch.ts';
@@ -231,6 +232,7 @@ function publicCondition(item) {
 
 export function publicProduct(item) {
   const volume5 = /^real-202610-volume5-\d+$/.test(item.id) && item.itemNumber >= 510;
+  const volume6 = /^real-202611-volume6-\d+$/.test(item.id) && item.itemNumber >= 616;
   const quantityTotal =
     Number(item.quantityTotal || 1);
 
@@ -256,7 +258,7 @@ export function publicProduct(item) {
     tags: [
       item.category.toLowerCase(),
       'venta de mudanza',
-      volume5 ? 'volumen 5' : item.itemNumber >= 327
+      volume6 ? 'volumen 6' : volume5 ? 'volumen 5' : item.itemNumber >= 327
         ? 'volumen 4'
         : item.itemNumber >= 169
           ? 'volumen 3'
@@ -327,7 +329,7 @@ export function publicProduct(item) {
       sold
         ? quantityTotal
         : 0,
-    ...(volume5 ? {
+    ...(volume5 || volume6 ? {
       title: item.title, description: item.description, condition: item.condition,
       knownDefects: item.knownDefects, functionality: item.functionality,
       measurements: item.measurements, saleStructure: item.saleStructure,
@@ -339,8 +341,9 @@ export function publicProduct(item) {
 }
 
 
-export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS) {
+export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS, additionalVolume6Items = VOLUME6_ITEMS) {
   if (!Array.isArray(additionalVolume5Items) || additionalVolume5Items.some(item => item.id !== `real-202610-volume5-${item.itemNumber}` || item.itemNumber < 510)) throw new Error('Lote adicional de Volume 5 inválido.');
+  if (!Array.isArray(additionalVolume6Items) || additionalVolume6Items.some(item => item.id !== `real-202611-volume6-${item.itemNumber}` || item.itemNumber < 616 || !Number.isInteger(item.itemNumber) || !['IMMEDIATE', 'DELAYED'].includes(item.saleMode))) throw new Error('Lote adicional de Volume 6 inválido.');
   // Admit only the specifically approved recovered Phase 2 items.
   // Keep approved copy verbatim; runtime Admin fields and media still win.
   const publishedPhase2 = PHASE2_BATCH_ITEMS
@@ -367,6 +370,7 @@ export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS) {
     ...VOLUME3_ITEMS,
     ...VOLUME4_ITEMS,
     ...additionalVolume5Items,
+    ...additionalVolume6Items,
   ]
     .map(item => reviewDisposition(item)?.disposition === 'RESTORED' && item.status === 'UNLISTED'
       ? { ...item, status: 'AVAILABLE' } : item)
