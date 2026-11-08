@@ -30,6 +30,9 @@ test('owner curtain, unit-price and exclusion decisions survive the public proje
  assert.match(byNumber(642).notIncludedVisible,/recipiente.*no está incluido/i);assert.doesNotMatch(byNumber(642).description,/bolsa/i);
  assert.match(byNumber(629).knownDefects,/no tiene tapa/);assert.doesNotMatch(byNumber(629).knownDefects,/fisura/);
  assert.match(byNumber(633).description,/última vez.*funcionaban.*pilas/);
+ assert.equal(byNumber(621).category,'Herramientas');assert.ok(byNumber(621).tags.includes('herramientas'));
+ assert.equal(byNumber(633).knownDefects,'');assert.match(byNumber(633).functionality,/Funcionaban en la última prueba/);
+ assert.equal(byNumber(634).knownDefects,'');assert.match(byNumber(634).description,/requiere planchado/);
 });
 test('images preserve cover ordering and source assets; preview metadata selects that same cover',async()=>{
  for(const p of items){assert.ok(p.images.length);for(const file of p.images)assert.ok((await readFile(new URL('../../../'+file.slice(1),import.meta.url))).length>0);const meta=buildProductPreviewMetadata(p,'https://example.test');assert.ok(meta);}
