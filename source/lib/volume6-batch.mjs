@@ -1,4 +1,4 @@
-// Prepared owner-reviewed Volume 6 household batch. Activation requires separate owner approval.
+// Prepared owner-reviewed Volume 6 batch: 32 products. Activation requires final owner approval.
 export const VOLUME6_ITEMS = Object.freeze([
   {
     "itemNumber": 616,
@@ -945,6 +945,78 @@ export const VOLUME6_ITEMS = Object.freeze([
     "photos": [
       "/images/volume-6/v6-g0052-01.webp",
       "/images/volume-6/v6-g0052-02.webp"
+    ],
+    "coverIndex": 0,
+    "status": "AVAILABLE",
+    "needsReview": false,
+    "dateListed": "2026-11-07"
+  },
+  {
+    "itemNumber": 646,
+    "id": "real-202611-volume6-646",
+    "slug": "lote-de-6-kits-completos-tp-link-tapo-tc82-con-panel-solar-item-646",
+    "title": "Lote de 6 kits completos TP-Link Tapo TC82 con panel solar",
+    "category": "Electrónica",
+    "asking": 1000000,
+    "description": "Lote de seis kits completos de cámaras inalámbricas Tapo TC82 2K (3 MP) con paneles solares. Detección de personas, visión nocturna a color, IP65, audio bidireccional y grabación local en microSD sin suscripción obligatoria. Uso en patios, entradas o negocios. Se venden los seis kits juntos.",
+    "condition": "Excelente",
+    "knownDefects": "",
+    "functionality": "Detección de personas, visión nocturna a color y audio bidireccional.",
+    "quantityTotal": 1,
+    "saleMode": "IMMEDIATE",
+    "saleStructure": "set",
+    "includedAccessories": [
+      "6 cámaras TC82",
+      "6 paneles solares con cables Type-C",
+      "Soportes y herrajes de cada kit",
+      "Guías de inicio"
+    ],
+    "requiresVehicle": false,
+    "requiresLoadingHelp": false,
+    "pickupWindowStart": null,
+    "pickupWindowEnd": null,
+    "finalPaymentWindowStart": null,
+    "finalPaymentWindowEnd": null,
+    "measurements": "",
+    "notIncludedVisible": "Tarjetas microSD no incluidas.",
+    "photos": [
+      "/images/volume-6/v6-g0053-01.webp",
+      "/images/volume-6/v6-g0053-02.webp"
+    ],
+    "coverIndex": 0,
+    "status": "AVAILABLE",
+    "needsReview": false,
+    "dateListed": "2026-11-07"
+  },
+  {
+    "itemNumber": 647,
+    "id": "real-202611-volume6-647",
+    "slug": "camara-de-vigilancia-tp-link-tapo-c510w-item-647",
+    "title": "Cámara de vigilancia TP-Link Tapo C510W",
+    "category": "Electrónica",
+    "asking": 180000,
+    "description": "TP-Link Tapo C510W 2K para exteriores, con giro horizontal 360°, seguimiento de movimiento, visión nocturna a color, detección de personas, audio bidireccional, resistencia IP65 y grabación local microSD sin suscripción obligatoria.",
+    "condition": "Funciona muy bien",
+    "knownDefects": "",
+    "functionality": "Funciona muy bien",
+    "quantityTotal": 1,
+    "saleMode": "IMMEDIATE",
+    "saleStructure": "individual",
+    "includedAccessories": [
+      "Cámara Tapo C510W",
+      "Soporte de montaje",
+      "Fuente de alimentación con cable"
+    ],
+    "requiresVehicle": false,
+    "requiresLoadingHelp": false,
+    "pickupWindowStart": null,
+    "pickupWindowEnd": null,
+    "finalPaymentWindowStart": null,
+    "finalPaymentWindowEnd": null,
+    "measurements": "",
+    "notIncludedVisible": "",
+    "photos": [
+      "/images/volume-6/v6-g0054-01.webp"
     ],
     "coverIndex": 0,
     "status": "AVAILABLE",
