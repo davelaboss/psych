@@ -136,6 +136,39 @@ export const VOLUME5_ITEMS = Object.freeze([
     "dateListed": "2026-10-25"
   },
   {
+    "itemNumber": 514,
+    "id": "real-202610-volume5-514",
+    "title": "Lote de dos burletes para la parte inferior de puertas",
+    "category": "Otros",
+    "description": "Lote de dos burletes para la parte inferior de puertas. Se venden ambos burletes juntos como un solo lote por Gs. 15.000 en TOTAL; el precio no es por unidad. Disponible para retiro inmediato.",
+    "asking": 15000,
+    "condition": "Buena",
+    "knownDefects": "No",
+    "functionality": "Funciona muy bien",
+    "measurements": "",
+    "quantityTotal": 1,
+    "saleMode": "IMMEDIATE",
+    "saleStructure": "set",
+    "includedAccessories": [
+      "dos burletes inferiores de puerta"
+    ],
+    "notIncludedVisible": "",
+    "requiresVehicle": false,
+    "requiresLoadingHelp": false,
+    "slug": "lote-de-dos-burletes-para-la-parte-inferior-de-puertas-item-514",
+    "status": "AVAILABLE",
+    "needsReview": false,
+    "pickupWindowStart": null,
+    "pickupWindowEnd": null,
+    "finalPaymentWindowStart": null,
+    "finalPaymentWindowEnd": null,
+    "dateListed": "2026-11-09",
+    "photos": [
+      "/images/volume-5/v5-g0005-01.webp"
+    ],
+    "coverIndex": 0
+  },
+  {
     "itemNumber": 515,
     "id": "real-202610-volume5-515",
     "slug": "petalos-artificiales-rojos-y-rosados-item-515",
