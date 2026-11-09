@@ -66,6 +66,42 @@ export const VOLUME5_ITEMS = Object.freeze([
     "dateListed": "2026-10-25"
   },
   {
+    "itemNumber": 512,
+    "id": "real-202610-volume5-512",
+    "title": "HGO Cloro Premium para piscina, 8 kg — sin abrir",
+    "category": "Otros",
+    "description": "HGO Cloro Premium para piscina, 8 kg, en su envase original sin abrir. Vencimiento: enero de 2027, confirmado a través del contacto indicado por el fabricante. Lote: 161. Se vende el balde completo por Gs. 195.000.",
+    "asking": 195000,
+    "condition": "Sin abrir, en su envase original.",
+    "knownDefects": "No",
+    "functionality": "Funciona muy bien",
+    "measurements": "8 kg",
+    "quantityTotal": 1,
+    "saleMode": "IMMEDIATE",
+    "saleStructure": "individual",
+    "includedAccessories": [
+      "cloro para piscina en su balde original"
+    ],
+    "notIncludedVisible": "",
+    "requiresVehicle": false,
+    "requiresLoadingHelp": false,
+    "slug": "cloro-de-alta-calidad-para-piscina-sin-abrir-item-512",
+    "status": "AVAILABLE",
+    "needsReview": false,
+    "pickupWindowStart": null,
+    "pickupWindowEnd": null,
+    "finalPaymentWindowStart": null,
+    "finalPaymentWindowEnd": null,
+    "dateListed": "2026-11-09",
+    "photos": [
+      "/images/volume-5/item512-PXL_20261109_180802433.MP.jpg",
+      "/images/volume-5/v5-g0003-01.webp",
+      "/images/volume-5/item512-PXL_20261109_180720912.MP.jpg",
+      "/images/volume-5/item512-PXL_20261109_180810325.MP.jpg"
+    ],
+    "coverIndex": 0
+  },
+  {
     "itemNumber": 513,
     "id": "real-202610-volume5-513",
     "slug": "pulverizador-de-5-l-con-caja-original-item-513",
@@ -2910,6 +2946,41 @@ export const VOLUME5_ITEMS = Object.freeze([
     "status": "AVAILABLE",
     "needsReview": false,
     "dateListed": "2026-10-25"
+  },
+  {
+    "itemNumber": 604,
+    "id": "real-202610-volume5-604",
+    "title": "Manguera antitorceduras verde con franja naranja y accesorios",
+    "category": "Otros",
+    "description": "Manguera antitorceduras verde con franja naranja, de 15 metros de largo. Incluye los conectores para la canilla y la pistola rociadora; se vende con los elementos mostrados en la foto. Precio: Gs. 30.000.",
+    "asking": 30000,
+    "condition": "Buena condición. Desgaste por uso normal.",
+    "knownDefects": "No",
+    "functionality": "Funciona bien",
+    "measurements": "15 metros",
+    "quantityTotal": 1,
+    "saleMode": "IMMEDIATE",
+    "saleStructure": "individual",
+    "includedAccessories": [
+      "manguera antitorceduras con franja naranja",
+      "conectores mostrados para conectar a la canilla",
+      "pistola o boquilla rociadora de riego mostrada"
+    ],
+    "notIncludedVisible": "",
+    "requiresVehicle": false,
+    "requiresLoadingHelp": false,
+    "slug": "manguera-antitorceduras-verde-con-franja-naranja-y-accesorios-item-604",
+    "status": "AVAILABLE",
+    "needsReview": false,
+    "pickupWindowStart": null,
+    "pickupWindowEnd": null,
+    "finalPaymentWindowStart": null,
+    "finalPaymentWindowEnd": null,
+    "dateListed": "2026-11-09",
+    "photos": [
+      "/images/volume-5/v5-g0095-01.webp"
+    ],
+    "coverIndex": 0
   },
   {
     "itemNumber": 605,
