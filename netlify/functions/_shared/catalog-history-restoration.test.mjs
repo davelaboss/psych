@@ -92,6 +92,7 @@ test('catalog snapshot contains every discovery control, render depth, and scrol
     condition: 'GOOD',
     maxPrice: '2000000',
     sort: 'price-desc',
+    sortExplicit: false,
     showSold: true,
     renderedCount: 350,
     scrollY: 18420,

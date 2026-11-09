@@ -19,6 +19,7 @@
     pageScrollSaveTimer: null,
     pageScrollY: 0,
     pageLinkNavigation: false,
+    sortExplicit: false,
   };
 
   const INITIAL_RENDER_COUNT = 48;
@@ -28,6 +29,10 @@
   const PAGE_SCROLL_HISTORY_KEY = 'mudanzaPageScrollState';
   const PAGE_SCROLL_HISTORY_VERSION = 1;
   const SCROLL_SAVE_DELAY_MS = 150;
+  const DEFAULT_SORT = 'price-desc';
+  // BCP daily reference, 2026-11-09: https://www.bcp.gov.py/webapps/web/cotizacion/monedas
+  // Ordering only: never write this approximation into selling prices or checkout.
+  const SORT_PYG_PER_USD = 6226.21;
   const CORE_CATEGORIES = [
     'Cocina',
     'Hogar',
@@ -289,7 +294,7 @@
               <option value="catalog">Orden del catálogo</option>
               <option value="newest">Más recientes</option>
               <option value="price-asc">Precio menor a mayor</option>
-              <option value="price-desc">Precio mayor a menor</option>
+              <option value="price-desc" selected>Precio mayor a menor</option>
             </select></label>
             <label class="show-sold-option"><input type="checkbox" data-show-sold> <span>Ver artículos vendidos</span></label>
             <button class="reset-filters" type="button" data-reset-filters hidden>Restablecer filtros</button>
@@ -362,6 +367,7 @@
 
     [c.condition, c.price, c.sort, c.showSold].forEach((control) => {
       control?.addEventListener('change', () => {
+        if (control === c.sort) state.sortExplicit = true;
         applyFilters();
         const filters = activeFilters();
         if (Object.keys(filters).length) window.salePulseTrack?.('FILTER_APPLY', {
@@ -414,7 +420,8 @@
       c.availability = 'ALL';
       c.condition.value = 'ALL';
       c.price.selectedIndex = 0;
-      c.sort.value = 'catalog';
+      c.sort.value = DEFAULT_SORT;
+      state.sortExplicit = false;
       c.showSold.checked = false;
       applyFilters();
     }
@@ -432,7 +439,7 @@
     if (c.availability && c.availability !== 'ALL') filters.availability = c.availability;
     if (c.condition?.value && c.condition.value !== 'ALL') filters.condition = c.condition.value;
     if (c.price?.value && Number(c.price.value) > 0) filters.maxPrice = String(c.price.value);
-    if (c.sort?.value && c.sort.value !== 'catalog') filters.sort = c.sort.value;
+    if (c.sort?.value && c.sort.value !== DEFAULT_SORT) filters.sort = c.sort.value;
     if (c.showSold?.checked) filters.showSold = 'true';
     return filters;
   }
@@ -464,7 +471,7 @@
     const advancedCount = [
       c.condition?.value !== 'ALL',
       Boolean(c.price?.value),
-      c.sort?.value !== 'catalog',
+      c.sort?.value !== DEFAULT_SORT,
       Boolean(c.showSold?.checked),
     ].filter(Boolean).length;
     if (c.filterCount) {
@@ -601,19 +608,36 @@
     });
   }
 
+  function sortingPricePYG(product) {
+    const raw = product.currency === 'USD' ? product.askingPriceUSD : product.askingPricePYG;
+    if (raw === null || raw === undefined || raw === '') return null;
+    const amount = Number(raw);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    if (product.currency && !['USD', 'PYG'].includes(product.currency)) return null;
+    return product.currency === 'USD' ? amount * SORT_PYG_PER_USD : amount;
+  }
+
   function sortProducts(products, requestedMode = '') {
-    const mode = requestedMode || state.controls.sort?.value || 'catalog';
+    const mode = requestedMode || state.controls.sort?.value || DEFAULT_SORT;
     const availabilityRank = (product) => product.status === 'AVAILABLE' ? 0 : 1;
     const byAvailability = (a, b) => availabilityRank(a) - availabilityRank(b);
 
-    if (mode === 'price-asc') {
-      products.sort((a, b) => byAvailability(a, b) || (a.currency === 'USD' ? 1 : 0) - (b.currency === 'USD' ? 1 : 0) || Number(a.askingPricePYG) - Number(b.askingPricePYG) || Number(a.itemNumber) - Number(b.itemNumber));
-    } else if (mode === 'price-desc') {
-      products.sort((a, b) => byAvailability(a, b) || (a.currency === 'USD' ? 1 : 0) - (b.currency === 'USD' ? 1 : 0) || Number(b.askingPricePYG) - Number(a.askingPricePYG) || Number(a.itemNumber) - Number(b.itemNumber));
+    if (mode === 'price-asc' || mode === 'price-desc') {
+      products.sort((a, b) => {
+        const availableFirst = byAvailability(a, b);
+        if (availableFirst) return availableFirst;
+        const aPrice = sortingPricePYG(a);
+        const bPrice = sortingPricePYG(b);
+        // Unpriced listings stay browsable, after known prices in either direction.
+        const unknownLast = Number(aPrice === null) - Number(bPrice === null);
+        if (unknownLast) return unknownLast;
+        const priceOrder = mode === 'price-asc' ? aPrice - bPrice : bPrice - aPrice;
+        return priceOrder || Number(a.itemNumber) - Number(b.itemNumber);
+      });
     } else if (mode === 'newest') {
       products.sort((a, b) => byAvailability(a, b) || String(b.dateListed || '').localeCompare(String(a.dateListed || '')) || Number(b.itemNumber) - Number(a.itemNumber));
     } else {
-      products.sort((a, b) => byAvailability(a, b) || (a.currency === 'USD' ? 1 : 0) - (b.currency === 'USD' ? 1 : 0) || Number(a.itemNumber) - Number(b.itemNumber));
+      products.sort((a, b) => byAvailability(a, b) || Number(a.itemNumber) - Number(b.itemNumber));
     }
   }
 
@@ -830,9 +854,11 @@
         ? values.condition
         : 'ALL',
       maxPrice: String(values.maxPrice || ''),
-      sort: ['catalog', 'newest', 'price-asc', 'price-desc'].includes(values.sort)
+      sort: ['catalog', 'newest', 'price-asc', 'price-desc'].includes(values.sort) &&
+        (values.sort !== 'catalog' || values.sortExplicit === true)
         ? values.sort
-        : 'catalog',
+        : DEFAULT_SORT,
+      sortExplicit: values.sortExplicit === true,
       showSold: values.showSold === true,
       renderedCount: Math.max(0, Math.floor(Number(values.renderedCount) || 0)),
       scrollY: Math.max(0, Number(values.scrollY) || 0),
@@ -849,6 +875,7 @@
       condition: c.condition?.value,
       maxPrice: c.price?.value,
       sort: c.sort?.value,
+      sortExplicit: state.sortExplicit,
       showSold: c.showSold?.checked,
       renderedCount: state.renderedCount,
       scrollY: window.scrollY,
@@ -889,7 +916,8 @@
     if (c.price) c.price.value = snapshot.maxPrice;
     if (c.price?.value !== snapshot.maxPrice) c.price.value = '';
     if (c.sort) c.sort.value = snapshot.sort;
-    if (c.sort?.value !== snapshot.sort) c.sort.value = 'catalog';
+    if (c.sort?.value !== snapshot.sort) c.sort.value = DEFAULT_SORT;
+    state.sortExplicit = snapshot.sortExplicit;
     if (c.showSold) c.showSold.checked = snapshot.showSold;
     syncControlState();
   }
