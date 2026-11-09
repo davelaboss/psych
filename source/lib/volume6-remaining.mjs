@@ -430,5 +430,42 @@ export const VOLUME6_REMAINING = Object.freeze([
     "status": "AVAILABLE",
     "needsReview": false,
     "dateListed": "2026-11-09"
+  },
+  {
+    "itemNumber": 660,
+    "id": "real-202611-volume6-660",
+    "slug": "kit-completo-de-estanteria-de-pared-con-6-estantes-item-660",
+    "title": "Kit completo de estantería de pared con 6 estantes",
+    "category": "Hogar",
+    "asking": 275000,
+    "description": "Kit completo de estantería de pared: incluye 6 estantes de madera contrachapada barnizada, 6 rieles de pared de 1 metro, 15 soportes de 30 cm y 6 soportes de 40 cm. Se vende únicamente el conjunto completo. El precio de Gs. 275.000 corresponde a todo el kit. Presenta marcas superficiales y desgaste normal por uso.",
+    "condition": "Marcas superficiales y desgaste normal por uso.",
+    "knownDefects": "",
+    "functionality": "",
+    "measurements": "Rieles: 1 metro cada uno. Soportes: 15 de 30 cm y 6 de 40 cm.",
+    "quantityTotal": 1,
+    "saleMode": "IMMEDIATE",
+    "saleStructure": "set",
+    "includedAccessories": [
+      "6 estantes de madera contrachapada barnizada",
+      "6 rieles de pared de 1 metro",
+      "15 soportes de 30 cm",
+      "6 soportes de 40 cm"
+    ],
+    "notIncludedVisible": "El calefón, la mesada y los demás elementos del ambiente no están incluidos.",
+    "requiresVehicle": false,
+    "requiresLoadingHelp": false,
+    "pickupWindowStart": null,
+    "pickupWindowEnd": null,
+    "finalPaymentWindowStart": null,
+    "finalPaymentWindowEnd": null,
+    "photos": [
+      "/images/volume-6/v6-g0014-01.webp",
+      "/images/volume-6/v6-g0009-01.webp"
+    ],
+    "coverIndex": 0,
+    "status": "AVAILABLE",
+    "needsReview": false,
+    "dateListed": "2026-11-09"
   }
 ]);
