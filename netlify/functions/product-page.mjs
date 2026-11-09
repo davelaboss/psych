@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { loadPublicCatalog } from './_shared/commerce.mjs';
 import {
   deriveProductPreviewSlug,
@@ -15,54 +16,50 @@ function htmlResponse(body, status = 200) {
   });
 }
 
-export default async function handler(request) {
-  if (!['GET', 'HEAD'].includes(request.method)) {
-    return new Response('Method not allowed', {
-      status: 405,
-      headers: { allow: 'GET, HEAD' },
-    });
-  }
-
-  const requestUrl = new URL(request.url);
-  const origin = requestUrl.origin;
-  const slug = deriveProductPreviewSlug(requestUrl);
-  const metadataOrigin = String(process.env.URL || origin).trim();
-
-  const shellResponse = await fetch(
-    new URL('/', origin),
-    { headers: { accept: 'text/html' } }
-  );
-  const shell = await shellResponse.text();
-
-  if (!shellResponse.ok) {
-    return htmlResponse(
-      request.method === 'HEAD' ? null : shell,
-      shellResponse.status
-    );
-  }
-
-  let html = shell;
-
-  if (slug) {
-    try {
-      const { products } = await loadPublicCatalog(
-        origin,
-        { requestedSlug: slug }
-      );
-      const product = selectPreviewProduct(products, slug);
-
-      if (product) {
-        html = injectProductPreviewMetadata(shell, product, metadataOrigin);
-      }
-    } catch (error) {
-      console.error(
-        'No se pudo preparar la vista previa social del producto:',
-        error
-      );
+export function createProductPageHandler({
+  readShell = () => readFile('index.html', 'utf8'),
+  loadProducts = loadPublicCatalog,
+} = {}) {
+  return async function handler(request) {
+    if (!['GET', 'HEAD'].includes(request.method)) {
+      return new Response('Method not allowed', {
+        status: 405,
+        headers: { allow: 'GET, HEAD' },
+      });
     }
-  }
 
-  return htmlResponse(
-    request.method === 'HEAD' ? null : html
-  );
+    const requestUrl = new URL(request.url);
+    const origin = requestUrl.origin;
+    const slug = deriveProductPreviewSlug(requestUrl);
+    const metadataOrigin = String(process.env.URL || origin).trim();
+
+    // Netlify bundles the same committed HTML used by loadBaseCatalog.
+    const shell = await readShell();
+    let html = shell;
+
+    if (slug) {
+      try {
+        const { products } = await loadProducts(
+          origin,
+          { requestedSlug: slug }
+        );
+        const product = selectPreviewProduct(products, slug);
+
+        if (product) {
+          html = injectProductPreviewMetadata(shell, product, metadataOrigin);
+        }
+      } catch (error) {
+        console.error(
+          'No se pudo preparar la vista previa social del producto:',
+          error
+        );
+      }
+    }
+
+    return htmlResponse(
+      request.method === 'HEAD' ? null : html
+    );
+  };
 }
+
+export default createProductPageHandler();
