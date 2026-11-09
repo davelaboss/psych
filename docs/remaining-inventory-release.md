@@ -1,0 +1,27 @@
+# Remaining inventory release — November 9, 2026
+
+Owner-authorized continuation from production source `0a8d1f0787110821f1bc57f98d13e86718508972`. The original 32 Volume 6 records and photographs remain unchanged. The 12 recovered household approvals are integrated through a separate additive batch, together with reserved Tracker Item 615.
+
+| Group | Permanent Item | Product | Asking price |
+|---|---:|---|---:|
+| G002 | 648 | Percha pantalonera | PYG 20,000 |
+| G003 | 649 | Olla Tramontina 1.2 L | PYG 60,000 |
+| G004 | 650 | Barral para toallas | PYG 15,000 each; two units |
+| G005 | 651 | Soporte metálico | PYG 2,000 each; eight units |
+| G006 | 652 | Cuerda verde | PYG 15,000 |
+| G007 | 653 | Cuerda oscura | PYG 15,000 |
+| G008 | 654 | Juego de soportes | PYG 15,000 per set |
+| G010 | 655 | Par de soportes | PYG 10,000 per pair |
+| G011 | 656 | Soportes con barral | PYG 20,000 per set |
+| G015 | 657 | Cama para perro | PYG 45,000 |
+| G017 | 658 | Paraguas | PYG 30,000 |
+| G018 | 659 | Multiherramienta con estuche | PYG 12,000 |
+| G055 | 615 | Chevrolet Tracker LTZ 2024, Chili Red | USD 18,000 |
+
+G003/G006/G007/G015 retain delayed pickup December 9–12, final payment December 1–8, and the existing 25% deposit. Other household products retain immediate full-payment handling. Photographs retain original cover ordering; G018 uses photograph three. The umbrella's loose Velcro stitching and worn multitool case are disclosed.
+
+Tracker retains the confirmed specifications, mileage dated November 6, immediate handover, private full payment and transfer, coordinated visits, and nine authentic vehicle photographs. It has USD pricing and direct owner WhatsApp inquiry. Household cart claims, quantity updates and order creation reject it server-side before operational writes, including requests that attempt to override its sale mode.
+
+All 55 provisional groups are accounted for: 32 previously published, 13 additional listings, eight held groups, and two exclusions. G009/G014 still lack final kit composition and approved total price; G013/G016/G021 lack usable owner decisions; G024/G026 lack approved prices; G030 lacks an authentic replacement photograph after four cords were removed. G012/G034 remain excluded. No unresolved group receives an invented price or photograph.
+
+Validation: 871 automated checks passed, zero failures, seven optional PostgreSQL checks skipped; focused isolated inventory checks passed. All 13 buyer pages, 34 photographs, USD inquiry presentation, mobile layout and vehicle gallery navigation/zoom were checked. Production publication uses an exact-commit production-context build and targeted restore while retaining the existing publishing lock. No database migration, operational data import, override update, main merge or PR #72 change is included.

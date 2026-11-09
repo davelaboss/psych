@@ -80,7 +80,7 @@ export function buildProductPreviewMetadata(product, origin) {
   }
 
   return {
-    title: String(product.title).trim(),
+    title: String(product.title).trim() + (product.saleMode === 'INQUIRY' ? ' · US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : ''),
     canonicalUrl: new URL(
       '/producto/' + encodeURIComponent(product.slug),
       origin
@@ -121,6 +121,10 @@ export function injectProductPreviewMetadata(html, product, origin) {
 
   const tags = [
     '  <meta property="og:title" content="' + title + '" />',
+    ...(product.saleMode === 'INQUIRY' ? [
+      '  <meta property="product:price:amount" content="' + Number(product.askingPriceUSD) + '" />',
+      '  <meta property="product:price:currency" content="USD" />',
+    ] : []),
     '  <meta property="og:image" content="' + imageUrl + '" />',
     ...(metadata.imageType
       ? ['  <meta property="og:image:type" content="' + metadata.imageType + '" />']

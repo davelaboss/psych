@@ -588,14 +588,14 @@
 
       const availabilityOkay =
         availability === 'ALL' ||
-        (availability === 'IMMEDIATE' && product.saleMode === 'IMMEDIATE') ||
+        (availability === 'IMMEDIATE' && ['IMMEDIATE', 'INQUIRY'].includes(product.saleMode)) ||
         (availability === 'DELAYED' && product.saleMode === 'DELAYED');
 
       const conditionOkay =
         condition === 'ALL' || conditionBucket(product) === condition;
 
       const priceOkay =
-        !maxPrice || Number(product.askingPricePYG || 0) <= maxPrice;
+        !maxPrice || (product.currency !== 'USD' && Number(product.askingPricePYG || 0) <= maxPrice);
 
       return searchOkay && categoryOkay && availabilityOkay && conditionOkay && priceOkay;
     });
@@ -607,13 +607,13 @@
     const byAvailability = (a, b) => availabilityRank(a) - availabilityRank(b);
 
     if (mode === 'price-asc') {
-      products.sort((a, b) => byAvailability(a, b) || Number(a.askingPricePYG) - Number(b.askingPricePYG) || Number(a.itemNumber) - Number(b.itemNumber));
+      products.sort((a, b) => byAvailability(a, b) || (a.currency === 'USD' ? 1 : 0) - (b.currency === 'USD' ? 1 : 0) || Number(a.askingPricePYG) - Number(b.askingPricePYG) || Number(a.itemNumber) - Number(b.itemNumber));
     } else if (mode === 'price-desc') {
-      products.sort((a, b) => byAvailability(a, b) || Number(b.askingPricePYG) - Number(a.askingPricePYG) || Number(a.itemNumber) - Number(b.itemNumber));
+      products.sort((a, b) => byAvailability(a, b) || (a.currency === 'USD' ? 1 : 0) - (b.currency === 'USD' ? 1 : 0) || Number(b.askingPricePYG) - Number(a.askingPricePYG) || Number(a.itemNumber) - Number(b.itemNumber));
     } else if (mode === 'newest') {
       products.sort((a, b) => byAvailability(a, b) || String(b.dateListed || '').localeCompare(String(a.dateListed || '')) || Number(b.itemNumber) - Number(a.itemNumber));
     } else {
-      products.sort((a, b) => byAvailability(a, b) || Number(a.itemNumber) - Number(b.itemNumber));
+      products.sort((a, b) => byAvailability(a, b) || (a.currency === 'USD' ? 1 : 0) - (b.currency === 'USD' ? 1 : 0) || Number(a.itemNumber) - Number(b.itemNumber));
     }
   }
 
@@ -946,6 +946,7 @@
     article.dataset.productId = product.id;
     const detailUrl = `/producto/${encodeURIComponent(product.slug)}`;
 
+    const inquiry = product.saleMode === 'INQUIRY' || product.id === 'real-202611-volume6-615';
     const delayed = product.saleMode === 'DELAYED';
     const available = product.status === 'AVAILABLE';
     const image = product.images?.[0] || '';
@@ -960,15 +961,15 @@
       <div class="product-copy">
         <span class="item-number">Item ${String(product.itemNumber).padStart(3, '0')}</span>
         <h3>${escapeHtml(product.title)}</h3>
-        <strong class="price">${formatMoney(product.askingPricePYG)}${multiple ? ' por unidad' : ''}</strong>
+        <strong class="price">${inquiry ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatMoney(product.askingPricePYG)}${multiple ? ' por unidad' : ''}</strong>
         <div class="card-detail-row">
           <span class="card-detail-link">Ver detalle</span>
           <span class="card-category">${escapeHtml(product.category || '')}</span>
         </div>
         <div class="card-actions">
-          <button type="button" data-cart-action ${!available ? 'disabled' : ''}>
+          ${inquiry ? '<a class="secondary-action" href="https://wa.me/595972588347?text=' + encodeURIComponent('Hola, quisiera consultar por Chevrolet Tracker LTZ 2024 (Item 615), US$18,000.') + '" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>' : `<button type="button" data-cart-action ${!available ? 'disabled' : ''}>
             ${!available ? 'No disponible' : 'Agregar al carrito'}
-          </button>
+          </button>`}
         </div>
         <div class="card-availability">
           <span class="${!available ? 'status-unavailable' : delayed ? 'status-later' : 'status-now'}">

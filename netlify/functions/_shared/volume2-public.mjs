@@ -1,5 +1,6 @@
 import { VOLUME5_ITEMS } from '../../../source/lib/volume5-batch.mjs';
 import { VOLUME6_ITEMS } from '../../../source/lib/volume6-batch.mjs';
+import { VOLUME6_REMAINING } from '../../../source/lib/volume6-remaining.mjs';
 import {
   VOLUME2_BATCH_ITEMS,
 } from '../../../source/lib/volume2-batch.ts';
@@ -232,7 +233,7 @@ function publicCondition(item) {
 
 export function publicProduct(item) {
   const volume5 = /^real-202610-volume5-\d+$/.test(item.id) && item.itemNumber >= 510;
-  const volume6 = /^real-202611-volume6-\d+$/.test(item.id) && item.itemNumber >= 616;
+  const volume6 = /^real-202611-volume6-\d+$/.test(item.id) && item.itemNumber >= 615;
   const quantityTotal =
     Number(item.quantityTotal || 1);
 
@@ -337,13 +338,23 @@ export function publicProduct(item) {
       finalPaymentWindowStart: item.finalPaymentWindowStart,
       finalPaymentWindowEnd: item.finalPaymentWindowEnd,
     } : {}),
+    ...(item.saleMode === 'INQUIRY' ? {
+      currency: 'USD', askingPriceUSD: item.askingPriceUSD,
+      askingPricePYG: null, depositPercent: null, purchasable: false,
+    } : {}),
   };
 }
 
 
-export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS, additionalVolume6Items = VOLUME6_ITEMS) {
+export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS, additionalVolume6Items = VOLUME6_ITEMS, remainingVolume6Items = VOLUME6_REMAINING) {
   if (!Array.isArray(additionalVolume5Items) || additionalVolume5Items.some(item => item.id !== `real-202610-volume5-${item.itemNumber}` || item.itemNumber < 510)) throw new Error('Lote adicional de Volume 5 inválido.');
   if (!Array.isArray(additionalVolume6Items) || additionalVolume6Items.some(item => item.id !== `real-202611-volume6-${item.itemNumber}` || item.itemNumber < 616 || !Number.isInteger(item.itemNumber) || !['IMMEDIATE', 'DELAYED'].includes(item.saleMode))) throw new Error('Lote adicional de Volume 6 inválido.');
+  if (!Array.isArray(remainingVolume6Items) || remainingVolume6Items.some(item =>
+    item.id !== `real-202611-volume6-${item.itemNumber}` || !Number.isInteger(item.itemNumber) ||
+    (item.itemNumber === 615
+      ? item.saleMode !== 'INQUIRY' || item.currency !== 'USD' || item.askingPriceUSD !== 18000 || item.asking != null
+      : item.itemNumber < 648 || !['IMMEDIATE', 'DELAYED'].includes(item.saleMode) || !(item.asking > 0))
+  )) throw new Error('Inventario restante de Volume 6 inválido.');
   // Admit only the specifically approved recovered Phase 2 items.
   // Keep approved copy verbatim; runtime Admin fields and media still win.
   const publishedPhase2 = PHASE2_BATCH_ITEMS
@@ -371,6 +382,7 @@ export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS, add
     ...VOLUME4_ITEMS,
     ...additionalVolume5Items,
     ...additionalVolume6Items,
+    ...remainingVolume6Items,
   ]
     .map(item => reviewDisposition(item)?.disposition === 'RESTORED' && item.status === 'UNLISTED'
       ? { ...item, status: 'AVAILABLE' } : item)

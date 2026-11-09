@@ -12,6 +12,7 @@ import {
   writeNewOrder,
 } from './_shared/commerce.mjs';
 import { orderAccessToken } from './_shared/order-access.mjs';
+import { assertHouseholdPurchase } from './_shared/purchase-eligibility.mjs';
 
 const FINAL_SALE_POLICY_VERSION = '2026-10-02-v1';
 
@@ -36,6 +37,10 @@ export default async function handler(request) {
     }
 
     const body = await request.json();
+    // Reject the vehicle before checkout recovery, inventory, or order writes.
+    for (const item of Array.isArray(body?.items) ? body.items : []) {
+      assertHouseholdPurchase({ id: item.productId });
+    }
 
     if (body?.finalSaleAcknowledged !== true ||
         body?.finalSalePolicyVersion !== FINAL_SALE_POLICY_VERSION) {
@@ -168,6 +173,7 @@ export default async function handler(request) {
           'Uno de los artículos ya no existe.'
         );
       }
+      assertHouseholdPurchase(product);
 
       if (
         product.status !== 'AVAILABLE'

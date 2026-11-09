@@ -49,7 +49,7 @@ export function appendVolume5Batch(previous, additions) {
 
 export function activationPatch(source) {
   if (source.includes('export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS')) return '';
-  const before = source.match(/^export function catalogBatchProducts\(additionalVolume5Items = \[\](?:, additionalVolume6Items = VOLUME6_ITEMS)?\) \{$/m)?.[0];
+  const before = source.match(/^export function catalogBatchProducts\(additionalVolume5Items = \[\](?:, additionalVolume6Items = VOLUME6_ITEMS)?(?:, remainingVolume6Items = VOLUME6_REMAINING)?\) \{$/m)?.[0];
   assert(before, 'Revise manualmente la integración actual del catálogo.');
   const after = before.replace('additionalVolume5Items = []', 'additionalVolume5Items = VOLUME5_ITEMS');
   const lines = source.replace(/\r\n/g, '\n').split('\n'), index = lines.indexOf(before), start = index - 3;

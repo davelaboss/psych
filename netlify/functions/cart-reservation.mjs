@@ -10,6 +10,7 @@ import {
 } from './_shared/commerce.mjs';
 import { orderAccessToken } from './_shared/order-access.mjs';
 import { recordAnalyticsEvent } from './_shared/sale-pulse.mjs';
+import { assertHouseholdPurchase } from './_shared/purchase-eligibility.mjs';
 
 const SALE_PULSE_SOURCES = new Set(['story', 'jw-group', 'direct']);
 
@@ -73,11 +74,13 @@ export function createCartReservationHandler({
     if (!['claim', 'quantity', 'release'].includes(action)) {
       return jsonResponse({ error: 'Acción no válida.' }, 400);
     }
+    if (action !== 'release') assertHouseholdPurchase({ id: productId });
 
     let availability = 0;
     if (action !== 'release') {
       const catalog = await loadProducts(url.origin);
       const product = catalog.find((item) => item.id === productId);
+      assertHouseholdPurchase(product);
       if (action === 'claim' && (!product || product.status !== 'AVAILABLE')) {
         return jsonResponse({ error: 'Este artículo ya no está disponible.' }, 409);
       }

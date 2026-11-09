@@ -1,5 +1,7 @@
 // File: js/site.js
 
+function isInquiryOnly(product) { return product?.id === 'real-202611-volume6-615' || product?.saleMode === 'INQUIRY' || product?.currency === 'USD'; }
+
 const STATIC_CART_KEY = 'mudanza-demo-cart';
 const CART_WARNING_DEADLINES_KEY = 'mudanza-cart-warning-deadlines';
 const CART_EXPIRATION_EVENTS_KEY = 'mudanza-cart-expiration-events';
@@ -492,7 +494,7 @@ function renderRelatedProductCard(product) {
       </span>
       <span class="related-product-item">${itemLabel}</span>
       <h3>${escapeHtml(product.title)}</h3>
-      <strong class="related-product-price">${formatPYG(product.askingPricePYG)}</strong>
+      <strong class="related-product-price">${(product.currency === 'USD' ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatPYG(product.askingPricePYG))}</strong>
     </a>
   `;
 }
@@ -667,7 +669,7 @@ function buildWhatsAppProductShareHref(product) {
     'Mirá este artículo de la venta de mudanza: ' +
     product.title +
     ' · ' +
-    formatPYG(product.askingPricePYG) +
+    (product.currency === 'USD' ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatPYG(product.askingPricePYG)) +
     '.\n' +
     productUrl;
 
@@ -687,7 +689,8 @@ function renderProductDetail(product) {
   document.body.dataset.salePulseProductId = product.id;
   document.body.dataset.salePulseProductSlug = product.slug || '';
 
-  const price = formatPYG(product.askingPricePYG);
+  const inquiry = product.saleMode === 'INQUIRY' || product.id === 'real-202611-volume6-615';
+  const price = (product.currency === 'USD' ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatPYG(product.askingPricePYG));
   const dueNow = dueNowForProduct(product);
   const balance = product.askingPricePYG - dueNow;
   const discoveryCatalog = Array.isArray(window.__catalogProducts)
@@ -940,7 +943,7 @@ function renderProductDetail(product) {
           </div>
 
           <div class="product-actions">
-            <button
+            ${inquiry ? '' : `<button
               id="product-cart-button"
               class="primary-action"
               type="button"
@@ -955,7 +958,7 @@ function renderProductDetail(product) {
                       ? 'Reservar este artículo'
                       : 'Agregar al carrito'
               }
-            </button>
+            </button>`}
 
             <div class="product-social-actions">
               <a
@@ -1004,7 +1007,7 @@ function renderProductDetail(product) {
             </div>
           </div>
 
-          <div class="payment-breakdown">
+          ${inquiry ? '<div class="private-sale-terms"><strong>Venta particular · US$18,000</strong><p>Entrega inmediata, con visitas coordinadas. Pago completo y transferencia en trato privado. Título y cédula verde al día; lista para transferir. Contactá al propietario por WhatsApp para coordinar.</p></div>' : `<div class="payment-breakdown">
             <div>
               <span>Precio total</span>
               <strong>${price}</strong>
@@ -1051,11 +1054,11 @@ function renderProductDetail(product) {
                 }
               </strong>
             </div>
-          </div>
+          </div>`}
         </div>
 
         <div class="product-detail-left">
-          <section class="logistics" aria-labelledby="pickup-heading">
+          ${inquiry ? '' : `<section class="logistics" aria-labelledby="pickup-heading">
             <strong id="pickup-heading">Para el retiro</strong>
             <div>
               <span class="section-kicker">ESTE ARTÍCULO</span>
@@ -1081,7 +1084,7 @@ function renderProductDetail(product) {
                 <li>Una vez retirado, la venta es final.</li>
               </ul>
             </div>
-          </section>
+          </section>`}
 
           ${
             images.length
@@ -1113,10 +1116,10 @@ function renderProductDetail(product) {
           }
         </div>
 
-        <p class="reservation-rule">
+        ${inquiry ? '' : `<p class="reservation-rule">
           Un mensaje no reserva el artículo. La reserva queda confirmada
           únicamente después de que confirmemos el pago.
-        </p>
+        </p>`}
       </div>
 
       ${
@@ -1221,6 +1224,7 @@ function renderCartPage() {
 
   const hasUnavailable = products.some(
     (product) =>
+      isInquiryOnly(product) ||
       product.status !== 'AVAILABLE' ||
       Number(product.quantityRemaining || 0) < 1
   );
@@ -1438,7 +1442,7 @@ function renderCartItem(product) {
           <dt>
             Precio${product.quantityTotal > 1 ? ' por unidad' : ''}
           </dt>
-          <dd>${formatPYG(product.askingPricePYG)}</dd>
+          <dd>${(product.currency === 'USD' ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatPYG(product.askingPricePYG))}</dd>
         </div>
 
         <div class="highlight">
@@ -1599,7 +1603,7 @@ function setupCatalogCartButtons() {
 
     enhanceCatalogCardNavigation(card, productLink, product);
 
-    if (product.status !== 'AVAILABLE') {
+    if (isInquiryOnly(product) || product.status !== 'AVAILABLE') {
       actionButton.disabled = true;
       return;
     }
@@ -1633,7 +1637,7 @@ function setupProductCartButton(product) {
   const button =
     document.getElementById('product-cart-button');
 
-  if (!button || product.status !== 'AVAILABLE') {
+  if (!button || isInquiryOnly(product) || product.status !== 'AVAILABLE') {
     return;
   }
 
@@ -2206,6 +2210,7 @@ function saveStaticCart(cart) {
 
 
 async function addStaticCartItem(productId, analytics = null) {
+  if (isInquiryOnly({ id: productId }) || isInquiryOnly(window.__catalogProducts?.find(p => p.id === productId))) return false;
   const returnFocusTo = document.activeElement;
   const cart = getStaticCart();
   if (cart.ids.includes(productId)) return true;
