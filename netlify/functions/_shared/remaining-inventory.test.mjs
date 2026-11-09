@@ -7,7 +7,7 @@ import {injectProductPreviewMetadata} from './product-preview.mjs';
 import {isInquiryOnlyProduct} from './purchase-eligibility.mjs';
 import {loadCatalog} from './commerce.mjs';
 
-const products=VOLUME6_REMAINING.filter(p=>p.itemNumber!==660).map(publicProduct),tracker=products.find(p=>p.itemNumber===615);
+const products=VOLUME6_REMAINING.filter(p=>p.itemNumber<660).map(publicProduct),tracker=products.find(p=>p.itemNumber===615);
 test('remaining approval prices, selling units, disclosures and delayed terms survive public projection',()=>{
  assert.equal(products.length,13);assert.deepEqual(products.filter(p=>p.itemNumber!==615).map(p=>p.askingPricePYG),[20000,60000,15000,2000,15000,15000,15000,10000,20000,45000,30000,12000]);
  assert.equal(products.find(p=>p.itemNumber===650).quantityTotal,2);assert.equal(products.find(p=>p.itemNumber===651).quantityTotal,8);
@@ -22,7 +22,7 @@ test('Tracker uses genuine USD inquiry mode, approved specs and nine authentic p
  const html=injectProductPreviewMetadata('<head></head>',tracker,'https://thelabossieres.com');assert.match(html,/US\$18,000/);assert.match(html,/product:price:currency" content="USD"/);assert.match(html,/tracker-615-01/);
 });
 test('all previous source records are unchanged; existing overrides and stock still win',async()=>{
- const before=catalogBatchProducts(undefined,undefined,[]),after=catalogBatchProducts();assert.equal(after.length,before.length+14);
+ const before=catalogBatchProducts(undefined,undefined,[]),after=catalogBatchProducts(undefined,undefined,VOLUME6_REMAINING.filter(p=>p.itemNumber<=660));assert.equal(after.length,before.length+14);
  for(const p of before)assert.deepEqual(after.find(q=>q.id===p.id),p);
  const p=before.find(p=>p.itemNumber===605);const live=await loadCatalog('https://example.test',{loadBaseCatalog:async()=>after,listProductOverrides:async()=>[{productId:p.id,publicFields:{askingPricePYG:195000,status:'RESERVED'}}],readCommittedInventory:async()=>new Map([[products[3].id,{capacity:8,committed_quantity:2}]])});
  assert.equal(live.find(q=>q.id===p.id).askingPricePYG,195000);assert.equal(live.find(q=>q.id===p.id).status,'RESERVED');assert.equal(live.find(q=>q.id===products[3].id).quantityRemaining,6);

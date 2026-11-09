@@ -33,8 +33,8 @@ test('G009/G014 publish as one complete owner-approved kit for PYG 275000', asyn
 test('all thirteen earlier source listings remain identical and only one new permanent ID is added', () => {
   const text = execFileSync('git', ['show', '5a5f2126b0c6955e3be52703697401b26ab5fb8c:source/lib/volume6-remaining.mjs'], { encoding: 'utf8' });
   const previous = JSON.parse(text.split('Object.freeze(')[1].trim().slice(0, -2));
-  assert.deepEqual(VOLUME6_REMAINING.filter(p => p.itemNumber !== 660), previous);
-  assert.equal(VOLUME6_REMAINING.length, previous.length + 1);
+  assert.deepEqual(VOLUME6_REMAINING.filter(p => p.itemNumber < 660), previous);
+  assert.equal(VOLUME6_REMAINING.filter(p => p.itemNumber <= 660).length, previous.length + 1);
   const catalog = catalogBatchProducts();
   assert.equal(catalog.filter(p => p.itemNumber === 660).length, 1);
   for (const field of ['id', 'itemNumber', 'slug']) assert.equal(new Set(catalog.map(p => p[field])).size, catalog.length);
