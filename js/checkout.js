@@ -298,6 +298,9 @@ async function renderCheckoutPage() {
               ${quantity}
             </span>
 
+            <span>Precio unitario: ${formatPYG(product.askingPricePYG)}</span>
+            ${product.saleMode === 'DELAYED' ? `<span>Seña ${Number(product.depositPercent)}%</span>` : ''}
+
             <span>
               A pagar ahora:
               ${formatPYG(
@@ -910,6 +913,9 @@ function displayOrder(
                 ${item.quantity}
               </span>
 
+              <span>Precio unitario acordado: ${formatPYG(item.unitPricePYG)}</span>
+              ${item.saleMode === 'DELAYED' ? `<span>Seña acordada: ${Number(item.depositPercent)}%</span>` : ''}
+
               <span>
                 A pagar ahora:
                 ${formatPYG(
@@ -1278,15 +1284,17 @@ function renderCustomerFinancialSummary(order) {
   const remainingBalance = Number(order.remainingBalancePYG ?? grossOrderTotal);
   const dueNow = Number(order.totals?.dueNowPYG || 0);
   const delayedOrder = order.items?.some(item => item.saleMode === 'DELAYED');
+  const mixedOrder = delayedOrder && order.items?.some(item => item.saleMode === 'IMMEDIATE');
   const depositShortfall = Math.max(0,
     Math.min(adjustedOrderTotal, dueNow) - Math.max(0, netReceived));
   const expectedNow = delayedOrder && Date.now() < Date.parse('2026-12-01T00:00:00-03:00')
     ? depositShortfall : remainingBalance;
   const overpayment = Math.max(0, netReceived - adjustedOrderTotal);
   const installmentRows = delayedOrder ? `
-    <div><dt>Seña requerida</dt><dd>${formatPYG(Math.min(adjustedOrderTotal, dueNow))}</dd></div>
-    <div><dt>Faltante de seña</dt><dd>${formatPYG(depositShortfall)}</dd></div>
+    <div><dt>${mixedOrder ? 'Pago inicial requerido' : 'Seña requerida'}</dt><dd>${formatPYG(Math.min(adjustedOrderTotal, dueNow))}</dd></div>
+    <div><dt>${mixedOrder ? 'Faltante del pago inicial' : 'Faltante de seña'}</dt><dd>${formatPYG(depositShortfall)}</dd></div>
     <div><dt>Importe esperado ahora</dt><dd>${formatPYG(expectedNow)}</dd></div>
+    ${remainingBalance > expectedNow ? `<div><dt>Saldo posterior tras este pago</dt><dd>${formatPYG(remainingBalance - expectedNow)}</dd></div>` : ''}
   ` : '';
   const overpaymentRow = overpayment > 0
     ? `<div><dt>Saldo a favor</dt><dd>${formatPYG(overpayment)}</dd></div>` : '';

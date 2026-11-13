@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { liquidationPrice } from './liquidation.mjs';
+import { liquidationPrice, newPurchaseTerms } from './liquidation.mjs';
+import campaignState from '../campaign-state.mjs';
 import { loadCatalog, loadSaleCatalog, publicOrder } from './commerce.mjs';
 import { createOrderHandler } from '../create-order.mjs';
 import { createCartReservationHandler } from '../cart-reservation.mjs';
@@ -15,6 +16,52 @@ const product = (n, price = 26301, extra = {}) => ({ id: `item-${n}`, itemNumber
   saleMode: 'DELAYED', depositPercent: 25, pickupWindowStart: '2026-12-09',
   pickupWindowEnd: '2026-12-12', ...extra });
 const stock = { purchasable_quantity: 3 };
+
+test('public campaign state is read-only, uncached and OFF by default', async () => {
+  const previous = process.env.FINAL_LIQUIDATION_ENABLED;
+  try {
+    delete process.env.FINAL_LIQUIDATION_ENABLED;
+    let response = campaignState(new Request('http://localhost/.netlify/functions/campaign-state'));
+    assert.deepEqual(await response.json(), {liquidationActive:false});
+    assert.equal(response.headers.get('cache-control'),'no-store');
+    process.env.FINAL_LIQUIDATION_ENABLED='true';
+    response=campaignState(new Request('http://localhost/.netlify/functions/campaign-state'));
+    assert.deepEqual(await response.json(), {liquidationActive:true});
+    assert.equal(campaignState(new Request('http://localhost/.netlify/functions/campaign-state',{method:'POST'})).status,405);
+  } finally {
+    if (previous === undefined) delete process.env.FINAL_LIQUIDATION_ENABLED;
+    else process.env.FINAL_LIQUIDATION_ENABLED=previous;
+  }
+});
+
+test('405/441 new purchases use owner-confirmed 25% with campaign ON or OFF; agreements stay intact',async()=>{
+  const missingDates={depositPercent:100,pickupAvailableDate:null,pickupWindowStart:null,pickupWindowEnd:null};
+  const products=[product(405,38000,missingDates),product(441,50000,missingDates)];
+  const before=structuredClone(products);
+  for(const enabled of [false,true]) {
+    const dependencies={enabled,loadCatalog:async()=>products,
+      readSalePricingState:async()=>({inventory:new Map(products.map(p=>[p.id,stock])),cartPrices:new Map()})};
+    const sale=await loadSaleCatalog('http://localhost',{},dependencies);
+    assert.deepEqual(sale.map(p=>p.depositPercent),[25,25]);
+    for (const p of sale) {
+      assert.equal(p.pickupWindowStart,'2026-12-09');
+      assert.equal(p.pickupWindowEnd,'2026-12-12');
+    }
+    assert.deepEqual(sale.map(p=>p.askingPricePYG),enabled?[19000,25000]:[38000,50000]);
+    const accepted=await loadSaleCatalog('http://localhost',{}, {...dependencies,
+      readSalePricingState:async()=>({inventory:new Map(),cartPrices:new Map([
+        [products[0].id,null],
+        [products[1].id,{askingPricePYG:50000,depositPercent:100,saleMode:'DELAYED'}],
+      ])})});
+    assert.deepEqual(accepted.map(p=>p.depositPercent),[100,100]);
+    assert.deepEqual(accepted.map(p=>p.askingPricePYG),[38000,50000]);
+    assert.deepEqual(accepted.map(p=>p.pickupWindowStart),[null,null]);
+  }
+  const narrow=newPurchaseTerms(product(405,38000,{pickupWindowStart:'2026-12-10',pickupWindowEnd:'2026-12-11'}));
+  assert.equal(narrow.pickupWindowStart,'2026-12-10');
+  assert.equal(narrow.pickupWindowEnd,'2026-12-11');
+  assert.deepEqual(products,before);
+});
 
 test('tiers use current asking price before discount, rounded to whole guaranies', () => {
   for (const [original, percent, expected] of [[12000,10,10800],[11999,10,10799],

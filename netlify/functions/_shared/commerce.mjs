@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { liquidationPrice, withCartPricing } from './liquidation.mjs';
+import { liquidationPrice, newPurchaseTerms, withCartPricing } from './liquidation.mjs';
 import { dispatchSellerNotificationsSafely } from './seller-notifications.mjs';
 
 export const SALES_OPEN_AT =
@@ -525,7 +525,7 @@ export async function loadSaleCatalog(origin, options = {}, dependencies = {}) {
   ]);
   return products.map(product => state.cartPrices.has(product.id)
     ? withCartPricing(product, state.cartPrices.get(product.id))
-    : liquidationPrice(product, state.inventory.get(product.id), dependencies.enabled));
+    : liquidationPrice(newPurchaseTerms(product), state.inventory.get(product.id), dependencies.enabled));
 }
 
 export async function loadPublicCatalog(origin, options = {}, dependencies = {}) {

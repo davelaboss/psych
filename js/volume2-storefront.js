@@ -77,8 +77,6 @@
         ? decodeURIComponent(path.slice('/producto/'.length))
         : '';
       const catalog = await fetchCatalog(requestedSlug);
-      const banner = document.querySelector('[data-liquidation-banner]');
-      if (banner) banner.hidden = window.__liquidationActive !== true;
       state.products = dedupe(catalog.products)
         .sort((a, b) => Number(a.itemNumber) - Number(b.itemNumber));
       state.deliveredProduct = catalog.deliveredProduct;

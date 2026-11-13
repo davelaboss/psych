@@ -49,6 +49,7 @@ function loadAuthoritativeCatalog(requestedSlug = '') {
 
 async function bootStaticStorefront() {
   setupStaticMobileNavigation();
+  void setupLiquidationAnnouncement();
 
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
 
@@ -79,6 +80,23 @@ async function bootStaticStorefront() {
 
   if (path === '/' || path === '/index.html') {
     setupCatalogCartButtons();
+  }
+}
+
+async function setupLiquidationAnnouncement() {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (!(path === '/' || path === '/index.html' || path === '/carrito' ||
+      path === '/checkout' || path.startsWith('/producto/') || path.startsWith('/pedido/'))) return;
+  const strip = document.querySelector('[data-liquidation-announcement]');
+  if (!strip) return;
+  try {
+    const response = await fetch('/.netlify/functions/campaign-state', { cache: 'no-store' });
+    if (!response.ok) return;
+    const state = await response.json();
+    strip.hidden = state.liquidationActive !== true;
+    document.documentElement.classList.toggle('liquidation-active', !strip.hidden);
+  } catch {
+    // Announcement failure must never block purchases or show a stale campaign.
   }
 }
 
@@ -666,8 +684,8 @@ function renderLiquidationPrice(product, context) {
   if (!offer || ![10, 50].includes(offer.percent)) return '';
   return `<div class="${context === 'card' ? 'price ' : ''}liquidation-price liquidation-price-${context}">
     <span class="liquidation-original"><del aria-label="Precio anterior">${formatPYG(offer.originalAskingPricePYG)}</del><span class="liquidation-badge liquidation-badge-${offer.percent}" aria-label="${offer.percent}% de descuento">−${offer.percent}%</span></span>
-    <strong class="${context === 'detail' ? 'detail-price' : 'liquidation-current'}">${formatPYG(product.askingPricePYG)}${product.quantityTotal > 1 ? ' <small>por unidad</small>' : ''}</strong>
-    ${context === 'detail' ? '<span class="liquidation-label">Precio de liquidación</span>' : ''}
+    <div class="liquidation-offer"><strong class="${context === 'detail' ? 'detail-price' : 'liquidation-current'}">${formatPYG(product.askingPricePYG)}${product.quantityTotal > 1 ? ' <small>por unidad</small>' : ''}</strong>
+    <span class="liquidation-label">Precio de liquidación</span></div>
   </div>`;
 }
 window.renderLiquidationPrice = renderLiquidationPrice;
