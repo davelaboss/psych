@@ -150,6 +150,52 @@ function getCheckoutCart() {
 }
 
 
+// Presentation only: all amounts and terms come from the existing cart snapshot.
+function renderCheckoutSummary(items, totals) {
+  const pickupGroups = new Map();
+  const itemRows = items.map(({ product, quantity }) => {
+    const dueNow = dueNowForProduct(product) * quantity;
+    const future = (product.askingPricePYG - dueNowForProduct(product)) * quantity;
+    if (product.saleMode === 'DELAYED' || product.pickupWindowStart || product.pickupAvailableDate) {
+      const key = JSON.stringify([
+        product.pickupWindowStart, product.pickupWindowEnd,
+        product.pickupAvailableDate === product.pickupWindowStart ? null : product.pickupAvailableDate,
+      ]);
+      if (!pickupGroups.has(key)) pickupGroups.set(key, { product, labels: [] });
+      pickupGroups.get(key).labels.push(`Ítem ${product.itemNumber || product.title}`);
+    }
+    return `
+      <div class="checkout-item">
+        <strong>${escapeHtml(product.title)}</strong>
+        <span class="checkout-item-detail">${product.itemNumber ? `Ítem ${escapeHtml(product.itemNumber)} · ` : ''}Cantidad: ${quantity} · Precio unitario: ${formatPYG(product.askingPricePYG)}</span>
+        <div class="checkout-item-payment">
+          <span>${product.saleMode === 'DELAYED' ? `Ahora · Seña ${Number(product.depositPercent)}%` : 'A pagar ahora'}</span>
+          <strong>${formatPYG(dueNow)}</strong>
+        </div>
+        ${future > 0 ? `<span class="checkout-item-detail">Saldo pendiente: ${formatPYG(future)}</span>` : ''}
+      </div>`;
+  }).join('');
+  const pickupRows = Array.from(pickupGroups.values()).map(({ product, labels }) => `
+    <p><strong>Retiro · ${escapeHtml(labels.join(', '))}</strong><br>
+      ${escapeHtml(formatPickupWindow(product.pickupWindowStart, product.pickupWindowEnd))}${product.pickupAvailableDate && product.pickupAvailableDate !== product.pickupWindowStart ? ` · Desde ${escapeHtml(product.pickupAvailableDate)}` : ''}
+    </p>`).join('');
+
+  return `
+    <span class="section-kicker">RESUMEN</span>
+    <h2>Tu compra</h2>
+    <dl class="checkout-totals">
+      <div><dt>Valor total</dt><dd>${formatPYG(totals.total)}</dd></div>
+      <div class="summary-due"><dt>A pagar ahora</dt><dd>${formatPYG(totals.dueNow)}</dd></div>
+      <div><dt>Saldo pendiente</dt><dd>${formatPYG(totals.future)}</dd></div>
+    </dl>
+    <div class="checkout-items">${itemRows}</div>
+    <div class="checkout-shared-terms">
+      ${totals.future > 0 ? `<p><strong>Pago final del saldo pendiente</strong><br>${DELAYED_FINAL_PAYMENT_WINDOW}</p>` : ''}
+      ${pickupRows}
+    </div>`;
+}
+
+
 async function renderCheckoutPage() {
   const main =
     document.querySelector('main');
@@ -282,56 +328,6 @@ async function renderCheckoutPage() {
       }
     );
 
-  const itemRows =
-    items
-      .map(
-        ({ product, quantity }) => `
-          <div class="checkout-item">
-            <strong>
-              ${escapeHtml(
-                product.title
-              )}
-            </strong>
-
-            <span>
-              Cantidad:
-              ${quantity}
-            </span>
-
-            <span>Precio unitario: ${formatPYG(product.askingPricePYG)}</span>
-            ${product.saleMode === 'DELAYED' ? `<span>Seña ${Number(product.depositPercent)}%</span>` : ''}
-
-            <span>
-              A pagar ahora:
-              ${formatPYG(
-                dueNowForProduct(
-                  product
-                ) * quantity
-              )}
-            </span>
-
-            ${
-              product.saleMode === 'DELAYED' &&
-              product.askingPricePYG > dueNowForProduct(product)
-                ? `
-                  <span>
-                    Saldo pendiente: ${formatPYG(
-                      (product.askingPricePYG - dueNowForProduct(product)) * quantity
-                    )}
-                  </span>
-                  <span>Pago final: ${DELAYED_FINAL_PAYMENT_WINDOW}</span>
-                  <span>Retiro: ${escapeHtml(formatPickupWindow(
-                    product.pickupWindowStart,
-                    product.pickupWindowEnd
-                  ))}</span>
-                `
-                : ''
-            }
-          </div>
-        `
-      )
-      .join('');
-
   main.innerHTML = `
     <section
       class="checkout-shell"
@@ -424,67 +420,9 @@ async function renderCheckoutPage() {
         </form>
 
         <aside
-          class="cart-summary"
+          class="cart-summary checkout-order-summary"
         >
-          <span class="section-kicker">
-            RESUMEN
-          </span>
-
-          <h2>
-            Tu compra
-          </h2>
-
-          <div
-            class="checkout-items"
-          >
-            ${itemRows}
-          </div>
-
-          <dl>
-            <div>
-              <dt>
-                Valor total
-              </dt>
-
-              <dd>
-                ${formatPYG(
-                  totals.total
-                )}
-              </dd>
-            </div>
-
-            <div
-              class="summary-due"
-            >
-              <dt>
-                A pagar ahora
-              </dt>
-
-              <dd>
-                ${formatPYG(
-                  totals.dueNow
-                )}
-              </dd>
-            </div>
-
-            <div>
-              <dt>
-                Saldo pendiente
-              </dt>
-
-              <dd>
-                ${formatPYG(
-                  totals.future
-                )}
-              </dd>
-            </div>
-          </dl>
-
-          ${
-            totals.future > 0
-              ? `<p>Pago final del saldo pendiente: ${DELAYED_FINAL_PAYMENT_WINDOW}.</p>`
-              : ''
-          }
+          ${renderCheckoutSummary(items, totals)}
         </aside>
 
       </div>
@@ -1929,6 +1867,25 @@ function injectCheckoutStyles() {
       background: white;
       color: inherit;
     }
+
+    .checkout-order-summary .checkout-totals { margin: 0 0 16px; }
+    .checkout-order-summary .checkout-totals .summary-due {
+      display: grid;
+      gap: 4px;
+      margin: 8px 0;
+      padding: 14px;
+      border-radius: 10px;
+      background: #e7f1eb;
+      color: var(--forest-dark);
+    }
+    .checkout-order-summary .summary-due dd { font-size: 1.9rem !important; line-height: 1.15; text-align: left; }
+    .checkout-order-summary .checkout-items { gap: 0; }
+    .checkout-order-summary .checkout-item { padding: 12px 0; gap: 4px; }
+    .checkout-order-summary .checkout-item-detail { font-size: 14px !important; color: var(--muted); }
+    .checkout-item-payment { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .checkout-shared-terms { font-size: .85rem; line-height: 1.45; }
+    .checkout-shared-terms p, .checkout-shared-terms strong { font-size: 14px !important; }
+    .checkout-shared-terms p { margin: 12px 0 0; }
 
     .checkout-items,
     .bank-details,

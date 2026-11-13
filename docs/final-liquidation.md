@@ -15,6 +15,11 @@ Admin write, or marketing publication was performed.
 - Checkout now states unit prices and deposits. Order confirmation states the frozen
   agreed unit prices. Mixed orders say “Pago inicial requerido” and distinguish the
   later balance from the entire unpaid balance; financial calculations are unchanged.
+- Final checkout refinement puts total / due now / later balance first, makes due
+  now largest, compacts the item rows, and shares identical payment/pickup dates.
+  Per-item quantities, agreed unit prices, deposits, balances and date exceptions
+  remain visible. No new steps or expandable controls. Mobile summary is 1,039px
+  versus 1,301px before (390px viewport), about 20% shorter.
 - New purchases of Items **405/441** use **25%**, with campaign ON or OFF. When their
   recorded pickup dates are absent, the approved December 9–12 window is used;
   narrower recorded dates are retained. New cart snapshots also freeze these dates.
@@ -34,6 +39,12 @@ remain unchanged; the earlier 15-minute reference is superseded by this assignme
 
 ## Validation and visual evidence
 
+- Final checkout pass: **24 focused checks passed** plus real isolated browser
+  checkout/order creation. 320px/390px have no horizontal overflow or clipped text;
+  due now is visually largest. Same frozen order: **254,800 / 213,700 / 41,100**.
+  Approved custom deposit and pickup-date exceptions are covered by rendering tests.
+  The totals reducer, checkout form/submission, reservations, persistence and all
+  server/payment code are unchanged from reviewed commit `3967013`.
 - **147 focused checks passed**, no failures/skips. Final commitment/date follow-up:
   **19 checks passed**. No unnecessary full-suite rerun; original full-suite result
   remains 889 passed with seven optional PostgreSQL skips.
@@ -58,8 +69,27 @@ remain unchanged; the earlier 15-minute reference is superseded by this assignme
 | [Detail: Item 405](liquidation-review/05-mobile-detail-405.png) | Red price and 25% deposit |
 | [Single 50% cart](liquidation-review/06-cart-single-50.png) | Actual immediate-purchase cart |
 | [Mixed cart](liquidation-review/07-cart-mixed.png) | Both tiers and delayed purchases |
-| [Checkout](liquidation-review/08-checkout-amounts.png) | Quantities, unit prices, 25%, totals and dates |
+| [Checkout before](liquidation-review/08-checkout-amounts.png) | Previously reviewed layout |
+| [Checkout after 390px](liquidation-review/10-checkout-final-390.png) | Totals first, prominent due now, compact items, shared dates |
+| [Checkout after 320px](liquidation-review/11-checkout-final-320.png) | Narrow mobile readability |
 | [Order confirmation](liquidation-review/09-order-confirmation.png) | Final frozen prices and transaction amounts |
+
+## Admin deposit follow-up
+
+The unchanged real Admin renderer and event binder were exercised in an isolated
+browser without submitting: IMMEDIATE 100 → DELAYED stays 100; DELAYED 25 → IMMEDIATE
+stays 25; a custom 40 stays 40. The 25/100 default is applied only on initial render
+when the stored percentage is null/missing. Availability and percentage are saved as
+independent fields. This behavior could explain 405/441, but their edit history was
+not verified. No Admin form or live record was changed.
+
+Existing preservation is the visible, editable per-item stored percentage/override;
+there is no dedicated approved-deposit-exception marker in this editor/save path.
+Smallest safe separately authorized follow-up: show a 25/100 suggestion when mode
+changes, with explicit “use suggested percentage” acceptance into the existing field
+before Save. Keep every existing/custom percentage until accepted. This preserves
+approved exceptions without a schema change or silent overwrite. Controlled 405/441
+record correction remains separate authorization and is not a PR #75 blocker.
 
 ## Campaign controls
 
@@ -115,6 +145,7 @@ After David authorizes the release:
 [native migration sequencing](https://docs.netlify.com/build/data-and-storage/netlify-database/migrations/).
 
 **Next decision:** Implementation is ready for David's final visual/release review.
+No remaining code blocker was found in this focused checkout pass.
 Approve the exact release commit and controlled production deployment/activation;
 explicitly choose the source-branch arrangement for future owner-operated toggles.
 The live Admin correction for 405/441 remains separate authorization. Campaign remains
