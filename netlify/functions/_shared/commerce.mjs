@@ -5,6 +5,7 @@ import { getStore } from '@netlify/blobs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { liquidationPrice, newPurchaseTerms, withCartPricing } from './liquidation.mjs';
+import { withPublicPurchaseAvailability } from './purchase-eligibility.mjs';
 import { dispatchSellerNotificationsSafely } from './seller-notifications.mjs';
 
 export const SALES_OPEN_AT =
@@ -523,9 +524,10 @@ export async function loadSaleCatalog(origin, options = {}, dependencies = {}) {
     (dependencies.loadCatalog || loadCatalog)(origin),
     (dependencies.readSalePricingState || readSalePricingState)(options.cartSessionId || null),
   ]);
-  return products.map(product => state.cartPrices.has(product.id)
+  return products.map(product => withPublicPurchaseAvailability(state.cartPrices.has(product.id)
     ? withCartPricing(product, state.cartPrices.get(product.id))
-    : liquidationPrice(newPurchaseTerms(product), state.inventory.get(product.id), dependencies.enabled));
+    : liquidationPrice(newPurchaseTerms(product), state.inventory.get(product.id), dependencies.enabled),
+    state.inventory.get(product.id)));
 }
 
 export async function loadPublicCatalog(origin, options = {}, dependencies = {}) {
