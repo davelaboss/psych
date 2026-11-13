@@ -211,8 +211,7 @@
 
     const heading = document.querySelector('.catalog-heading > p');
     if (heading) {
-      const availableCount = state.products.filter((product) => product.status === 'AVAILABLE').length;
-      heading.textContent = `${availableCount} artículos disponibles · Retiro en San Lorenzo`;
+      heading.textContent = `${catalogAvailabilitySummary(state.products)} · Retiro en San Lorenzo`;
     }
 
     installStyles();
@@ -512,7 +511,7 @@
     if (cartButton) {
       event.preventDefault();
       event.stopPropagation();
-      if (product.status !== 'AVAILABLE') return;
+      if (product.status !== 'AVAILABLE' || product.purchaseBlockedByHold || product.purchasableQuantity === 0) return;
       if (typeof window.addStaticCartItem === 'function') {
         cartButton.disabled = true;
         window.salePulseSetCartContext?.(product, catalogDiscoveryContext(product));
@@ -566,7 +565,7 @@
       const noun = state.filtered.length === 1 ? 'artículo' : 'artículos';
       c.counter.textContent = c.showSold?.checked
         ? `${state.filtered.length} ${noun} en el catálogo · incluye vendidos`
-        : `${state.filtered.length} ${noun} ${state.filtered.length === 1 ? 'disponible' : 'disponibles'}`;
+        : catalogAvailabilitySummary(state.filtered);
     }
     syncControlState();
     syncLoadControls();
@@ -968,6 +967,12 @@
 
   window.persistCatalogHistoryState = persistCatalogHistoryState;
 
+  function catalogAvailabilitySummary(products) {
+    const available = products.filter(p => p.status === 'AVAILABLE' && !p.purchaseBlockedByHold && p.purchasableQuantity !== 0).length;
+    const held = products.filter(p => p.status === 'AVAILABLE' && p.purchaseBlockedByHold).length;
+    return `${available} ${available === 1 ? 'artículo disponible' : 'artículos disponibles'}${held ? ` · ${held} ${held === 1 ? 'reservado' : 'reservados'}` : ''}`;
+  }
+
   function renderCard(product) {
     const article = document.createElement('article');
     article.className = `product-card${product.status !== 'AVAILABLE' ? ' is-sold' : ''}`;
@@ -977,6 +982,8 @@
     const inquiry = product.saleMode === 'INQUIRY' || product.id === 'real-202611-volume6-615';
     const delayed = product.saleMode === 'DELAYED';
     const available = product.status === 'AVAILABLE';
+    const held = product.purchaseBlockedByHold === true;
+    const canBuy = available && !held && product.purchasableQuantity !== 0;
     const image = product.images?.[0] || '';
     const multiple = Number(product.quantityTotal || 1) > 1;
 
@@ -990,20 +997,21 @@
         <span class="item-number">Item ${String(product.itemNumber).padStart(3, '0')}</span>
         <h3>${escapeHtml(product.title)}</h3>
         ${product.liquidation ? window.renderLiquidationPrice(product, 'card') : `<strong class="price">${inquiry ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatMoney(product.askingPricePYG)}${multiple ? ' por unidad' : ''}</strong>`}
+        ${held ? '<span class="reserved-price-note">Precio de referencia · Reservado</span>' : ''}
         <div class="card-detail-row">
           <span class="card-detail-link">Ver detalle</span>
           <span class="card-category">${escapeHtml(product.category || '')}</span>
         </div>
         <div class="card-actions">
-          ${inquiry ? '<a class="secondary-action" href="https://wa.me/595972588347?text=' + encodeURIComponent('Hola, quisiera consultar por Chevrolet Tracker LTZ 2024 (Item 615), US$18,000.') + '" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>' : `<button type="button" data-cart-action ${!available ? 'disabled' : ''}>
-            ${!available ? 'No disponible' : 'Agregar al carrito'}
+          ${inquiry ? '<a class="secondary-action" href="https://wa.me/595972588347?text=' + encodeURIComponent('Hola, quisiera consultar por Chevrolet Tracker LTZ 2024 (Item 615), US$18,000.') + '" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>' : `<button type="button" data-cart-action ${!canBuy ? 'disabled' : ''}>
+            ${held ? 'Reservado' : !canBuy ? 'No disponible' : 'Agregar al carrito'}
           </button>`}
         </div>
         <div class="card-availability">
-          <span class="${!available ? 'status-unavailable' : delayed ? 'status-later' : 'status-now'}">
-            ${!available ? 'VENDIDO' : delayed ? 'RETIRO 9–12 DIC.' : 'DISPONIBLE AHORA'}
+          <span class="${!available ? 'status-unavailable' : held || delayed ? 'status-later' : 'status-now'}">
+            ${held ? 'RESERVADO' : !available ? 'VENDIDO' : !canBuy ? 'NO DISPONIBLE' : delayed ? 'RETIRO 9–12 DIC.' : 'DISPONIBLE AHORA'}
           </span>
-          ${delayed && available ? `<span class="deposit-note">Seña ${Number(product.depositPercent || 25)}%</span>` : ''}
+          ${delayed && canBuy ? `<span class="deposit-note">Seña ${Number(product.depositPercent || 25)}%</span>` : ''}
         </div>
       </div>
     `;

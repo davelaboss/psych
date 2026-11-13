@@ -54,6 +54,9 @@ async function bootStaticStorefront() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
 
   if (path.startsWith('/producto/')) {
+    // Stock holds are absent from embedded data. Keep the route pending until
+    // the shared authoritative catalog supplies customer-specific availability.
+    if (!Array.isArray(window.__catalogProducts)) return;
     const slug = decodeURIComponent(path.slice('/producto/'.length));
     const product = getEmbeddedProductBySlug(slug);
 
@@ -428,7 +431,8 @@ function buildProductDiscovery(catalogProducts, currentProduct, recommendationLi
     (currentSlug && String(product.slug || '') === currentSlug);
 
   const available = publicProducts.filter(
-    (product) => String(product.status || '').trim().toUpperCase() === 'AVAILABLE' && !isCurrent(product)
+    (product) => String(product.status || '').trim().toUpperCase() === 'AVAILABLE' &&
+      !product.purchaseBlockedByHold && product.purchasableQuantity !== 0 && !isCurrent(product)
   );
 
   const previous = Number.isFinite(currentItemNumber)
@@ -720,6 +724,9 @@ function renderProductDetail(product) {
   document.body.dataset.salePulseProductSlug = product.slug || '';
 
   const inquiry = product.saleMode === 'INQUIRY' || product.id === 'real-202611-volume6-615';
+  const held = product.purchaseBlockedByHold === true;
+  const canBuy = product.status === 'AVAILABLE' && !held && product.purchasableQuantity !== 0;
+  const freeQuantity = product.purchasableQuantity ?? product.quantityRemaining;
   const price = (product.currency === 'USD' ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatPYG(product.askingPricePYG));
   const dueNow = dueNowForProduct(product);
   const balance = product.askingPricePYG - dueNow;
@@ -751,6 +758,8 @@ function renderProductDetail(product) {
       ? 'VENDIDO'
       : product.status !== 'AVAILABLE'
         ? 'NO DISPONIBLE'
+        : held ? 'RESERVADO'
+        : !canBuy ? 'NO DISPONIBLE'
         : product.saleMode === 'DELAYED'
           ? 'RETIRO 9–12 DIC.'
           : 'DISPONIBLE AHORA';
@@ -863,7 +872,7 @@ function renderProductDetail(product) {
             <span class="${
               product.status !== 'AVAILABLE'
                 ? 'status-unavailable'
-                : product.saleMode === 'DELAYED'
+                : held || product.saleMode === 'DELAYED'
                   ? 'status-later'
                   : 'status-now'
             }">
@@ -967,9 +976,10 @@ function renderProductDetail(product) {
             </strong>
             `}
 
+            ${held ? '<span class="reserved-price-note">Precio de referencia · Reservado</span>' : ''}
             ${
               product.quantityTotal > 1
-                ? `<span>${product.quantityRemaining} unidades disponibles</span>`
+                ? `<span>${freeQuantity} ${freeQuantity === 1 ? 'unidad disponible' : 'unidades disponibles'} para compra nueva</span>`
                 : ''
             }
           </div>
@@ -979,12 +989,13 @@ function renderProductDetail(product) {
               id="product-cart-button"
               class="primary-action"
               type="button"
-              ${product.status !== 'AVAILABLE' ? 'disabled' : ''}
+              ${!canBuy ? 'disabled' : ''}
             >
               ${
-                product.status === 'SOLD' || product.status === 'PICKED_UP'
+                held ? 'Reservado'
+                : product.status === 'SOLD' || product.status === 'PICKED_UP'
                   ? 'Vendido'
-                  : product.status !== 'AVAILABLE'
+                  : !canBuy
                     ? 'No disponible'
                     : product.saleMode === 'DELAYED'
                       ? 'Reservar este artículo'
@@ -1039,7 +1050,7 @@ function renderProductDetail(product) {
             </div>
           </div>
 
-          ${inquiry ? '<div class="private-sale-terms"><strong>Venta particular · US$18,000</strong><p>Entrega inmediata, con visitas coordinadas. Pago completo y transferencia en trato privado. Título y cédula verde al día; lista para transferir. Contactá al propietario por WhatsApp para coordinar.</p></div>' : `<div class="payment-breakdown">
+          ${held ? '<p class="reserved-purchase-note" role="status">Este artículo está reservado por otro comprador. El precio mostrado es de referencia; no podés iniciar una compra mientras siga reservado.</p>' : inquiry ? '<div class="private-sale-terms"><strong>Venta particular · US$18,000</strong><p>Entrega inmediata, con visitas coordinadas. Pago completo y transferencia en trato privado. Título y cédula verde al día; lista para transferir. Contactá al propietario por WhatsApp para coordinar.</p></div>' : `<div class="payment-breakdown">
             <div>
               <span>Precio total</span>
               <strong>${price}</strong>
@@ -1635,7 +1646,7 @@ function setupCatalogCartButtons() {
 
     enhanceCatalogCardNavigation(card, productLink, product);
 
-    if (isInquiryOnly(product) || product.status !== 'AVAILABLE') {
+    if (isInquiryOnly(product) || product.status !== 'AVAILABLE' || product.purchaseBlockedByHold || product.purchasableQuantity === 0) {
       actionButton.disabled = true;
       return;
     }
@@ -1669,7 +1680,7 @@ function setupProductCartButton(product) {
   const button =
     document.getElementById('product-cart-button');
 
-  if (!button || isInquiryOnly(product) || product.status !== 'AVAILABLE') {
+  if (!button || isInquiryOnly(product) || product.status !== 'AVAILABLE' || product.purchaseBlockedByHold || product.purchasableQuantity === 0) {
     return;
   }
 
