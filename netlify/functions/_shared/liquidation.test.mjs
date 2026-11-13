@@ -86,7 +86,29 @@ test('protected Items, inquiry/USD, invalid prices and unsellable stock are unto
   }
   const p = product(1);
   assert.equal(liquidationPrice(p, {purchasable_quantity:0}, true), p);
-  assert.equal(liquidationPrice(p, undefined, true), p);
+  assert.equal(liquidationPrice(p, undefined, true).askingPricePYG,13151);
+  for (const inventory of [{}, {purchasable_quantity:null}, {purchasable_quantity:NaN},
+    {purchasable_quantity:-1}, {purchasable_quantity:0.5}]) {
+    assert.equal(liquidationPrice(p,inventory,true),p);
+  }
+});
+
+test('uninitialized stock uses the first-claim catalog quantity, with both tiers and fail-closed exclusions',()=>{
+  for(const [price,expected] of [[30000,15000],[25000,12500],[12000,10800],[12001,6001]]) {
+    const p=product(658,price,{saleMode:'IMMEDIATE',quantityRemaining:1});
+    assert.equal(liquidationPrice(p,undefined,true).askingPricePYG,expected);
+    assert.equal(liquidationPrice(p,{purchasable_quantity:1},true).askingPricePYG,expected);
+    assert.equal(liquidationPrice(p,{purchasable_quantity:0},true),p);
+  }
+  for(const quantityRemaining of [0,-1,NaN,0.5]) {
+    const p=product(658,30000,{quantityRemaining});assert.equal(liquidationPrice(p,undefined,true),p);
+  }
+  const p=product(658,30000,{quantityRemaining:null,quantityTotal:2});
+  assert.equal(liquidationPrice(p,undefined,true).askingPricePYG,15000);
+  for(const p of [product(274),product(313),product(615),product(1,30000,{status:'SOLD'}),
+    product(31,30000,{status:'NEEDS_REVIEW',quantityRemaining:0}),product(1,30000,{saleMode:'INQUIRY'})]) {
+    assert.equal(liquidationPrice(p,undefined,true),p);
+  }
 });
 
 test('Admin override wins; authoring/Admin catalog and original objects never get discounted', async () => {

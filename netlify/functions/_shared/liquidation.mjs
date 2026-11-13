@@ -22,10 +22,16 @@ export function newPurchaseTerms(product) {
 // Asking prices stay in Admin. This projection never writes product overrides.
 export function liquidationPrice(product, inventory, enabled = liquidationEnabled()) {
   const price = Number(product.askingPricePYG);
+  const quantity = Number(product.quantityRemaining ?? product.quantityTotal ?? 1);
+  // A first claim lazily creates its operational row from this same authoritative
+  // catalog quantity (cart-reservation -> productLocks). Missing row != no stock.
+  // Existing rows, including zero/held/invalid availability, never use the fallback.
+  const purchasable = inventory == null ? quantity : Number(inventory.purchasable_quantity);
   if (!enabled || PROTECTED_ITEMS.has(Number(product.itemNumber)) ||
       product.status !== 'AVAILABLE' || !['IMMEDIATE', 'DELAYED'].includes(product.saleMode) ||
       (product.currency && product.currency !== 'PYG') || !Number.isSafeInteger(price) || price <= 0 ||
-      Number(product.quantityRemaining) <= 0 || !inventory || Number(inventory.purchasable_quantity) <= 0) return product;
+      !Number.isSafeInteger(quantity) || quantity <= 0 ||
+      !Number.isSafeInteger(purchasable) || purchasable <= 0) return product;
   const percent = price <= 12000 ? 10 : 50;
   return {
     ...product,
