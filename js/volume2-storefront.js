@@ -19,6 +19,7 @@
     pageScrollSaveTimer: null,
     pageScrollY: 0,
     pageLinkNavigation: false,
+    sortExplicit: false,
   };
 
   const INITIAL_RENDER_COUNT = 48;
@@ -28,6 +29,10 @@
   const PAGE_SCROLL_HISTORY_KEY = 'mudanzaPageScrollState';
   const PAGE_SCROLL_HISTORY_VERSION = 1;
   const SCROLL_SAVE_DELAY_MS = 150;
+  const DEFAULT_SORT = 'price-desc';
+  // BCP daily reference, 2026-11-09: https://www.bcp.gov.py/webapps/web/cotizacion/monedas
+  // Ordering only: never write this approximation into selling prices or checkout.
+  const SORT_PYG_PER_USD = 6226.21;
   const CORE_CATEGORIES = [
     'Cocina',
     'Hogar',
@@ -206,8 +211,7 @@
 
     const heading = document.querySelector('.catalog-heading > p');
     if (heading) {
-      const availableCount = state.products.filter((product) => product.status === 'AVAILABLE').length;
-      heading.textContent = `${availableCount} artículos disponibles · Retiro en San Lorenzo`;
+      heading.textContent = `${catalogAvailabilitySummary(state.products)} · Retiro en San Lorenzo`;
     }
 
     installStyles();
@@ -289,7 +293,7 @@
               <option value="catalog">Orden del catálogo</option>
               <option value="newest">Más recientes</option>
               <option value="price-asc">Precio menor a mayor</option>
-              <option value="price-desc">Precio mayor a menor</option>
+              <option value="price-desc" selected>Precio mayor a menor</option>
             </select></label>
             <label class="show-sold-option"><input type="checkbox" data-show-sold> <span>Ver artículos vendidos</span></label>
             <button class="reset-filters" type="button" data-reset-filters hidden>Restablecer filtros</button>
@@ -362,6 +366,7 @@
 
     [c.condition, c.price, c.sort, c.showSold].forEach((control) => {
       control?.addEventListener('change', () => {
+        if (control === c.sort) state.sortExplicit = true;
         applyFilters();
         const filters = activeFilters();
         if (Object.keys(filters).length) window.salePulseTrack?.('FILTER_APPLY', {
@@ -414,7 +419,8 @@
       c.availability = 'ALL';
       c.condition.value = 'ALL';
       c.price.selectedIndex = 0;
-      c.sort.value = 'catalog';
+      c.sort.value = DEFAULT_SORT;
+      state.sortExplicit = false;
       c.showSold.checked = false;
       applyFilters();
     }
@@ -432,7 +438,7 @@
     if (c.availability && c.availability !== 'ALL') filters.availability = c.availability;
     if (c.condition?.value && c.condition.value !== 'ALL') filters.condition = c.condition.value;
     if (c.price?.value && Number(c.price.value) > 0) filters.maxPrice = String(c.price.value);
-    if (c.sort?.value && c.sort.value !== 'catalog') filters.sort = c.sort.value;
+    if (c.sort?.value && c.sort.value !== DEFAULT_SORT) filters.sort = c.sort.value;
     if (c.showSold?.checked) filters.showSold = 'true';
     return filters;
   }
@@ -464,7 +470,7 @@
     const advancedCount = [
       c.condition?.value !== 'ALL',
       Boolean(c.price?.value),
-      c.sort?.value !== 'catalog',
+      c.sort?.value !== DEFAULT_SORT,
       Boolean(c.showSold?.checked),
     ].filter(Boolean).length;
     if (c.filterCount) {
@@ -505,7 +511,7 @@
     if (cartButton) {
       event.preventDefault();
       event.stopPropagation();
-      if (product.status !== 'AVAILABLE') return;
+      if (product.status !== 'AVAILABLE' || product.purchaseBlockedByHold || product.purchasableQuantity === 0) return;
       if (typeof window.addStaticCartItem === 'function') {
         cartButton.disabled = true;
         window.salePulseSetCartContext?.(product, catalogDiscoveryContext(product));
@@ -559,7 +565,7 @@
       const noun = state.filtered.length === 1 ? 'artículo' : 'artículos';
       c.counter.textContent = c.showSold?.checked
         ? `${state.filtered.length} ${noun} en el catálogo · incluye vendidos`
-        : `${state.filtered.length} ${noun} ${state.filtered.length === 1 ? 'disponible' : 'disponibles'}`;
+        : catalogAvailabilitySummary(state.filtered);
     }
     syncControlState();
     syncLoadControls();
@@ -601,19 +607,36 @@
     });
   }
 
+  function sortingPricePYG(product) {
+    const raw = product.currency === 'USD' ? product.askingPriceUSD : product.askingPricePYG;
+    if (raw === null || raw === undefined || raw === '') return null;
+    const amount = Number(raw);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    if (product.currency && !['USD', 'PYG'].includes(product.currency)) return null;
+    return product.currency === 'USD' ? amount * SORT_PYG_PER_USD : amount;
+  }
+
   function sortProducts(products, requestedMode = '') {
-    const mode = requestedMode || state.controls.sort?.value || 'catalog';
+    const mode = requestedMode || state.controls.sort?.value || DEFAULT_SORT;
     const availabilityRank = (product) => product.status === 'AVAILABLE' ? 0 : 1;
     const byAvailability = (a, b) => availabilityRank(a) - availabilityRank(b);
 
-    if (mode === 'price-asc') {
-      products.sort((a, b) => byAvailability(a, b) || (a.currency === 'USD' ? 1 : 0) - (b.currency === 'USD' ? 1 : 0) || Number(a.askingPricePYG) - Number(b.askingPricePYG) || Number(a.itemNumber) - Number(b.itemNumber));
-    } else if (mode === 'price-desc') {
-      products.sort((a, b) => byAvailability(a, b) || (a.currency === 'USD' ? 1 : 0) - (b.currency === 'USD' ? 1 : 0) || Number(b.askingPricePYG) - Number(a.askingPricePYG) || Number(a.itemNumber) - Number(b.itemNumber));
+    if (mode === 'price-asc' || mode === 'price-desc') {
+      products.sort((a, b) => {
+        const availableFirst = byAvailability(a, b);
+        if (availableFirst) return availableFirst;
+        const aPrice = sortingPricePYG(a);
+        const bPrice = sortingPricePYG(b);
+        // Unpriced listings stay browsable, after known prices in either direction.
+        const unknownLast = Number(aPrice === null) - Number(bPrice === null);
+        if (unknownLast) return unknownLast;
+        const priceOrder = mode === 'price-asc' ? aPrice - bPrice : bPrice - aPrice;
+        return priceOrder || Number(a.itemNumber) - Number(b.itemNumber);
+      });
     } else if (mode === 'newest') {
       products.sort((a, b) => byAvailability(a, b) || String(b.dateListed || '').localeCompare(String(a.dateListed || '')) || Number(b.itemNumber) - Number(a.itemNumber));
     } else {
-      products.sort((a, b) => byAvailability(a, b) || (a.currency === 'USD' ? 1 : 0) - (b.currency === 'USD' ? 1 : 0) || Number(a.itemNumber) - Number(b.itemNumber));
+      products.sort((a, b) => byAvailability(a, b) || Number(a.itemNumber) - Number(b.itemNumber));
     }
   }
 
@@ -830,9 +853,11 @@
         ? values.condition
         : 'ALL',
       maxPrice: String(values.maxPrice || ''),
-      sort: ['catalog', 'newest', 'price-asc', 'price-desc'].includes(values.sort)
+      sort: ['catalog', 'newest', 'price-asc', 'price-desc'].includes(values.sort) &&
+        (values.sort !== 'catalog' || values.sortExplicit === true)
         ? values.sort
-        : 'catalog',
+        : DEFAULT_SORT,
+      sortExplicit: values.sortExplicit === true,
       showSold: values.showSold === true,
       renderedCount: Math.max(0, Math.floor(Number(values.renderedCount) || 0)),
       scrollY: Math.max(0, Number(values.scrollY) || 0),
@@ -849,6 +874,7 @@
       condition: c.condition?.value,
       maxPrice: c.price?.value,
       sort: c.sort?.value,
+      sortExplicit: state.sortExplicit,
       showSold: c.showSold?.checked,
       renderedCount: state.renderedCount,
       scrollY: window.scrollY,
@@ -889,7 +915,8 @@
     if (c.price) c.price.value = snapshot.maxPrice;
     if (c.price?.value !== snapshot.maxPrice) c.price.value = '';
     if (c.sort) c.sort.value = snapshot.sort;
-    if (c.sort?.value !== snapshot.sort) c.sort.value = 'catalog';
+    if (c.sort?.value !== snapshot.sort) c.sort.value = DEFAULT_SORT;
+    state.sortExplicit = snapshot.sortExplicit;
     if (c.showSold) c.showSold.checked = snapshot.showSold;
     syncControlState();
   }
@@ -940,6 +967,12 @@
 
   window.persistCatalogHistoryState = persistCatalogHistoryState;
 
+  function catalogAvailabilitySummary(products) {
+    const available = products.filter(p => p.status === 'AVAILABLE' && !p.purchaseBlockedByHold && p.purchasableQuantity !== 0).length;
+    const held = products.filter(p => p.status === 'AVAILABLE' && p.purchaseBlockedByHold).length;
+    return `${available} ${available === 1 ? 'artículo disponible' : 'artículos disponibles'}${held ? ` · ${held} ${held === 1 ? 'reservado' : 'reservados'}` : ''}`;
+  }
+
   function renderCard(product) {
     const article = document.createElement('article');
     article.className = `product-card${product.status !== 'AVAILABLE' ? ' is-sold' : ''}`;
@@ -949,6 +982,8 @@
     const inquiry = product.saleMode === 'INQUIRY' || product.id === 'real-202611-volume6-615';
     const delayed = product.saleMode === 'DELAYED';
     const available = product.status === 'AVAILABLE';
+    const held = product.purchaseBlockedByHold === true;
+    const canBuy = available && !held && product.purchasableQuantity !== 0;
     const image = product.images?.[0] || '';
     const multiple = Number(product.quantityTotal || 1) > 1;
 
@@ -961,21 +996,22 @@
       <div class="product-copy">
         <span class="item-number">Item ${String(product.itemNumber).padStart(3, '0')}</span>
         <h3>${escapeHtml(product.title)}</h3>
-        <strong class="price">${inquiry ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatMoney(product.askingPricePYG)}${multiple ? ' por unidad' : ''}</strong>
+        ${product.liquidation ? window.renderLiquidationPrice(product, 'card') : `<strong class="price">${inquiry ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatMoney(product.askingPricePYG)}${multiple ? ' por unidad' : ''}</strong>`}
+        ${held ? '<span class="reserved-price-note">Precio de referencia · Reservado</span>' : ''}
         <div class="card-detail-row">
           <span class="card-detail-link">Ver detalle</span>
           <span class="card-category">${escapeHtml(product.category || '')}</span>
         </div>
         <div class="card-actions">
-          ${inquiry ? '<a class="secondary-action" href="https://wa.me/595972588347?text=' + encodeURIComponent('Hola, quisiera consultar por Chevrolet Tracker LTZ 2024 (Item 615), US$18,000.') + '" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>' : `<button type="button" data-cart-action ${!available ? 'disabled' : ''}>
-            ${!available ? 'No disponible' : 'Agregar al carrito'}
+          ${inquiry ? '<a class="secondary-action" href="https://wa.me/595972588347?text=' + encodeURIComponent('Hola, quisiera consultar por Chevrolet Tracker LTZ 2024 (Item 615), US$18,000.') + '" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>' : `<button type="button" data-cart-action ${!canBuy ? 'disabled' : ''}>
+            ${held ? 'Reservado' : !canBuy ? 'No disponible' : 'Agregar al carrito'}
           </button>`}
         </div>
         <div class="card-availability">
-          <span class="${!available ? 'status-unavailable' : delayed ? 'status-later' : 'status-now'}">
-            ${!available ? 'VENDIDO' : delayed ? 'RETIRO 9–12 DIC.' : 'DISPONIBLE AHORA'}
+          <span class="${!available ? 'status-unavailable' : held || delayed ? 'status-later' : 'status-now'}">
+            ${held ? 'RESERVADO' : !available ? 'VENDIDO' : !canBuy ? 'NO DISPONIBLE' : delayed ? 'RETIRO 9–12 DIC.' : 'DISPONIBLE AHORA'}
           </span>
-          ${delayed && available ? `<span class="deposit-note">Seña ${Number(product.depositPercent || 25)}%</span>` : ''}
+          ${delayed && canBuy ? `<span class="deposit-note">Seña ${Number(product.depositPercent || 25)}%</span>` : ''}
         </div>
       </div>
     `;

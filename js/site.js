@@ -39,6 +39,7 @@ function loadAuthoritativeCatalog(requestedSlug = '') {
         };
 
         window.__catalogProducts = catalog.products;
+        window.__liquidationActive = data.liquidationActive === true;
         return catalog;
       });
   }
@@ -48,10 +49,14 @@ function loadAuthoritativeCatalog(requestedSlug = '') {
 
 async function bootStaticStorefront() {
   setupStaticMobileNavigation();
+  void setupLiquidationAnnouncement();
 
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
 
   if (path.startsWith('/producto/')) {
+    // Stock holds are absent from embedded data. Keep the route pending until
+    // the shared authoritative catalog supplies customer-specific availability.
+    if (!Array.isArray(window.__catalogProducts)) return;
     const slug = decodeURIComponent(path.slice('/producto/'.length));
     const product = getEmbeddedProductBySlug(slug);
 
@@ -78,6 +83,23 @@ async function bootStaticStorefront() {
 
   if (path === '/' || path === '/index.html') {
     setupCatalogCartButtons();
+  }
+}
+
+async function setupLiquidationAnnouncement() {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (!(path === '/' || path === '/index.html' || path === '/carrito' ||
+      path === '/checkout' || path.startsWith('/producto/') || path.startsWith('/pedido/'))) return;
+  const strip = document.querySelector('[data-liquidation-announcement]');
+  if (!strip) return;
+  try {
+    const response = await fetch('/.netlify/functions/campaign-state', { cache: 'no-store' });
+    if (!response.ok) return;
+    const state = await response.json();
+    strip.hidden = state.liquidationActive !== true;
+    document.documentElement.classList.toggle('liquidation-active', !strip.hidden);
+  } catch {
+    // Announcement failure must never block purchases or show a stale campaign.
   }
 }
 
@@ -409,7 +431,8 @@ function buildProductDiscovery(catalogProducts, currentProduct, recommendationLi
     (currentSlug && String(product.slug || '') === currentSlug);
 
   const available = publicProducts.filter(
-    (product) => String(product.status || '').trim().toUpperCase() === 'AVAILABLE' && !isCurrent(product)
+    (product) => String(product.status || '').trim().toUpperCase() === 'AVAILABLE' &&
+      !product.purchaseBlockedByHold && product.purchasableQuantity !== 0 && !isCurrent(product)
   );
 
   const previous = Number.isFinite(currentItemNumber)
@@ -660,6 +683,17 @@ function setupProductDiscoveryKeyboard(discovery) {
 }
 
 
+function renderLiquidationPrice(product, context) {
+  const offer = product.liquidation;
+  if (!offer || ![10, 50].includes(offer.percent)) return '';
+  return `<div class="${context === 'card' ? 'price ' : ''}liquidation-price liquidation-price-${context}">
+    <span class="liquidation-original"><del aria-label="Precio anterior">${formatPYG(offer.originalAskingPricePYG)}</del><span class="liquidation-badge liquidation-badge-${offer.percent}" aria-label="${offer.percent}% de descuento">−${offer.percent}%</span></span>
+    <div class="liquidation-offer"><strong class="${context === 'detail' ? 'detail-price' : 'liquidation-current'}">${formatPYG(product.askingPricePYG)}${product.quantityTotal > 1 ? ' <small>por unidad</small>' : ''}</strong>
+    <span class="liquidation-label">Precio de liquidación</span></div>
+  </div>`;
+}
+window.renderLiquidationPrice = renderLiquidationPrice;
+
 function buildWhatsAppProductShareHref(product) {
   const productUrl = new URL(
     '/producto/' + encodeURIComponent(product.slug),
@@ -690,6 +724,9 @@ function renderProductDetail(product) {
   document.body.dataset.salePulseProductSlug = product.slug || '';
 
   const inquiry = product.saleMode === 'INQUIRY' || product.id === 'real-202611-volume6-615';
+  const held = product.purchaseBlockedByHold === true;
+  const canBuy = product.status === 'AVAILABLE' && !held && product.purchasableQuantity !== 0;
+  const freeQuantity = product.purchasableQuantity ?? product.quantityRemaining;
   const price = (product.currency === 'USD' ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatPYG(product.askingPricePYG));
   const dueNow = dueNowForProduct(product);
   const balance = product.askingPricePYG - dueNow;
@@ -721,6 +758,8 @@ function renderProductDetail(product) {
       ? 'VENDIDO'
       : product.status !== 'AVAILABLE'
         ? 'NO DISPONIBLE'
+        : held ? 'RESERVADO'
+        : !canBuy ? 'NO DISPONIBLE'
         : product.saleMode === 'DELAYED'
           ? 'RETIRO 9–12 DIC.'
           : 'DISPONIBLE AHORA';
@@ -833,7 +872,7 @@ function renderProductDetail(product) {
             <span class="${
               product.status !== 'AVAILABLE'
                 ? 'status-unavailable'
-                : product.saleMode === 'DELAYED'
+                : held || product.saleMode === 'DELAYED'
                   ? 'status-later'
                   : 'status-now'
             }">
@@ -924,6 +963,7 @@ function renderProductDetail(product) {
           }
 
           <div class="product-price-block">
+            ${product.liquidation ? renderLiquidationPrice(product, 'detail') : `
             ${
               product.originalPricePYG
                 ? `<del>${formatPYG(product.originalPricePYG)}</del>`
@@ -934,10 +974,12 @@ function renderProductDetail(product) {
               ${price}
               ${product.quantityTotal > 1 ? ' por unidad' : ''}
             </strong>
+            `}
 
+            ${held ? '<span class="reserved-price-note">Precio de referencia · Reservado</span>' : ''}
             ${
               product.quantityTotal > 1
-                ? `<span>${product.quantityRemaining} unidades disponibles</span>`
+                ? `<span>${freeQuantity} ${freeQuantity === 1 ? 'unidad disponible' : 'unidades disponibles'} para compra nueva</span>`
                 : ''
             }
           </div>
@@ -947,12 +989,13 @@ function renderProductDetail(product) {
               id="product-cart-button"
               class="primary-action"
               type="button"
-              ${product.status !== 'AVAILABLE' ? 'disabled' : ''}
+              ${!canBuy ? 'disabled' : ''}
             >
               ${
-                product.status === 'SOLD' || product.status === 'PICKED_UP'
+                held ? 'Reservado'
+                : product.status === 'SOLD' || product.status === 'PICKED_UP'
                   ? 'Vendido'
-                  : product.status !== 'AVAILABLE'
+                  : !canBuy
                     ? 'No disponible'
                     : product.saleMode === 'DELAYED'
                       ? 'Reservar este artículo'
@@ -1007,7 +1050,7 @@ function renderProductDetail(product) {
             </div>
           </div>
 
-          ${inquiry ? '<div class="private-sale-terms"><strong>Venta particular · US$18,000</strong><p>Entrega inmediata, con visitas coordinadas. Pago completo y transferencia en trato privado. Título y cédula verde al día; lista para transferir. Contactá al propietario por WhatsApp para coordinar.</p></div>' : `<div class="payment-breakdown">
+          ${held ? '<p class="reserved-purchase-note" role="status">Este artículo está reservado por otro comprador. El precio mostrado es de referencia; no podés iniciar una compra mientras siga reservado.</p>' : inquiry ? '<div class="private-sale-terms"><strong>Venta particular · US$18,000</strong><p>Entrega inmediata, con visitas coordinadas. Pago completo y transferencia en trato privado. Título y cédula verde al día; lista para transferir. Contactá al propietario por WhatsApp para coordinar.</p></div>' : `<div class="payment-breakdown">
             <div>
               <span>Precio total</span>
               <strong>${price}</strong>
@@ -1603,7 +1646,7 @@ function setupCatalogCartButtons() {
 
     enhanceCatalogCardNavigation(card, productLink, product);
 
-    if (isInquiryOnly(product) || product.status !== 'AVAILABLE') {
+    if (isInquiryOnly(product) || product.status !== 'AVAILABLE' || product.purchaseBlockedByHold || product.purchasableQuantity === 0) {
       actionButton.disabled = true;
       return;
     }
@@ -1637,7 +1680,7 @@ function setupProductCartButton(product) {
   const button =
     document.getElementById('product-cart-button');
 
-  if (!button || isInquiryOnly(product) || product.status !== 'AVAILABLE') {
+  if (!button || isInquiryOnly(product) || product.status !== 'AVAILABLE' || product.purchaseBlockedByHold || product.purchasableQuantity === 0) {
     return;
   }
 

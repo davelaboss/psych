@@ -165,7 +165,7 @@ export async function getCartLeaseStatus(sessionId) {
     return status;
   });
 }
-async function setCartQuantity({ cartSessionId, productId, quantity, availability }, allowNew) {
+async function setCartQuantity({ cartSessionId, productId, quantity, availability, pricingSnapshot }, allowNew) {
   return inventoryTransaction(async client => {
     const session = await sessionLock(client, cartSessionId);
     const lockedRows = await cartRows(client, cartSessionId);
@@ -188,10 +188,11 @@ async function setCartQuantity({ cartSessionId, productId, quantity, availabilit
         [cartSessionId, session.created_at]);
     }
     if (quantity > 0) {
-      await client.query(`INSERT INTO inventory_reservations(product_id,session_id,quantity,phase,expires_at)
-        VALUES ($1,$2,$3,'CART',$4) ON CONFLICT(session_id,product_id) WHERE phase='CART'
+      await client.query(`INSERT INTO inventory_reservations(product_id,session_id,quantity,phase,expires_at${pricingSnapshot ? ',pricing_snapshot' : ''})
+        VALUES ($1,$2,$3,'CART',$4${pricingSnapshot ? ',$5' : ''}) ON CONFLICT(session_id,product_id) WHERE phase='CART'
         DO UPDATE SET quantity=EXCLUDED.quantity,updated_at=clock_timestamp()`,
-      [productId, cartSessionId, quantity, session.expires_at || new Date(timestamp + CART_HOLD_MS)]);
+      [productId, cartSessionId, quantity, session.expires_at || new Date(timestamp + CART_HOLD_MS),
+        ...(pricingSnapshot ? [JSON.stringify(pricingSnapshot)] : [])]);
     } else {
       await client.query("DELETE FROM inventory_reservations WHERE session_id=$1 AND product_id=$2 AND phase='CART'", [cartSessionId, productId]);
     }
@@ -264,6 +265,16 @@ export async function transitionCartLeaseToOrder({ cartSessionId, checkoutId, or
       throw fail('La selección del carrito cambió. Actualizá el carrito e intentá de nuevo.');
     }
     for (const item of items) if ((await available(client, item.productId, cartSessionId)) < item.quantity) throw fail(RESERVED);
+    // Recheck the frozen price under the same locks as the CART -> ORDER transition.
+    for (const row of rows) {
+      if (!row.pricing_snapshot) continue;
+      const line = orderSnapshot.items.find(item => item.productId === row.product_id);
+      if (line?.unitPricePYG !== row.pricing_snapshot.askingPricePYG ||
+          line?.depositPercent !== Number(row.pricing_snapshot.depositPercent || 0) ||
+          line?.saleMode !== row.pricing_snapshot.saleMode) {
+        throw fail('El precio reservado cambió. Actualizá el carrito e intentá de nuevo.');
+      }
+    }
     const expiresAt = new Date(timestamp + ORDER_HOLD_MS);
     const snapshot = { ...orderSnapshot, createdAt: timestamp, updatedAt: timestamp,
       holdExpiresAt: ms(expiresAt), reservationState: 'ACTIVE' };
@@ -598,6 +609,25 @@ export async function readCommittedInventory() {
     'SELECT product_id,capacity,committed_quantity FROM operational_inventory'
   )).rows;
   return new Map(rows.map(row => [row.product_id, row]));
+}
+
+export async function readSalePricingState(sessionId) {
+  // Read-only, one statement/snapshot. Other customers' CART and ORDER holds
+  // are excluded; this customer's own accepted cart prices are retained.
+  const rows = (await database().pool.query(`
+    SELECT p.product_id,p.capacity,p.committed_quantity,
+      GREATEST(0,p.capacity-p.committed_quantity-COALESCE(sum(r.quantity) FILTER (
+        WHERE r.phase='ORDER' OR r.session_id IS DISTINCT FROM $1::uuid),0)) AS purchasable_quantity,
+      jsonb_agg(r.pricing_snapshot) FILTER (WHERE r.phase='CART' AND r.session_id=$1::uuid) AS own_prices
+    FROM operational_inventory p
+    LEFT JOIN inventory_reservations r ON r.product_id=p.product_id
+      AND ((r.phase='CART' AND r.expires_at>clock_timestamp())
+        OR (r.phase='ORDER' AND (r.expires_at IS NULL OR r.expires_at>clock_timestamp())))
+    GROUP BY p.product_id`, [sessionId])).rows;
+  return {
+    inventory: new Map(rows.map(row => [row.product_id, row])),
+    cartPrices: new Map(rows.filter(row => row.own_prices?.length).map(row => [row.product_id, row.own_prices[0]])),
+  };
 }
 
 export async function readPurchasableInventory({ query = (sql) => database().pool.query(sql) } = {}) {
