@@ -3,12 +3,13 @@ import {
   cartSessionIdFromRequest,
   getCartLeaseStatus,
   jsonResponse,
-  loadCatalog,
+  loadSaleCatalog,
   releaseCartLease,
   salesAreOpen,
   updateCartLease,
 } from './_shared/commerce.mjs';
 import { orderAccessToken } from './_shared/order-access.mjs';
+import { cartPricingSnapshot } from './_shared/liquidation.mjs';
 import { recordAnalyticsEvent } from './_shared/sale-pulse.mjs';
 import { assertHouseholdPurchase } from './_shared/purchase-eligibility.mjs';
 
@@ -36,7 +37,7 @@ export function createCartReservationHandler({
   getLeaseStatus = getCartLeaseStatus,
   releaseLease = releaseCartLease,
   updateLease = updateCartLease,
-  loadProducts = loadCatalog,
+  loadProducts = loadSaleCatalog,
   salesOpen = salesAreOpen,
 } = {}) {
   return async function handler(request, context) {
@@ -77,10 +78,12 @@ export function createCartReservationHandler({
     if (action !== 'release') assertHouseholdPurchase({ id: productId });
 
     let availability = 0;
+    let pricingSnapshot;
     if (action !== 'release') {
-      const catalog = await loadProducts(url.origin);
+      const catalog = await loadProducts(url.origin, { cartSessionId });
       const product = catalog.find((item) => item.id === productId);
       assertHouseholdPurchase(product);
+      if (product) pricingSnapshot = cartPricingSnapshot(product);
       if (action === 'claim' && (!product || product.status !== 'AVAILABLE')) {
         return jsonResponse({ error: 'Este artículo ya no está disponible.' }, 409);
       }
@@ -93,8 +96,8 @@ export function createCartReservationHandler({
       ? 0
       : Math.max(1, Math.min(999, Math.floor(Number(body?.quantity) || 1)));
     const result = action === 'claim'
-      ? { lease: await claimLease({ cartSessionId, productId, quantity, availability }) }
-      : await updateLease({ cartSessionId, productId, quantity, availability });
+      ? { lease: await claimLease({ cartSessionId, productId, quantity, availability, pricingSnapshot }) }
+      : await updateLease({ cartSessionId, productId, quantity, availability, pricingSnapshot });
 
     const analytics = action === 'claim'
       ? currentUiAnalyticsContext(body?.analytics)
