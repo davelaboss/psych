@@ -23,6 +23,13 @@ was accepted at 21:01 UTC, before PR #76 was published at 21:33 UTC; it is not a
 undiscounted offer after that correction. A shared cart deadline can change through
 normal customer activity; no expiry is promised for protected ORDER holds.
 
+Final readback at **22:08 UTC**: 216 and 275 have since transitioned to SOLD,
+remaining quantity 0, with COMMITTED inventory at the same accepted 50,000/25,000
+unit prices. 413 remains protected by an ORDER hold at 25,000; 447 remains held in
+its CART at 55,000. These live business transitions happened during the read-only
+investigation; they are distinct from the earlier snapshot and were not performed
+by this work.
+
 Incognito cannot clear another buyer's global inventory hold. Both fresh catalog
 requests returned identical prices across all 292 AVAILABLE records. All four
 operational rows already exist, so prior initialization is not their cause.
