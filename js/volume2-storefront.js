@@ -989,7 +989,7 @@
       <div class="product-copy">
         <span class="item-number">Item ${String(product.itemNumber).padStart(3, '0')}</span>
         <h3>${escapeHtml(product.title)}</h3>
-        <strong class="price">${inquiry ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatMoney(product.askingPricePYG)}${multiple ? ' por unidad' : ''}</strong>
+        ${product.liquidation ? window.renderLiquidationPrice(product, 'card') : `<strong class="price">${inquiry ? 'US$' + Number(product.askingPriceUSD).toLocaleString('en-US') : formatMoney(product.askingPricePYG)}${multiple ? ' por unidad' : ''}</strong>`}
         <div class="card-detail-row">
           <span class="card-detail-link">Ver detalle</span>
           <span class="card-category">${escapeHtml(product.category || '')}</span>

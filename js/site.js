@@ -39,6 +39,7 @@ function loadAuthoritativeCatalog(requestedSlug = '') {
         };
 
         window.__catalogProducts = catalog.products;
+        window.__liquidationActive = data.liquidationActive === true;
         return catalog;
       });
   }
@@ -48,6 +49,7 @@ function loadAuthoritativeCatalog(requestedSlug = '') {
 
 async function bootStaticStorefront() {
   setupStaticMobileNavigation();
+  void setupLiquidationAnnouncement();
 
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
 
@@ -78,6 +80,23 @@ async function bootStaticStorefront() {
 
   if (path === '/' || path === '/index.html') {
     setupCatalogCartButtons();
+  }
+}
+
+async function setupLiquidationAnnouncement() {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (!(path === '/' || path === '/index.html' || path === '/carrito' ||
+      path === '/checkout' || path.startsWith('/producto/') || path.startsWith('/pedido/'))) return;
+  const strip = document.querySelector('[data-liquidation-announcement]');
+  if (!strip) return;
+  try {
+    const response = await fetch('/.netlify/functions/campaign-state', { cache: 'no-store' });
+    if (!response.ok) return;
+    const state = await response.json();
+    strip.hidden = state.liquidationActive !== true;
+    document.documentElement.classList.toggle('liquidation-active', !strip.hidden);
+  } catch {
+    // Announcement failure must never block purchases or show a stale campaign.
   }
 }
 
@@ -660,6 +679,17 @@ function setupProductDiscoveryKeyboard(discovery) {
 }
 
 
+function renderLiquidationPrice(product, context) {
+  const offer = product.liquidation;
+  if (!offer || ![10, 50].includes(offer.percent)) return '';
+  return `<div class="${context === 'card' ? 'price ' : ''}liquidation-price liquidation-price-${context}">
+    <span class="liquidation-original"><del aria-label="Precio anterior">${formatPYG(offer.originalAskingPricePYG)}</del><span class="liquidation-badge liquidation-badge-${offer.percent}" aria-label="${offer.percent}% de descuento">−${offer.percent}%</span></span>
+    <div class="liquidation-offer"><strong class="${context === 'detail' ? 'detail-price' : 'liquidation-current'}">${formatPYG(product.askingPricePYG)}${product.quantityTotal > 1 ? ' <small>por unidad</small>' : ''}</strong>
+    <span class="liquidation-label">Precio de liquidación</span></div>
+  </div>`;
+}
+window.renderLiquidationPrice = renderLiquidationPrice;
+
 function buildWhatsAppProductShareHref(product) {
   const productUrl = new URL(
     '/producto/' + encodeURIComponent(product.slug),
@@ -924,6 +954,7 @@ function renderProductDetail(product) {
           }
 
           <div class="product-price-block">
+            ${product.liquidation ? renderLiquidationPrice(product, 'detail') : `
             ${
               product.originalPricePYG
                 ? `<del>${formatPYG(product.originalPricePYG)}</del>`
@@ -934,6 +965,7 @@ function renderProductDetail(product) {
               ${price}
               ${product.quantityTotal > 1 ? ' por unidad' : ''}
             </strong>
+            `}
 
             ${
               product.quantityTotal > 1
