@@ -1,5 +1,6 @@
 import { timingKeyForItem, timingLabel } from './fulfillment-batches-core.mjs';
 import { withPaymentState } from './order-payments.mjs';
+import { itemPaymentEligibility } from './item-payment-eligibility.mjs';
 
 export const SCHEDULABLE_ORDER_STATUSES = Object.freeze([
   'AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT',
@@ -19,25 +20,11 @@ const pyg = value => {
   return Number.isSafeInteger(amount) && amount >= 0 ? amount : 0;
 };
 
-function fulfillmentStatus(current, timingKey) {
-  if (current.status === 'CANCELLED') return 'CANCELLED';
-  if (timingKey === 'IMMEDIATE') {
-    const confirmedStatus = ['DEPOSIT_CONFIRMED', 'PAYMENT_CONFIRMED', 'PAID_IN_FULL',
-      'READY_TO_SCHEDULE', 'PICKUP_SCHEDULED', 'PICKED_UP'].includes(current.status);
-    return confirmedStatus && current.depositShortfallPYG === 0
-      ? 'READY_FOR_PICKUP' : 'WAITING_FOR_CURRENT_PAYMENT';
-  }
-  const fullyPaidStatus = ['PAID_IN_FULL', 'READY_TO_SCHEDULE', 'PICKUP_SCHEDULED', 'PICKED_UP']
-    .includes(current.status);
-  return fullyPaidStatus && current.paymentState === 'FULLY_PAID' && current.remainingBalancePYG === 0
-    ? 'READY_FOR_PICKUP'
-    : 'WAITING_FOR_FINAL_PAYMENT';
-}
-
-export function deriveOrderFulfillmentParts(order) {
+export function deriveOrderFulfillmentParts(order, decisions = []) {
   const current = withPaymentState(order);
   if (!current) return [];
   const groups = new Map();
+  const funding = new Map(itemPaymentEligibility(current, decisions).map(item => [item.productId, item]));
   for (const item of Array.isArray(current.items) ? current.items : []) {
     const timingKey = timingKeyForItem(item);
     const part = groups.get(timingKey) || {
@@ -63,19 +50,24 @@ export function deriveOrderFulfillmentParts(order) {
     groups.set(timingKey, part);
   }
   return [...groups.values()].map(part => {
-    const status = fulfillmentStatus(current, part.timingKey);
+    const itemEligibility = part.items.map(item => ({ ...funding.get(item.productId),
+      schedulingEligible: orderSchedulingEligible(current) && Boolean(funding.get(item.productId)?.schedulingEligible) }));
+    const handoverEligible = current.status !== 'CANCELLED' && itemEligibility.every(item => item.handoverEligible);
+    const status = current.status === 'CANCELLED' ? 'CANCELLED' : handoverEligible ? 'READY_FOR_PICKUP' :
+      part.timingKey === 'IMMEDIATE' ? 'WAITING_FOR_CURRENT_PAYMENT' : 'WAITING_FOR_FINAL_PAYMENT';
     return {
       ...part,
-      // Preserve the legacy payment-readiness contract for existing consumers.
-      eligible: status === 'READY_FOR_PICKUP',
-      handoverEligible: status === 'READY_FOR_PICKUP',
-      schedulingEligible: orderSchedulingEligible(current),
+      eligible: handoverEligible,
+      handoverEligible,
+      itemEligibility,
+      schedulableItemIds: itemEligibility.filter(item => item.schedulingEligible).map(item => item.productId),
+      schedulingEligible: itemEligibility.some(item => item.schedulingEligible),
       status,
       orderRemainingBalancePYG: pyg(current.remainingBalancePYG),
     };
   });
 }
 
-export function orderFulfillmentPart(order, timingKey) {
-  return deriveOrderFulfillmentParts(order).find(part => part.timingKey === timingKey) || null;
+export function orderFulfillmentPart(order, timingKey, decisions = []) {
+  return deriveOrderFulfillmentParts(order, decisions).find(part => part.timingKey === timingKey) || null;
 }

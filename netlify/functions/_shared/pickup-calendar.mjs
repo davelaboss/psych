@@ -35,7 +35,8 @@ export function calendarAppointment(row) {
   const part = orderFulfillmentPart(row.order_snapshot, row.timing_key);
   return { slotKey: row.slot_key, orderId: row.order_id, timingKey: row.timing_key, revision: row.revision,
     buyer: row.order_snapshot.buyer?.name || '', buyerPhone: row.order_snapshot.buyer?.phone || '',
-    itemNumbers: (part?.items || row.order_snapshot.items || []).map(item => item.itemNumber),
+    itemNumbers: (part?.items || row.order_snapshot.items || [])
+      .filter(item => row.item_ids == null || row.item_ids.includes(item.productId)).map(item => item.itemNumber),
     needsReschedule: Boolean(row.needs_reschedule) };
 }
 // Match PR #69's activeOrderSql at a9667ee without importing its payment policy.

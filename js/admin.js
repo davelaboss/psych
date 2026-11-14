@@ -5459,7 +5459,7 @@ function renderAdminOrderDetail(
     <article class="admin-fulfillment-part ${part.timingKey === 'IMMEDIATE' ? 'is-immediate' : 'is-delayed'}">
       <header>
         <div><span class="section-kicker">${adminEscape(part.timingLabel).toUpperCase()}</span>
-          <strong>${part.schedulingEligible ? 'Listo para agendar o cambiar sin pago previo' : 'Agendamiento no disponible para este pedido'}</strong></div>
+          <strong>Consultá la habilitación de cada artículo en la sección Retiros.</strong></div>
         <div><span>A pagar ahora: ${adminMoney(part.dueNowPYG)}</span>
           ${Number(part.futureBalancePYG || 0) > 0 ? `<span>Saldo futuro de estos artículos: ${adminMoney(part.futureBalancePYG)}</span>` : ''}</div>
       </header>
@@ -6096,8 +6096,12 @@ async function setupAdminPickup(order) {
           <h4>${adminEscape(part.timingLabel)}</h4>
           <p>Artículos: ${(part.items || []).map(item => adminEscape(adminFormatItem(item.itemNumber))).join(', ')}</p>
           ${appointment ? `<p><strong>Agendado:</strong> ${adminEscape(appointment.slotKey.replace('|', ' · '))}</p>` : '<p>Sin horario agendado.</p>'}
-          ${part.schedulingEligible ? '<p><strong>Listo para agendar o cambiar sin pago previo.</strong></p>' : '<p>Agendamiento no disponible: revisá si el pedido sigue activo o si la reserva venció.</p>'}
+          ${appointment ? `<p>Items agendados: ${(part.items || []).filter(item => appointment.itemIds == null || appointment.itemIds.includes(item.productId)).map(item => adminEscape(adminFormatItem(item.itemNumber))).join(', ')}. El turno existente se conserva.</p>` : ''}
+          <p>Inmediatos: pago total confirmado. Posteriores: seña acordada confirmada y saldo antes del retiro. Subir un comprobante no habilita el agendamiento.</p>
+          <ul>${(part.itemEligibility || []).map(item => `<li>${adminEscape(adminFormatItem(part.items.find(i => i.productId === item.productId)?.itemNumber))}: ${item.schedulingEligible ? 'Habilitado' : 'Pendiente de pago, asignación o revisión'} · Asignado ${adminMoney(item.fundedPYG)} · Requerido ${item.requiredPYG == null ? 'Revisar acuerdo' : adminMoney(item.requiredPYG)}</li>`).join('')}</ul>
+          ${part.schedulingEligible ? '<p><strong>Pago requerido confirmado para los artículos habilitados.</strong></p>' : '<p>Agendamiento no disponible: revisá los pagos por artículo y si la reserva sigue activa.</p>'}
           ${part.schedulingEligible && part.slots.length ? `<form data-admin-pickup-form>
+            <fieldset><legend>Artículos para este retiro</legend>${(part.items || []).filter(item => (part.schedulableItemIds || []).includes(item.productId)).map(item => `<label><input type="checkbox" name="itemIds" value="${adminEscapeAttribute(item.productId)}"${!appointment || appointment.itemIds == null || appointment.itemIds.includes(item.productId) ? ' checked' : ''}> ${adminEscape(adminFormatItem(item.itemNumber))}</label>`).join('')}</fieldset>
             <label>Horario <select name="slotKey" required><option value="">Seleccioná fecha y horario</option>
               ${part.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
                 `<option value="${adminEscapeAttribute(slot.key)}"${slot.selected ? ' selected' : ''}>${adminEscape(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}</select></label>
@@ -6107,20 +6111,25 @@ async function setupAdminPickup(order) {
           <p class="form-error" data-admin-pickup-error role="alert" hidden></p>
         </article>`;
       }).join('')}</div>`;
+    target.insertAdjacentHTML('beforeend', adminItemPaymentEditor(order, data.decisions || []));
+    bindAdminItemPaymentEditor(target, order);
     target.querySelectorAll('[data-admin-pickup-part]').forEach(partElement => {
       const timingKey = partElement.dataset.adminPickupPart;
       let saving = false;
       const save = async slotKey => {
         if (saving) return;
+        const itemIds = slotKey ? new FormData(partElement.querySelector('form')).getAll('itemIds') : undefined;
         saving = true;
-        const controls = partElement.querySelectorAll('button, select');
+        const controls = partElement.querySelectorAll('button, select, input');
         controls.forEach(control => { control.disabled = true; });
         const error = partElement.querySelector('[data-admin-pickup-error]');
         error.hidden = true;
         try {
           await adminFetch('/api/admin/pickup', { method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ orderId: order.id, timingKey, slotKey }) });
+            body: JSON.stringify({ orderId: order.id, timingKey, slotKey,
+              itemIds,
+              expectedRevision: data.fulfillments.find(part => part.timingKey === timingKey)?.appointment?.revision ?? 0 }) });
           await setupAdminPickup(order);
           await loadUpcomingPickups();
         } catch (problem) { error.textContent = problem.message; error.hidden = false; }
@@ -6133,6 +6142,49 @@ async function setupAdminPickup(order) {
       partElement.querySelector('[data-admin-cancel-pickup]')?.addEventListener('click', () => save(null));
     });
   } catch (error) { target.innerHTML = `<h3>5. Retiros</h3><p>${adminEscape(error.message)}</p>`; }
+}
+
+
+function adminItemPaymentEditor(order, decisions) {
+  const undone = new Set(decisions.map(e => e.reverses_id).filter(Boolean));
+  return `<details class="admin-detail-card"><summary>Asignaciones y excepciones de pago por artículo</summary>
+    <p>Solo Admin. Asigná fondos ya confirmados a un artículo. No se cambian precios, pagos ni turnos existentes. Los pedidos de un solo artículo reconocen automáticamente los pagos verificados suficientes.</p>
+    <p>Las notas históricas no cambian los requisitos automáticamente. Una excepción debe registrar expresamente el importe para agendar y el importe total para entregar.</p>
+    <form data-item-payment-decision>
+      <label>Decisión<select name="kind" required><option value="">Seleccioná una acción</option>
+        <option value="ALLOCATE">Asignar pago confirmado</option><option value="REVERSE">Revertir asignación</option>
+        <option value="REQUIREMENT">Aprobar excepción acordada por artículo</option><option value="REVOKE">Revocar excepción</option></select></label>
+      <label>Artículo<select name="productId"><option value="">Seleccioná un artículo</option>${(order.items || []).map(item => `<option value="${adminEscapeAttribute(item.productId)}">${adminEscape(adminFormatItem(item.itemNumber))}</option>`).join('')}</select></label>
+      <label>Pago confirmado<select name="paymentId"><option value="">Seleccioná un pago</option>${(order.payments || []).filter(p => p.verificationStatus === 'CONFIRMED' && p.voidedAt == null).map(p => `<option value="${adminEscapeAttribute(p.id)}">${adminEscape(p.id)} · ${adminMoney(p.amountPYG)} · ${adminEscape(p.amountSource || 'Histórico sin verificar')}</option>`).join('')}</select></label>
+      <label>Importe a asignar (₲)<input name="amountPYG" type="number" min="1" step="1"></label>
+      <label>Excepción: importe requerido para agendar (₲)<input name="schedulingRequiredPYG" type="number" min="0" step="1"></label>
+      <label>Excepción: importe total requerido para entregar (₲)<input name="collectionRequiredPYG" type="number" min="0" step="1"></label>
+      <label>Decisión a revertir / revocar<select name="reversesId"><option value="">Seleccioná una decisión</option>${decisions.filter(e => ['ALLOCATE', 'REQUIREMENT'].includes(e.kind) && !undone.has(e.id)).map(e => `<option value="${adminEscapeAttribute(e.id)}">${adminEscape(e.kind)} · ${adminEscape(e.product_id)} · ${adminEscape(e.id)}</option>`).join('')}</select></label>
+      <label>Nota de auditoría y referencia al acuerdo<textarea name="note" maxlength="2000" required></textarea></label>
+      <button type="submit" class="primary-action">Registrar decisión de Admin</button><p role="alert" data-item-payment-error></p>
+    </form><h4>Historial de decisiones</h4><ul>${decisions.map(e => `<li>${adminEscape(e.kind)} · ${adminEscape(e.product_id || e.reverses_id)} · ${adminEscape(e.amount_pyg ?? e.scheduling_required_pyg ?? '')} · ${adminEscape(e.note)}${undone.has(e.id) ? ' · Revertida / revocada' : ''}</li>`).join('') || '<li>Sin decisiones explícitas.</li>'}</ul></details>`;
+}
+function bindAdminItemPaymentEditor(target, order) {
+  const form = target.querySelector('[data-item-payment-decision]');
+  if (!form) return;
+  let pendingId;
+  form.addEventListener('input', () => { pendingId = undefined; });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = form.querySelector('button'); if (button.disabled) return;
+    const fields = new FormData(form), kind = fields.get('kind');
+    const body = { id: pendingId ||= crypto.randomUUID(), orderId: order.id, kind, note: fields.get('note') };
+    if (['ALLOCATE', 'REQUIREMENT'].includes(kind)) body.productId = fields.get('productId');
+    if (kind === 'ALLOCATE') Object.assign(body, { paymentId: fields.get('paymentId'), amountPYG: fields.get('amountPYG') === '' ? null : Number(fields.get('amountPYG')) });
+    if (kind === 'REQUIREMENT') for (const key of ['schedulingRequiredPYG', 'collectionRequiredPYG']) body[key] = fields.get(key) === '' ? null : Number(fields.get(key));
+    if (['REVERSE', 'REVOKE'].includes(kind)) body.reversesId = fields.get('reversesId');
+    button.disabled = true;
+    const error = form.querySelector('[data-item-payment-error]'); error.textContent = '';
+    try {
+      await adminFetch('/api/admin/item-payment', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      await setupAdminPickup(order);
+    } catch (problem) { error.textContent = problem.message; button.disabled = false; }
+  });
 }
 
 
@@ -7180,6 +7232,11 @@ function injectAdminStyles() {
 
     .admin-detail-card > h3,
     .admin-fulfillment-part h4,
+    .admin-pickup-part fieldset label { display: flex; align-items: center; gap: 0.5rem; }
+    .admin-pickup-part input[type="checkbox"] { width: auto; }
+    [data-item-payment-decision] { display: grid; gap: 0.75rem; }
+    [data-item-payment-decision] label { display: grid; gap: 0.25rem; min-width: 0; }
+    [data-item-payment-decision] select { width: 100%; min-width: 0; }
     .admin-pickup-part h4 {
       margin: 0 0 12px;
     }
