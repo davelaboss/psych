@@ -1,5 +1,7 @@
 # Pickup scheduling independent of payment
 
+> Superseded for development by David's November 14, 2026 authorization. See [Item payment scheduling](item-payment-pickup.md) for the proposed replacement. The text below records the earlier policy; it is not the policy implemented by the new development branch. Production activation still requires Governance approval.
+
 Owner authorization: November 2, 2026. Governance review only; no merge or deployment authorized by this change.
 
 Every valid active order may schedule and reschedule immediately, including orders with no payment, pending receipts, partial payments, a confirmed seña, or full payment. Customer private-order pages and Admin use `schedulingEligible`. Existing orders receive the same policy dynamically; no backfill or order-state migration is needed.

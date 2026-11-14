@@ -10,7 +10,7 @@ const admin = await readFile(new URL('../../../js/admin.js', import.meta.url), '
 const oldSlot = '2026-11-02|08:00-12:00';
 const newSlot = '2026-11-03|13:00-14:00';
 const part = () => ({ timingKey: 'IMMEDIATE', timingLabel: 'Retiro inmediato', schedulingEligible: true, eligible: false,
-  items: [{ itemNumber: 381, quantity: 2 }],
+  items: [{ productId: '381', itemNumber: 381, quantity: 2 }], schedulableItemIds: ['381'],
   appointment: { status: 'SCHEDULED', slotKey: oldSlot, revision: 4 },
   slots: [{ key: newSlot, remaining: 1 }, { key: '2026-11-03|14:00-15:00', remaining: 0 }] });
 
@@ -24,7 +24,7 @@ function scenario(kind, { fail = false, data = part() } = {}) {
   const partElement = { dataset: { adminPickupPart: 'IMMEDIATE' },
     querySelectorAll: () => [button, select],
     querySelector: selector => selector === 'form' ? form : selector.includes('error') ? error : null };
-  const target = { innerHTML: '', querySelectorAll: () => kind === 'admin' ? [partElement] : [form] };
+  const target = { innerHTML: '', insertAdjacentHTML(_p, html) { this.innerHTML += html; }, querySelector: () => null, querySelectorAll: () => kind === 'admin' ? [partElement] : [form] };
   const upcoming = { innerHTML: '', querySelectorAll: () => [] };
   const escape = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -34,7 +34,7 @@ function scenario(kind, { fail = false, data = part() } = {}) {
     window: { addEventListener() {} },
     document: { readyState: 'loading', addEventListener() {},
       getElementById: id => id === 'admin-upcoming-pickups' ? upcoming : target },
-    FormData: class { constructor(form) { this.form = form; } get() { return this.form.value; } },
+    FormData: class { constructor(form) { this.form = form; } get() { return this.form.value; } getAll() { return ['381']; } },
     fetch: async (url, options = {}) => {
       const payload = options.body ? JSON.parse(options.body) : null;
       calls.push({ url, payload });
@@ -65,15 +65,16 @@ for (const kind of ['customer', 'admin']) {
       const [fulfillment] = deriveOrderFulfillmentParts({
         status: amount === 0 ? 'AWAITING_INITIAL_PAYMENT' : amount === 100 ? 'PAID_IN_FULL' : 'DEPOSIT_CONFIRMED',
         holdExpiresAt: Date.now() + 3600000,
-        items: [{ saleMode, quantity: 1, itemNumber: 381, unitPricePYG: 100 }],
+        items: [{ productId: '381', saleMode, quantity: 1, itemNumber: 381, unitPricePYG: 100, dueNowPYG: saleMode === 'DELAYED' ? 25 : 100, futureBalancePYG: saleMode === 'DELAYED' ? 75 : 0 }],
         totals: { totalPYG: 100, dueNowPYG: saleMode === 'DELAYED' ? 25 : 100 },
-        payments: amount ? [{ amountPYG: amount, verificationStatus: 'CONFIRMED' }] : [],
+        payments: amount ? [{ id: 'verified', amountPYG: amount, verificationStatus: 'CONFIRMED', amountSource: 'ADMIN_VERIFIED', verifiedBy: 'ADMIN' }] : [],
       });
       const s = scenario(kind, { data: { ...part(), ...fulfillment } });
       await s.setup({ id: 'VM-TEST' }, 'synthetic-access');
-      assert.match(s.target.innerHTML, /<form/);
-      assert.match(s.target.innerHTML, /sin pago previo|Agendar no confirma pagos/);
-      assert.doesNotMatch(s.target.innerHTML, /Pago satisfecho|requiere.*pago|Disponible cuando se complete/);
+      const eligible = amount >= (saleMode === 'DELAYED' ? 25 : 100);
+      assert.equal(s.target.innerHTML.includes(kind === 'admin' ? 'data-admin-pickup-form' : 'data-pickup-timing-key'), eligible);
+      assert.match(s.target.innerHTML, /Subir un comprobante no habilita/);
+      assert.doesNotMatch(s.target.innerHTML, /sin pago previo/);
       assert.ok(s.calls.every(call => !call.payload));
     });
   }
@@ -121,7 +122,7 @@ for (const kind of ['customer', 'admin']) {
     const s = scenario(kind, { data: { ...part(), schedulingEligible: false, slots: [] } });
     await s.setup({ id: 'VM-TEST' }, 'synthetic-access');
     assert.match(s.target.innerHTML, /2026-11-02 · 08:00-12:00/);
-    assert.doesNotMatch(s.target.innerHTML, /<form/);
+    assert.doesNotMatch(s.target.innerHTML, /data-admin-pickup-form|data-pickup-timing-key/);
     assert.ok(s.calls.every(c => !c.payload));
   });
 }

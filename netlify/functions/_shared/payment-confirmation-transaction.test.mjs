@@ -215,8 +215,7 @@ test('admin requires actual amount and preserves current-main payment controls',
 
 test('pickup eligibility uses shared payment truth and timing-specific status requirements', () => {
   assert.match(fulfillments, /const current = withPaymentState\(order\)/);
-  assert.match(fulfillments, /current\.depositShortfallPYG === 0/);
-  assert.match(fulfillments, /current\.paymentState === 'FULLY_PAID'/);
-  assert.match(fulfillments, /current\.remainingBalancePYG === 0/);
+  assert.match(fulfillments, /itemPaymentEligibility\(current, decisions\)/);
+  assert.match(fulfillments, /itemEligibility.some/);
   assert.match(pickup, /orderFulfillmentPart\(order, timingKey\)/);
 });

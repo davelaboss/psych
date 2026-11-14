@@ -31,7 +31,9 @@ function mixed(payments, overrides = {}) {
 }
 
 test('mixed order keeps immediate and delayed handover payment checks separate from scheduling', () => {
-  const parts = deriveOrderFulfillmentParts(mixed([confirmed('deposit', 72_500)]));
+  const parts = deriveOrderFulfillmentParts(mixed([confirmed('deposit', 72_500)]), [
+    ...[['381',30000],['449',30000],['474',12500]].map(([product_id,amount_pyg]) => ({
+      id: product_id, kind:'ALLOCATE', product_id, amount_pyg, payment_id:'deposit' }))]);
   assert.equal(parts.length, 2);
   assert.deepEqual(parts[0].itemIds, ['381', '449']);
   assert.equal(parts[0].timingKey, 'IMMEDIATE');
@@ -46,11 +48,11 @@ test('mixed order keeps immediate and delayed handover payment checks separate f
   assert.deepEqual(parts.map(part => part.handoverEligible), [true, false]);
 });
 
-test('zero payment allows both mixed-order appointments without granting handover', () => {
+test('zero payment prevents both mixed-order appointments and handover', () => {
   const order = mixed([], { status: 'AWAITING_INITIAL_PAYMENT', holdExpiresAt: Date.now() + 3600000 });
   const before = structuredClone(order);
   const parts = deriveOrderFulfillmentParts(order);
-  assert.deepEqual(parts.map(part => part.schedulingEligible), [true, true]);
+  assert.deepEqual(parts.map(part => part.schedulingEligible), [false, false]);
   assert.deepEqual(parts.map(part => part.handoverEligible), [false, false]);
   assert.deepEqual(order, before);
 });
@@ -78,7 +80,9 @@ test('shortfall, pending receipt, approved short payment, and voided payment nev
 test('final confirmed payment unlocks delayed and preserves immediate eligibility', () => {
   const parts = deriveOrderFulfillmentParts(mixed([
     confirmed('deposit', 72_500), confirmed('final', 37_500, { type: 'FINAL' }),
-  ], { status: 'PAID_IN_FULL' }));
+  ], { status: 'PAID_IN_FULL' }), [
+    ...[['381',30000,'deposit'],['449',30000,'deposit'],['474',12500,'deposit'],['474',37500,'final']].map(([product_id,amount_pyg,payment_id],i) => ({
+      id: String(i), kind:'ALLOCATE', product_id, amount_pyg, payment_id }))]);
   assert.deepEqual(parts.map(part => part.eligible), [true, true]);
 });
 

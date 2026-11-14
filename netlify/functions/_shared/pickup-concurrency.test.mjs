@@ -7,6 +7,7 @@ import { changePickup } from './pickup.mjs';
 import { setInventoryDatabaseClientForTests } from './inventory-database.mjs';
 import { drainSellerNotifications } from './seller-notifications.mjs';
 import { changePickupBlackout } from './pickup-calendar.mjs';
+import { appendItemPaymentDecision } from './item-payment-decisions.mjs';
 
 // Optional real PostgreSQL coverage for row blocking and independent workers.
 // Run with PICKUP_TEST_DATABASE_URL pointing to an expendable local database
@@ -30,13 +31,14 @@ test.before(async () => {
   await control.query(`CREATE SCHEMA ${schema}`);
   pool = new pg.Pool({ connectionString, max: 12, options: `-c search_path=${schema}` });
   for (const migration of ['20261001_operational_inventory', '20261005_pickup_notifications',
-    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts']) {
+    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts', '20261114_item_payment_pickup']) {
     await pool.query(await readFile(new URL(`../../database/migrations/${migration}.sql`, import.meta.url), 'utf8'));
   }
   setInventoryDatabaseClientForTests({ pool });
 });
 
 test.beforeEach(async () => {
+  if (pool) await pool.query('ALTER TABLE item_payment_decisions DISABLE TRIGGER item_payment_decisions_no_truncate');
   if (pool) await pool.query('TRUNCATE cart_sessions,pickup_blackouts,pickup_windows CASCADE');
   process.env.SELLER_NOTIFICATION_TO = 'seller@example.com';
   process.env.SELLER_NOTIFICATION_FROM = 'test@example.com';
@@ -134,7 +136,7 @@ async function fixture(slotKey) {
   const session = randomUUID();
   const order = { id, buyer: { name: 'Synthetic', phone: '+595 000' }, status: 'PAYMENT_CONFIRMED',
     totals: { totalPYG: 100, dueNowPYG: 100, futureBalancePYG: 0 },
-    items: [{ productId: 'synthetic', saleMode: 'IMMEDIATE', quantity: 1, unitPricePYG: 100, dueNowPYG: 100 }],
+    items: [{ productId: 'synthetic', saleMode: 'IMMEDIATE', quantity: 1, unitPricePYG: 100, dueNowPYG: 100, futureBalancePYG: 0 }],
     payments: [{ id: 'paid', type: 'FULL', amountPYG: 100, amountSource: 'ADMIN_VERIFIED',
       verifiedBy: 'ADMIN', verificationStatus: 'CONFIRMED' }], paymentAdjustments: [] };
   await pool.query('INSERT INTO cart_sessions(session_id) VALUES($1)', [session]);
@@ -181,6 +183,18 @@ test('simultaneous retries of one appointment produce one revision and exactly t
   const attempts = await Promise.all(Array.from({ length: 6 }, () => change(buyer, hourly)));
   assert.ok(attempts.every(a => a.revision === 1 && a.slotKey === hourly));
   assert.equal((await notices()).length, 2);
+});
+
+test('independent allocation requests cannot spend the same confirmed payment twice', { skip: !connectionString }, async () => {
+  const id = await fixture();
+  const stored = (await pool.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1',[id])).rows[0].order_snapshot;
+  stored.items.push({ ...stored.items[0],productId:'synthetic-second' });
+  await pool.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[id,JSON.stringify(stored)]);
+  const results = await Promise.allSettled(['synthetic','synthetic-second'].map(productId => appendItemPaymentDecision(id,{
+    kind:'ALLOCATE',productId,paymentId:'paid',amountPYG:100,note:'Synthetic concurrent allocation' })));
+  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+  assert.equal(results.find(r=>r.status==='rejected').reason.status,409);
+  assert.equal(Number((await pool.query('SELECT sum(amount_pyg) AS n FROM item_payment_decisions WHERE order_id=$1',[id])).rows[0].n),100);
 });
 
 test('opposite date moves commit without deadlocks and preserve both appointments', { skip: !connectionString }, async () => {
