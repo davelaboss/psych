@@ -35,6 +35,7 @@ test('withdrawal is explicit, idempotent and immutable; quantities, original pro
  assert.equal((await stock(p)).capacity,1);assert.equal((await stock(p)).committed_quantity,0);
  await assert.rejects(db.query('UPDATE operational_inventory SET owner_withdrawal=NULL WHERE product_id=$1',[p.id]),/immutable/);
  await assert.rejects(db.query('DELETE FROM operational_inventory WHERE product_id=$1',[p.id]),/immutable/);
+ await assert.rejects(db.query('TRUNCATE operational_inventory CASCADE'),/immutable/);
  const [current]=await load(p);assert.equal(current.status,'UNLISTED');assert.equal(current.quantitySold,0);
  assert.equal(current.quantityRemaining,1);assert.deepEqual(current.images,p.images);
  assert.deepEqual(projectPublicCatalog([current],[],p.slug),{products:[],deliveredProduct:null});
