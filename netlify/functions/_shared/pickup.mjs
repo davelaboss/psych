@@ -4,6 +4,7 @@ import { PICKUP_RULES } from './commerce.mjs';
 import { deriveOrderFulfillmentParts, orderFulfillmentPart, SCHEDULABLE_ORDER_STATUSES } from './order-fulfillments.mjs';
 import { queueOrderNotifications } from './seller-notifications.mjs';
 import { readItemPaymentDecisions } from './item-payment-decisions.mjs';
+import {isOwnerRetainedOrder} from './owner-retention-core.mjs';
 
 const conflict = message => Object.assign(new Error(message), { status: 409 });
 const windows = PICKUP_RULES.mainPickup;
@@ -128,6 +129,7 @@ export async function changePickup({ orderId, timingKey, slotKey, actor, itemIds
     const orderRow = (await client.query('SELECT * FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
     if (!orderRow) throw Object.assign(new Error('Pedido no encontrado.'), { status: 404 });
     const order = snapshotWithReservation(orderRow);
+    if(isOwnerRetainedOrder(order))throw conflict('Retención personal cerrada. No admite cambios de retiro.');
     const decisions = await readItemPaymentDecisions(orderId, client);
     const part = orderFulfillmentPart(order, normalizedTimingKey, decisions);
     if (!part) throw Object.assign(new Error('El tipo de retiro no pertenece a este pedido.'), { status: 404 });

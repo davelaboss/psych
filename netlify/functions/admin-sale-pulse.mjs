@@ -4,6 +4,7 @@ import {
   loadCatalog,
 } from './_shared/commerce.mjs';
 import { database, readPurchasableInventory, snapshotWithReservation } from './_shared/inventory-database.mjs';
+import {isOwnerRetainedOrder} from './_shared/owner-retention-core.mjs';
 import { deriveOrderFulfillmentParts, orderSchedulingEligible } from './_shared/order-fulfillments.mjs';
 import { readCampaignPanel, updateRegularCampaign } from './_shared/regular-campaign.mjs';
 import {
@@ -93,7 +94,7 @@ export async function loadSalePulseSnapshot(origin, dependencies = {}) {
     events: (eventResult.rows || []).map(eventRow),
     products,
     purchasableInventory: completeMarketingInventory(products, purchasableInventory),
-    orders: orderRows.filter((row) => row.committed_at).map((row) => ({
+    orders: orderRows.filter((row) => row.committed_at && !isOwnerRetainedOrder(row.order_snapshot)).map((row) => ({
       committedAt: row.committed_at,
       items: Array.isArray(row.order_snapshot?.items) ? row.order_snapshot.items : [],
     })),

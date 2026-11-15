@@ -1,5 +1,6 @@
 // Pure evaluation of frozen Item terms and explicit Admin decisions. Never use
 // catalog prices, order status as proof of funds, or free-text exception notes.
+import {isOwnerRetainedOrder} from './owner-retention-core.mjs';
 export const validPYG = value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 export const activeDecisions = events => {
   const reversed = new Set(events.filter(e => ['REVERSE', 'REVOKE'].includes(e.kind)).map(e => e.reverses_id));
@@ -16,6 +17,9 @@ const sum = amounts => {
   return Number.isSafeInteger(value) ? value : NaN;
 };
 export function itemPaymentEligibility(order, events = []) {
+  if(isOwnerRetainedOrder(order))return (order.items||[]).map(i=>({productId:i.productId,
+    requiredPYG:null,collectionRequiredPYG:null,fundedPYG:0,schedulingEligible:false,handoverEligible:false,
+    reviewRequired:false,source:'OWNER_RETENTION',reason:'OWNER_RETAINED_NO_CASH'}));
   const items = Array.isArray(order?.items) ? order.items : [];
   const payments = Array.isArray(order?.payments) ? order.payments : [];
   const active = activeDecisions(events);
