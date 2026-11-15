@@ -53,6 +53,7 @@ async function cartRows(client, sessionId) {
 async function now(client) { return ms((await client.query('SELECT clock_timestamp() AS now')).rows[0].now); }
 
 async function productLocks(client, ids, capacities = {}) {
+  const locked = new Map();
   for (const id of [...new Set(ids)].sort()) {
     if (Object.hasOwn(capacities, id)) {
       await client.query('INSERT INTO operational_inventory(product_id,capacity) VALUES ($1,$2) ON CONFLICT DO NOTHING',
@@ -60,7 +61,9 @@ async function productLocks(client, ids, capacities = {}) {
     }
     const row = (await client.query('SELECT * FROM operational_inventory WHERE product_id=$1 FOR UPDATE', [id])).rows[0];
     if (!row) throw fail('No encontramos el inventario de este artículo.');
+    locked.set(id, row);
   }
+  return locked;
 }
 async function expireCart(client, session, timestamp) {
   if (session.expires_at && ms(session.expires_at) <= timestamp) {
@@ -169,7 +172,8 @@ async function setCartQuantity({ cartSessionId, productId, quantity, availabilit
   return inventoryTransaction(async client => {
     const session = await sessionLock(client, cartSessionId);
     const lockedRows = await cartRows(client, cartSessionId);
-    await productLocks(client, [...lockedRows.map(row => row.product_id), productId], { [productId]: availability });
+    const products = await productLocks(client, [...lockedRows.map(row => row.product_id), productId], { [productId]: availability });
+    if (quantity > 0 && products.get(productId)?.owner_withdrawal) throw fail('Este artículo fue retirado de la venta.');
     const timestamp = await now(client);
     await expireCart(client, session, timestamp);
     const rows = await cartRows(client, cartSessionId);
@@ -258,7 +262,8 @@ export async function transitionCartLeaseToOrder({ cartSessionId, checkoutId, or
       return attempt(previous);
     }
     const rows = await cartRows(client, cartSessionId);
-    await productLocks(client, [...rows.map(row => row.product_id), ...items.map(item => item.productId)], availability);
+    const products = await productLocks(client, [...rows.map(row => row.product_id), ...items.map(item => item.productId)], availability);
+    if (items.some(item => products.get(item.productId)?.owner_withdrawal)) throw fail('Un artículo fue retirado de la venta.');
     const timestamp = await now(client);
     if (!session.expires_at || ms(session.expires_at) <= timestamp) throw fail(EXPIRED);
     if (fingerprint(rows.map(row => ({ productId: row.product_id, quantity: row.quantity }))) !== fingerprint(items)) {
@@ -310,8 +315,8 @@ async function orderLock(client, orderId) {
   const row = (await client.query('SELECT * FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
   if (!row) return null;
   const rows = (await client.query("SELECT * FROM inventory_reservations WHERE order_id=$1 AND phase IN ('ORDER','COMMITTED') ORDER BY product_id", [orderId])).rows;
-  await productLocks(client, rows.map(item => item.product_id));
-  return { row, rows };
+  const products = await productLocks(client, rows.map(item => item.product_id));
+  return { row, rows, products };
 }
 
 async function reclaimExpiredOrderLocked(client, locked, timestamp) {
@@ -335,7 +340,8 @@ async function reclaimExpiredOrderLocked(client, locked, timestamp) {
       holdExpiresAt: expiresAt }, renewed: false, available: false };
   }
   for (const item of orderRows) {
-    if ((await availableForOrderReceipt(client, item.product_id, row.order_id)) < item.quantity) {
+    if (locked.products.get(item.product_id)?.owner_withdrawal ||
+        (await availableForOrderReceipt(client, item.product_id, row.order_id)) < item.quantity) {
       return { order: { ...current, status: 'RESERVATION_EXPIRED', reservationState: 'EXPIRED',
         holdExpiresAt: expiresAt }, renewed: false, available: false };
     }
@@ -428,6 +434,9 @@ export async function confirmOrderPayment(orderId, confirmation) {
     const result = applyPaymentConfirmation(current, { ...confirmation, paymentType: type, timestamp });
     if (result.idempotent) return result.order;
     if (confirmationRequiresInventoryCommit(row.committed_at, result)) {
+      if (rows.some(item => locked.products.get(item.product_id)?.owner_withdrawal)) {
+        throw fail('Un artículo fue retirado de la venta. Revisá el pedido antes de confirmar el pago.');
+      }
       const orderRows = rows.filter(item => item.phase === 'ORDER');
       if (!orderRows.length) return false;
       for (const item of orderRows) {
@@ -606,7 +615,7 @@ export async function listOrderSnapshots() {
 
 export async function readCommittedInventory() {
   const rows = (await database().pool.query(
-    'SELECT product_id,capacity,committed_quantity FROM operational_inventory'
+    "SELECT product_id,capacity,committed_quantity,to_jsonb(operational_inventory)->'owner_withdrawal' AS owner_withdrawal FROM operational_inventory"
   )).rows;
   return new Map(rows.map(row => [row.product_id, row]));
 }

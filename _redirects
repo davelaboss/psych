@@ -1,4 +1,5 @@
 /api/admin/orders              /.netlify/functions/admin-orders             200
+/api/admin/withdraw-product    /.netlify/functions/admin-withdraw-product   200
 /api/admin/order               /.netlify/functions/admin-order              200
 /api/admin/order-link          /.netlify/functions/admin-order-link         200
 /api/admin/receipt             /.netlify/functions/admin-receipt            200

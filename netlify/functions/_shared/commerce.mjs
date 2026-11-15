@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { liquidationPrice, newPurchaseTerms, withCartPricing } from './liquidation.mjs';
 import { withPublicPurchaseAvailability } from './purchase-eligibility.mjs';
+import { applyOwnerWithdrawal } from './owner-withdrawal.mjs';
 import { dispatchSellerNotificationsSafely } from './seller-notifications.mjs';
 
 export const SALES_OPEN_AT =
@@ -442,6 +443,7 @@ export async function loadCatalog(origin, dependencies = {}) {
         }));
       }
     )
+    .map(product => applyOwnerWithdrawal(product, committedInventory.get(product.id)))
     .map(correctItem054058DefectNote)
     .sort(
       (a, b) =>

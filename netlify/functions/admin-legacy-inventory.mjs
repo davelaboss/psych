@@ -596,9 +596,10 @@ export default async function handler(request) {
 
           return {
             ...authoritative,
+            ...(live?.ownerWithdrawal ? { status: 'UNLISTED', ownerWithdrawal: live.ownerWithdrawal } : {}),
 
             published:
-              Boolean(live) && !(decision && live.status === 'NEEDS_REVIEW'),
+              Boolean(live) && live.status !== 'UNLISTED' && !(decision && live.status === 'NEEDS_REVIEW'),
             ...(decision ? { reviewDisposition: decision, archived: isReviewArchived(product) } : {}),
             ...(decision && live?.status === 'NEEDS_REVIEW' ? {
               reviewFlag: 'Conflicto de inventario: verificar compromisos y capacidad antes de resolver este Item.',
@@ -650,7 +651,8 @@ export default async function handler(request) {
 
       products.push({
         ...normalizeLiveOnly(live),
-        published: true,
+        published: live.status !== 'UNLISTED',
+        ...(live.ownerWithdrawal ? { ownerWithdrawal: live.ownerWithdrawal } : {}),
 
         live: {
           id: live.id,
