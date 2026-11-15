@@ -1,3 +1,4 @@
+import { requirePickupWrites } from './_shared/pickup-write-control.mjs';
 import { adminAuthorized, jsonResponse } from './_shared/commerce.mjs';
 import { changePickup, listUpcomingPickups, pickupFulfillments } from './_shared/pickup.mjs';
 import { getOrder } from './_shared/commerce.mjs';
@@ -11,6 +12,7 @@ export default async function handler(request) {
     const params = request.method === 'GET' ? new URL(request.url).searchParams : await request.json();
     const orderId = String(params.get?.('id') ?? params.orderId ?? '').trim();
     if (!orderId && request.method === 'GET') return jsonResponse({ ok: true, upcoming: await listUpcomingPickups() });
+    if (request.method === 'POST') await requirePickupWrites();
     const order = await getOrder(orderId);
     if (!order) return jsonResponse({ error: 'Pedido no encontrado.' }, 404);
     if (request.method === 'POST') {

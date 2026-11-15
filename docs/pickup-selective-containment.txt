@@ -1,0 +1,140 @@
+PICKUP SELECTIVE CONTAINMENT — PROPOSED OPERATING PROCEDURE
+Development preparation only. No production activation, migration, hosting change,
+publication, or publishing unlock has been performed for this change.
+
+MECHANISM AND ALTERNATIVES
+One PostgreSQL singleton controls explicit pickup mutations and Item-payment
+allocation/exception mutations. Existing Admin authentication is reused. Two
+additive tables hold current state and append-only audit events. Initial state is
+PAUSED. Every target write takes FOR SHARE on the singleton as its first lock,
+inside the existing transaction; changing state takes FOR UPDATE and commits its
+audit event atomically. No cached flag or deployment-time environment flag is used.
+
+An environment flag needs a new deploy and cannot drain existing transactions.
+Calendar blackouts do not stop payment decisions or direct appointment mutations.
+Blocking the entire live site would stop purchasing. Reverting to an older build
+would restore unguarded scheduling. A database switch is the smallest runtime
+mechanism that coordinates these writers without a new authentication system.
+
+COVERAGE
+- New customer/Admin bookings, reschedules, Item-membership replacements,
+  explicit Admin appointment cancellations, and same-slot POST retries.
+- ALLOCATE, REVERSE, REQUIREMENT and REVOKE, including idempotent POST retries.
+- Both /api/orders/pickup and /.netlify/functions/customer-pickup.
+- Both /api/admin/pickup and /.netlify/functions/admin-pickup.
+- Both /api/admin/item-payment and /.netlify/functions/admin-item-payment.
+- The authoritative shared transaction functions also enforce the pause.
+
+The switch does not change orders, payments, ledger decisions, appointments,
+reservations, inventory, prices or seller notifications. Only control state and
+its audit event change. GET views remain available; scheduling controls disappear,
+existing appointments remain visible, and financial eligibility stays distinct
+from the temporary operational pause. Missing control state/read failure rejects
+target writes and hides write controls. Recovery does not replay rejected requests.
+
+BOUNDARY: this pauses explicit pickup/payment-decision operations, not the whole
+order lifecycle. Payment confirmations, receipts, ordinary order cancellation,
+expired-reservation renewal, fulfillment, calendar-blackout management and existing
+notification dispatch retain their established behavior. In particular, existing
+order cancellation/renewal safeguards can clear an appointment as before. Pausing
+itself never cancels an appointment. This is not a database-wide appointment freeze
+and does not grant permission for any historical correction.
+
+MANDATORY RELEASE PREREQUISITE: OLD DEPLOYMENTS
+An application guard cannot retrofit older immutable Netlify functions. The
+previously prepared PR79 build and previous production builds lack this guard;
+production-context deployment permalinks can use the production database. Do not
+claim complete containment while unguarded older builds remain publicly reachable.
+
+Use the EXISTING Netlify project Firewall Traffic Rules mechanism, subject to
+SEPARATE owner authorization: Project configuration > Security > Firewall traffic
+rules > Unpublished deploys > Configure > Block all traffic, with no allow
+exceptions. Preserve the published-deploy rules. This restricts previews and all
+noncurrent deploys, while keeping the current live catalog and purchasing public.
+Do not delete old deployments, logs or financial evidence. Team Owner permission
+is required to change these rules. Developers have read-only rule access.
+
+Before any release, verify this rule's actual availability and behavior on this
+project: no allow exceptions, old/prepared deployment hosts and their API/function
+URLs are blocked (including IPv4/IPv6 and applicable aliases); current published
+host and its catalog/cart/checkout/view endpoints remain accessible. Recheck old
+production permalinks once the new candidate becomes current. Do not use mutating
+requests as production probes. If any unguarded route remains reachable or the
+restriction cannot be verified, STOP for Governance. No hosting changes are
+included in this development authorization or have been performed here.
+
+Netlify references (reviewed November 14, 2026 local time):
+https://docs.netlify.com/build/functions/overview/
+https://docs.netlify.com/manage/security/secure-access-to-sites/traffic-rules/
+The latter defines published as the current main-URL deployment, distinguishes
+unpublished rules, documents immediate effect, Team Owner permission and audit logs.
+
+ACTIVATION — AFTER SEPARATELY AUTHORIZED RELEASE
+1. David signs into existing Admin, opens Retiros, and locates Pausa de emergencia.
+   Existing ADMIN_TOKEN access is sufficient. Do not put the token in logs/screenshots.
+2. Select Consultar estado. Record current revision and incident reference.
+3. Enter a meaningful incident/reason note, then select Pausar operaciones once.
+4. Wait for Pausa confirmada with revision. Then select Consultar estado and verify
+   PAUSADO and the matching ADMIN audit entry, reason, timestamp and UUID. Retain
+   this evidence with the incident record. No Netlify config change is needed for
+   ordinary activation once the required unpublished-deploy restriction is in place.
+5. Make read-only checks of existing appointments, payments, decisions and normal
+   catalog/order viewing. Never create a live test booking, allocation or payment.
+
+While activation is pending, earlier/newly admitted shared-lock writers can finish.
+Acknowledged pause means all earlier guarded writer transactions have committed or
+rolled back, and subsequent guarded mutations are rejected with HTTP 503. No running
+transaction is killed. A five-second lock timeout rolls back the control request
+and returns 409: pause NOT confirmed. A dropped HTTP response is also uncertain.
+Always refresh state/history before retrying. Do not assume a timeout means active
+containment or blindly send a stale resume. Failed reads are not confirmation.
+
+Concurrent controls use expectedRevision; only one can win a revision. Request UUIDs
+make identical retries idempotent. An old successful resume retried after a newer
+pause returns CURRENT paused state and never overwrites it. Reusing a UUID with a
+different payload fails. State/event writes are atomic; events reject edit/delete/
+truncate, and the singleton rejects delete/truncate. Actor is existing ADMIN, not
+a newly introduced identity service; the owner is the sole Admin.
+
+API ALTERNATIVE
+Existing Admin header x-admin-token; same authentication for alias and direct path.
+GET /api/admin/pickup-containment returns state plus ten most recent audit entries.
+POST /api/admin/pickup-containment (or /.netlify/functions/admin-pickup-containment):
+{"id":"<fresh UUID>","paused":true,"expectedRevision":<GET revision>,"reason":"<incident reference>"}
+HTTP 200 returns state and event AFTER COMMIT. Check state.paused, not merely ok.
+Use paused:false only for an approved recovery. Preserve exact request UUID/payload
+if reconciling an uncertain response; a refresh may reveal a later control event.
+The full append-only history remains in pickup_write_control_events; older evidence
+can be retrieved with authorized read-only database access, without editing records.
+
+SAFE RECOVERY
+Keep paused during investigation. Preserve current orders, allocations, appointments,
+reservations, inventory and audit evidence; no backfill, refund inference or data
+rollback. Obtain approval for a reviewed repair if code/data changes are needed.
+Verify exact active release, schema, unpublished-host restriction and publishing
+lock; read-only compare financial/appointment/inventory evidence accounting for
+legitimate live activity. With David's approval, refresh state, give a recovery
+reason, select Reanudar operaciones, wait for confirmation, then refresh to confirm
+ACTIVO and its new audit event. Recheck views/eligibility read-only. Clients refresh
+and deliberately retry desired operations; no automatic replay occurs.
+If control service or DB is unavailable, target operations fail closed. Restore
+service and verify persisted state before resuming; do not bypass the guard with SQL
+or a rollback to an older application. Catalog/cart/checkout do not consult this
+control, but a total DB outage still affects their ordinary DB dependencies.
+
+DATABASE / RELEASE REQUIREMENTS
+20261115_pickup_containment.sql creates two small tables, evidence triggers and
+initial PAUSED revision 1. No existing financial/inventory/appointment table is
+altered, rewritten or backfilled. Apply transactionally using the established
+controlled migration process ONLY after separate authorization and a fresh backup.
+Do not rerun 20261114_item_payment_pickup.sql. PostgreSQL native isolated tests
+verified additive preservation, FK/trigger behavior and transaction locks.
+Do not drop these tables/events on rollback. Older application code ignores this
+switch, so reverting a deploy is not an approved containment/recovery procedure.
+
+This candidate needs its own reviewed commit, approved merge into the release
+branch, newly identified controlled deployment, hosting restriction authorization
+and production read-only verification. The approved release 066579a and prepared
+deployment 6af8fc2f375ab09b167c43ab remain unchanged; that artifact cannot supply this
+new control. Automatic publishing stays locked. No production release is authorized
+by this development procedure. Stop for Governance review.
