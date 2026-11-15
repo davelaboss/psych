@@ -1,3 +1,5 @@
+import { deriveOrderFulfillmentParts } from './order-fulfillments.mjs';
+import { itemPaymentEligibility } from './item-payment-eligibility.mjs';
 import { initializePickupControlForTests } from './test-support/pickup-control.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -191,6 +193,7 @@ test('independent allocation requests cannot spend the same confirmed payment tw
   const id = await fixture();
   const stored = (await pool.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1',[id])).rows[0].order_snapshot;
   stored.items.push({ ...stored.items[0],productId:'synthetic-second' });
+  stored.totals={totalPYG:200,dueNowPYG:200,futureBalancePYG:0};
   await pool.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[id,JSON.stringify(stored)]);
   const results = await Promise.allSettled(['synthetic','synthetic-second'].map(productId => appendItemPaymentDecision(id,{
     kind:'ALLOCATE',productId,paymentId:'paid',amountPYG:100,note:'Synthetic concurrent allocation' })));
@@ -221,4 +224,32 @@ test('independent notification workers claim each ready/agenda email once', { sk
   assert.equal(new Set(calls.map(c => c.key)).size, 2);
   assert.ok(calls.every(c => c.to.length === 1 && c.to[0] === 'seller@example.com'));
   assert.ok((await notices()).every(row => row.status === 'SENT' && row.attempts === 1));
+});
+
+
+test('fully paid mixed order concurrently schedules both timing groups without allocations or financial changes', {skip:!connectionString},async()=>{
+  const id=await fixture();const stored=(await pool.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1',[id])).rows[0].order_snapshot;
+  stored.items.push({...stored.items[0],productId:'delayed-full',saleMode:'DELAYED',dueNowPYG:25,futureBalancePYG:75,pickupWindowStart:'2026-12-09',pickupWindowEnd:'2026-12-12'});
+  stored.totals={totalPYG:200,dueNowPYG:125,futureBalancePYG:75};stored.payments[0].amountPYG=200;
+  await pool.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[id,JSON.stringify(stored)]);
+  const parts=deriveOrderFulfillmentParts(stored),requests=[];
+  for(const part of parts)for(let i=0;i<3;i++){
+    const slotKey=part.timingKey==='IMMEDIATE'?hourly:'2026-12-09|08:00-09:00';
+    requests.push(changePickup({orderId:id,timingKey:part.timingKey,slotKey,actor:'CUSTOMER',itemIds:part.itemIds},{slotKeys:()=>[slotKey]}));
+  }
+  const results=await Promise.all(requests);assert.ok(results.every(a=>a.revision===1));
+  assert.equal((await pool.query('SELECT * FROM pickup_appointments WHERE order_id=$1',[id])).rows.length,2);
+  assert.equal((await pool.query('SELECT * FROM item_payment_decisions WHERE order_id=$1',[id])).rows.length,0);
+  assert.deepEqual((await pool.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1',[id])).rows[0].order_snapshot,stored);
+  assert.equal((await notices()).length,4);
+});
+
+test('full-order recognition does not weaken concurrent allocation overspend protection', {skip:!connectionString},async()=>{
+  const id=await fixture();const stored=(await pool.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1',[id])).rows[0].order_snapshot;
+  stored.items.push({...stored.items[0],productId:'full-second'});stored.totals={totalPYG:200,dueNowPYG:200,futureBalancePYG:0};stored.payments[0].amountPYG=200;
+  await pool.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[id,JSON.stringify(stored)]);
+  const attempts=await Promise.allSettled(stored.items.map(i=>appendItemPaymentDecision(id,{kind:'ALLOCATE',productId:i.productId,paymentId:'paid',amountPYG:150,note:'Synthetic concurrent allocation on fully paid order'})));
+  assert.equal(attempts.filter(r=>r.status==='fulfilled').length,1);assert.equal(attempts.find(r=>r.status==='rejected').reason.status,409);
+  const events=(await pool.query('SELECT * FROM item_payment_decisions WHERE order_id=$1',[id])).rows;assert.equal(events.length,1);assert.equal(Number(events[0].amount_pyg),150);
+  assert.ok(itemPaymentEligibility(stored,events).every(e=>e.fundingSource==='FULL_ORDER'&&e.schedulingEligible&&e.handoverEligible));
 });

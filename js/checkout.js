@@ -1158,7 +1158,7 @@ async function setupPickupScheduler(order, access) {
     if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los horarios.');
     target.innerHTML = `<h2>Retiro</h2>
       <p>Hora de Paraguay. Nuevos turnos de una hora.</p>
-      <p>Para agendar cada artículo inmediato, Admin debe confirmar el pago total. Para un artículo de retiro posterior, debe confirmar la seña acordada; el saldo se paga antes de retirarlo. Subir un comprobante no habilita el agendamiento.</p>
+      <p>Para agendar cada artículo inmediato, Admin debe confirmar el pago total. Para un artículo de retiro posterior, debe confirmar la seña acordada; el saldo se paga antes de retirarlo. Cuando Admin confirma el pago total acordado y verificado del pedido, todos sus artículos quedan habilitados. Subir un comprobante no habilita el agendamiento.</p>
       <div class="pickup-fulfillment-list">
         ${(data.fulfillments || []).map((part, index) => {
           const appointment = part.appointment?.status === 'SCHEDULED' ? part.appointment : null;
@@ -1169,7 +1169,7 @@ async function setupPickupScheduler(order, access) {
             <p>Artículos: ${(part.items || []).map(item => escapeHtml(orderItemLabel(item))).join(', ')}</p>
             ${appointment ? `<p><strong>Horario confirmado:</strong> ${escapeHtml(current)}</p>` : ''}
             ${appointment ? `<p>Artículos agendados: ${(part.items || []).filter(item => appointment.itemIds == null || appointment.itemIds.includes(item.productId)).map(item => escapeHtml(orderItemLabel(item))).join(', ')}. El horario existente se conserva.</p>` : ''}
-            <ul>${(part.itemEligibility || []).map(item => `<li>${escapeHtml(orderItemLabel(part.items.find(i => i.productId === item.productId)))}: ${item.schedulingEligible ? 'Pago requerido confirmado' : item.reviewRequired || item.reason === 'ITEM_ALLOCATION_REQUIRED' ? 'Pendiente de revisión o asignación del pago por Admin' : 'Pendiente de confirmación del pago requerido por Admin'}</li>`).join('')}</ul>
+            <ul>${(part.itemEligibility || []).map(item => `<li>${escapeHtml(orderItemLabel(part.items.find(i => i.productId === item.productId)))}: ${item.schedulingEligible ? item.fundingSource === 'FULL_ORDER' ? 'Pago total del pedido confirmado' : 'Pago requerido confirmado' : item.reviewRequired || item.reason === 'ITEM_ALLOCATION_REQUIRED' ? 'Pendiente de revisión o asignación del pago por Admin' : 'Pendiente de confirmación del pago requerido por Admin'}</li>`).join('')}</ul>
             ${part.writesPaused ? '<p role="status">Los cambios de retiros están pausados temporalmente. Tu pedido y horario existente se conservan.</p>' : part.schedulingEligible ? `<form id="${formId}" data-pickup-timing-key="${escapeHtml(part.timingKey)}">
               <fieldset><legend>Artículos para este retiro</legend>${(part.items || []).filter(item => (part.schedulableItemIds || []).includes(item.productId)).map(item => `<label><input type="checkbox" name="itemIds" value="${escapeHtml(item.productId)}"${!appointment || appointment.itemIds == null || appointment.itemIds.includes(item.productId) ? ' checked' : ''}> ${escapeHtml(orderItemLabel(item))}</label>`).join('')}</fieldset>
               <label>${appointment ? 'Cambiar horario' : 'Elegí un horario'}

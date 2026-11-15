@@ -1,3 +1,4 @@
+import { transitionBatch } from './fulfillment-batches.mjs';
 import { initializePickupControlForTests } from './test-support/pickup-control.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -15,8 +16,8 @@ import customerPickup from '../customer-pickup.mjs';
 import { hashAccessToken } from './commerce.mjs';
 
 let db;
-const migrations = ['20261001_operational_inventory','20261005_pickup_notifications',
-  '20261006_notification_recipients','20261010_pickup_fulfillment_parts','20261102_pickup_blackouts'];
+const migrations = ['20261001_operational_inventory','20261003_buyer_groups','20261005_pickup_notifications',
+  '20261006_notification_recipients','20261009_fulfillment_batches','20261010_pickup_fulfillment_parts','20261102_pickup_blackouts'];
 const migration = await readFile(new URL('../../database/migrations/20261114_item_payment_pickup.sql', import.meta.url),'utf8');
 const payment = (amountPYG, extra = {}) => ({ id:'paid', amountPYG, amountSource:'ADMIN_VERIFIED',
   verifiedBy:'ADMIN', verificationStatus:'CONFIRMED', confirmedAt: 1, ...extra });
@@ -71,8 +72,8 @@ test('frozen rounded line amounts determine the threshold, independent of catalo
   assert.equal(eligibility(o)[0].schedulingEligible,true);
   assert.equal(eligibility({...o,items:[{...o.items[0],dueNowPYG:undefined}]})[0].reviewRequired,true);
 });
-test('mixed same-time Items remain ineligible until explicitly funded; a paid Item can be booked alone',async()=>{
-  const o=await persist(order([item('a'),item('b')],[payment(200)]));
+test('partially paid mixed same-time Items remain ineligible until explicitly funded; a paid Item can be booked alone',async()=>{
+  const o=await persist(order([item('a'),item('b')],[payment(100)]));
   assert.deepEqual(eligibility(o).map(i=>i.schedulingEligible),[false,false]);
   const before=await snapshot(o);
   const decision=await allocate(o,'a',100);
@@ -211,4 +212,110 @@ test('a delayed Item deposit permits scheduling but current collection requires 
   await assert.rejects(requireCollectionPayments(db,items),/Antes de entregar/);
   await db.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[o.id,JSON.stringify({...o,payments:[payment(100)]})]);
   await requireCollectionPayments(db,items);
+});
+
+
+for (const delayed of [false,true]) test(`fully paid ${delayed?'mixed immediate/delayed':'same-time multi-Item'} order schedules and records delivery without allocations`,async()=>{
+  const o=await persist(order([item('full-a'),item('full-b',delayed)],[payment(75),payment(125,{id:'second',amountSource:'LEGACY_RECONCILED'})]));
+  const before=await snapshot(o);
+  const parts=await pickupFulfillments(o);
+  assert.ok(parts.every(p=>p.schedulingEligible&&p.handoverEligible));
+  assert.ok(parts.flatMap(p=>p.itemEligibility).every(e=>e.fundingSource==='FULL_ORDER'));
+  for(const part of parts){
+    const key=part.timingKey==='IMMEDIATE'?'2026-11-20|08:00-09:00':'2026-12-09|08:00-09:00';
+    await changePickup({orderId:o.id,timingKey:part.timingKey,slotKey:key,actor:'CUSTOMER',itemIds:part.itemIds,expectedRevision:0},{...isolated,slotKeys:()=>[key]});
+  }
+  const appointments=(await db.query('SELECT * FROM pickup_appointments WHERE order_id=$1 ORDER BY timing_key',[o.id])).rows;
+  const group=randomUUID(),batch=randomUUID();
+  await db.query("INSERT INTO buyer_groups(buyer_group_id,display_name) VALUES($1,'Synthetic buyer')",[group]);
+  await db.query("INSERT INTO fulfillment_batches(fulfillment_batch_id,buyer_group_id,timing_key,status,auto_attach) VALUES($1,$2,'IMMEDIATE','PREPARED',false)",[batch,group]);
+  for(const i of o.items)await db.query("INSERT INTO fulfillment_batch_items(order_id,product_id,fulfillment_batch_id,assignment_mode) VALUES($1,$2,$3,'MANUAL_COMBINE')",[o.id,i.productId,batch]);
+  await pickupFulfillments(o);
+  assert.equal((await db.query('SELECT status FROM fulfillment_batches WHERE fulfillment_batch_id=$1',[batch])).rows[0].status,'PREPARED');
+  await db.transaction(tx=>transitionBatch(tx,{batchId:batch,action:'DELIVER',expectedRevision:1}));
+  assert.equal((await db.query('SELECT status FROM fulfillment_batches WHERE fulfillment_batch_id=$1',[batch])).rows[0].status,'DELIVERED');
+  assert.equal((await db.query('SELECT * FROM fulfillment_batch_events WHERE fulfillment_batch_id=$1',[batch])).rows.length,1);
+  assert.deepEqual(await snapshot(o),before);
+  assert.deepEqual((await db.query('SELECT * FROM pickup_appointments WHERE order_id=$1 ORDER BY timing_key',[o.id])).rows,appointments);
+  assert.deepEqual(await readItemPaymentDecisions(o.id),[]);
+});
+
+test('existing allocations and reversals do not obstruct independently confirmed full-order coverage',async()=>{
+  const o=await persist(order([item('alloc-a'),item('alloc-b')],[payment(200)]));
+  const event=await allocate(o,'alloc-a',150);
+  const financial=await snapshot(o),ledger=await readItemPaymentDecisions(o.id);
+  assert.ok(eligibility(o,ledger).every(e=>e.schedulingEligible&&e.handoverEligible&&e.fundingSource==='FULL_ORDER'));
+  await requireCollectionPayments(db,o.items.map(i=>({orderId:o.id,productId:i.productId})));
+  await assert.rejects(allocate(o,'alloc-b',51),/excede/);
+  assert.deepEqual(await readItemPaymentDecisions(o.id),ledger);
+  await appendItemPaymentDecision(o.id,{kind:'REVERSE',reversesId:event.id,note:'Synthetic reversal; cash remains confirmed'});
+  assert.ok(eligibility(o,await readItemPaymentDecisions(o.id)).every(e=>e.schedulingEligible&&e.handoverEligible));
+  assert.deepEqual(await snapshot(o),financial);
+});
+
+test('full confirmed order preserves explicit Item requirements, including a higher collection obligation',()=>{
+  const o=order([item('a'),item('b')],[payment(200)]);
+  const exception={id:randomUUID(),kind:'REQUIREMENT',product_id:'a',scheduling_required_pyg:50,collection_required_pyg:150};
+  assert.equal(eligibility(o,[exception])[0].handoverEligible,false);
+  const approved=eligibility({...o,payments:[payment(250)]},[exception]);
+  assert.ok(approved.every(e=>e.schedulingEligible&&e.handoverEligible));
+  assert.equal(approved[0].source,'ADMIN_EXCEPTION');assert.equal(approved[0].requiredPYG,50);assert.equal(approved[0].collectionRequiredPYG,150);
+  const gift={...exception,scheduling_required_pyg:0,collection_required_pyg:0};
+  assert.equal(eligibility({...o,payments:[payment(100)]},[gift])[1].schedulingEligible,false);
+});
+
+for(const [label,make] of [
+  ['partial funds despite paid status and zero displayed balance',o=>({...o,payments:[payment(199)],status:'PAID_IN_FULL',remainingBalancePYG:0,paymentState:'FULLY_PAID'})],
+  ['receipt without confirmation',o=>({...o,payments:[payment(200,{verificationStatus:'PENDING'})]})],
+  ['assumed historical payment',o=>({...o,payments:[payment(200,{amountSource:'LEGACY_ASSUMED'})]})],
+  ['approved credit without explicit allocation',o=>({...o,payments:[payment(200,{amountSource:'LEGACY_OPENING_CREDIT'})]})],
+  ['missing Admin verification',o=>({...o,payments:[payment(200,{verifiedBy:undefined})]})],
+  ['voided payment',o=>({...o,payments:[payment(200,{voidedAt:2})]})],
+  ['duplicate payment identifiers',o=>({...o,payments:[payment(100),payment(100)]})],
+  ['inconsistent frozen total',o=>({...o,totals:{...o.totals,totalPYG:100}})],
+  ['inconsistent frozen due-now amount',o=>({...o,totals:{...o.totals,dueNowPYG:0}})],
+  ['unattributed mixed-order refund',o=>({...o,paymentAdjustments:[{kind:'POST_SALE_PRICE_ADJUSTMENT',amountPYG:10}]})],
+  ['unsupported adjustment',o=>({...o,paymentAdjustments:[{kind:'UNKNOWN_CREDIT',amountPYG:10}]})],
+])test(`ambiguous or insufficient full-order evidence stays closed: ${label}`,()=>{
+  const o=make(order([item('a'),item('b')],[payment(200)]));
+  assert.ok(eligibility(o).every(e=>!e.schedulingEligible&&!e.handoverEligible&&e.fundingSource!=='FULL_ORDER'));
+});
+
+test('explicit allocation from an approved credit still works for a partially cash-funded order',async()=>{
+  const o=await persist(order([item('credit-a'),item('credit-b')],[payment(100),payment(100,{id:'credit',amountSource:'LEGACY_OPENING_CREDIT'})]));
+  assert.ok(eligibility(o).every(e=>!e.schedulingEligible));
+  await allocate(o,'credit-a',100,{paymentId:'credit'});
+  assert.deepEqual(eligibility(o,await readItemPaymentDecisions(o.id)).map(e=>e.schedulingEligible),[true,false]);
+});
+
+test('late final confirmation unlocks a mixed order from current SQL; a later void closes new operations without touching its appointment',async()=>{
+  const o=await persist(order([item('late-a'),item('late-b',true)],[payment(125)]));
+  const before=await snapshot(o);assert.ok(eligibility(o).every(e=>!e.schedulingEligible));
+  const paid={...o,payments:[payment(125),payment(75,{id:'final'})]};
+  await db.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[o.id,JSON.stringify(paid)]);
+  const parts=await pickupFulfillments(o);assert.ok(parts.every(p=>p.schedulingEligible&&p.handoverEligible));
+  const key='2026-11-19|08:00-09:00';
+  await changePickup({orderId:o.id,timingKey:'IMMEDIATE',slotKey:key,actor:'ADMIN',itemIds:['late-a']},{...isolated,slotKeys:()=>[key]});
+  const appointments=(await db.query('SELECT * FROM pickup_appointments WHERE order_id=$1',[o.id])).rows;
+  const voided={...paid,payments:paid.payments.map(p=>p.id==='final'?{...p,voidedAt:2}:p)};
+  await db.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[o.id,JSON.stringify(voided)]);
+  await assert.rejects(requireCollectionPayments(db,o.items.map(i=>({orderId:o.id,productId:i.productId}))),/Antes de entregar/);
+  await assert.rejects(changePickup({orderId:o.id,timingKey:'IMMEDIATE',slotKey:key,actor:'CUSTOMER',itemIds:['late-a']},isolated),/Admin debe confirmar/);
+  assert.deepEqual((await db.query('SELECT * FROM pickup_appointments WHERE order_id=$1',[o.id])).rows,appointments);
+  assert.deepEqual(await readItemPaymentDecisions(o.id),[]);
+  assert.deepEqual((await snapshot(o)).order_snapshot.totals,before.order_snapshot.totals);
+});
+
+
+test('a fully paid single Item with a prior partial allocation needs no allocation top-up',async()=>{
+  const o=await persist(order([item('single-full')],[payment(100)]));
+  await allocate(o,'single-full',25);const ledger=await readItemPaymentDecisions(o.id),before=await snapshot(o);
+  assert.equal(eligibility(o,ledger)[0].fundingSource,'FULL_ORDER');
+  await requireCollectionPayments(db,[{orderId:o.id,productId:'single-full'}]);
+  assert.deepEqual(await readItemPaymentDecisions(o.id),ledger);assert.deepEqual(await snapshot(o),before);
+});
+
+test('additional pending receipt does not dilute independently verified full-order funds',()=>{
+  const o=order([item('a'),item('b')],[payment(225),payment(null,{id:'receipt',verificationStatus:'PENDING',amountSource:undefined})]);
+  assert.ok(eligibility(o).every(e=>e.fundingSource==='FULL_ORDER'&&e.schedulingEligible&&e.handoverEligible));
 });
