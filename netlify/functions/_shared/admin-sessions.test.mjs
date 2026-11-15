@@ -65,6 +65,8 @@ test('credential rotation immediately revokes old sessions without trusting clie
 test('cookie-authenticated mutations reject missing/foreign origin and sibling-site requests',async()=>{
  const c=cookie(await login(true));
  for(const headers of [{origin:'https://other.test'},{origin:'null'},{origin:'https://sibling.isolated.test'},{origin,'sec-fetch-site':'same-site'}]){
+  assert.equal(await adminAuthorized(request(null,c,headers)),false);
+  assert.equal((await handler(request(null,c,headers))).status,401);
   assert.equal(await adminAuthorized(request({action:'sensitive'},c,headers)),false);
   assert.equal((await handler(request({action:'logout'},c,headers))).status,403);
   assert.equal((await handler(request({action:'login',token:credential},'',headers))).status,403);

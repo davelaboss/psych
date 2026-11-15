@@ -29,6 +29,8 @@ export function sessionCookie(token,seconds) {
 }
 export async function readAdminSession(request) {
   if(!secret())return null;
+  const origin=request.headers.get('origin');
+  if((origin&&origin!==new URL(request.url).origin)||['cross-site','same-site'].includes(request.headers.get('sec-fetch-site')))return null;
   const token=sessionToken(request);if(!token)return null;
   const row=(await query(`SELECT role,expires_at,remember_me FROM admin_sessions
     WHERE token_hash=$1 AND credential_binding=$2 AND role='OWNER'
