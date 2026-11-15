@@ -2239,7 +2239,9 @@ function renderLegacyProductRow(
   product
 ) {
   const publicState =
-    product.published
+    product.ownerWithdrawal
+      ? '<span class="admin-pill">Retirado de la venta · NO LONGER FOR SALE</span>'
+      : product.published
       ? `
         <span class="admin-pill is-published">
           Publicado
@@ -2543,6 +2545,14 @@ function renderLegacyProductDetail(
           `
           : ''
       }
+
+      <section class="admin-withdrawal" aria-label="Retirar de la venta">
+        ${product.ownerWithdrawal
+          ? `<p role="status"><strong>Retirado de la venta · NO LONGER FOR SALE.</strong> Acción del propietario registrada el ${adminEscape(new Date(product.ownerWithdrawal.recordedAt).toLocaleString('es-PY', { timeZone: 'America/Asuncion' }))}. Sin venta ni entrega.</p>`
+          : product.live?.status === 'AVAILABLE' ? `<button type="button" class="secondary-action" data-withdraw-product>Retirar de la venta</button>
+            <p>Para conservar el artículo. Se verifican pedidos y reservas antes de retirarlo.</p>` : ''}
+        <p data-withdraw-result role="status"></p>
+      </section>
 
       <section class="admin-photo-editor">
         <header class="admin-editor-heading">
@@ -3211,6 +3221,27 @@ function bindAdminProductEditor(
   if (!editor) {
     return;
   }
+
+  editor.querySelector('[data-withdraw-product]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const result = editor.querySelector('[data-withdraw-result]');
+    if (!window.confirm(`¿Retirar ${adminFormatItem(product.itemNumber)} — ${product.title} de la venta? Se conservarán su ficha, fotos e historial. No se registrará una venta ni una entrega. Si tiene compromisos, la acción se bloqueará.`)) return;
+    button.disabled = true;
+    result.textContent = 'Verificando pedidos y reservas…';
+    try {
+      const data = await adminFetch('/api/admin/withdraw-product', { method: 'POST',
+        headers: { 'content-type': 'application/json' }, body: JSON.stringify({ productId: product.live?.id || product.id, confirmed: true }) });
+      product.status = 'UNLISTED';
+      product.published = false;
+      product.ownerWithdrawal = data.withdrawal;
+      if (product.live) product.live.status = 'UNLISTED';
+      result.textContent = data.message;
+      button.textContent = 'Retirado de la venta · NO LONGER FOR SALE';
+    } catch (error) {
+      result.textContent = error.message;
+      button.disabled = false;
+    }
+  });
 
   const publicView =
     editor.querySelector(

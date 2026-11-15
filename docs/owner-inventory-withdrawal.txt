@@ -1,0 +1,86 @@
+OWNER INVENTORY WITHDRAWAL — DEVELOPMENT / GOVERNANCE REVIEW ONLY
+Base: 8b4f7da401757c81302dfecce3c34e00a7676691
+
+Inventory > Ver ficha > Retirar de la venta > confirm. The server checks live
+customer commitments under checkout's product row lock. CART/ORDER reservations,
+committed quantities, order evidence and fulfillment membership block the action
+and identify order references. Nothing is cancelled automatically. This action
+withdraws the whole freely available listing; it cannot reinterpret historical
+sales or withdraw individual units already committed to an order.
+
+An immutable OWNER_WITHDRAWAL audit event on the existing inventory row supplies
+the established UNLISTED visibility state. It is not a second stock-status enum.
+Admin labels it Retirado de la venta / NO LONGER FOR SALE. Stock counters, Item
+IDs, original product information, photos, receipts and history stay intact.
+No order, payment, refund, delivery or Blob projection write is created. Editing
+or syncing source fields cannot relist a withdrawn Item. Public catalog/search
+exclude UNLISTED; direct-link purchases and stale claims fail under SQL locks.
+Late payment confirmation and expired-order receipt reclamation also fail closed.
+
+Migration: netlify/database/migrations/20261115_owner_withdrawal.sql adds a nullable
+JSONB audit column and evidence/immutability constraints to operational_inventory.
+No backfill or historical correction. Existing code remains compatible with the
+extra column; new catalog code can read a pre-migration row via to_jsonb. The
+withdrawal endpoint fails closed until the column exists. Migration must precede
+future use and requires separate owner authorization. No production migration run.
+
+Historical review: VM-2026-514DA2AA, read-only snapshot 2026-11-15 09:55:05 -03.
+The authoritative SQL order is PAYMENT_CONFIRMED, committed 2026-11-09, total
+95,000 PYG, with one ADMIN_VERIFIED/CONFIRMED 95,000 payment and one
+POST_SALE_PRICE_ADJUSTMENT for 95,000 (note: Internal). Original records alone
+assert a transfer and refund; the owner's current statement establishes no cash
+actually moved. Preserve that distinction in a new corrective audit entry.
+
+Four quantity-one order lines: real-20260828-43, real-202610-volume4-411,
+real-202610-volume4-432, real-202610-volume4-466. All have COMMITTED reservations.
+Batch 0d646d9f-80ae-4db5-acd6-bce66eca410a is PREPARED revision 2, contains only
+these four lines, has no delivered_at, and has PREPARE audit event 204. No pickup
+appointment or Item payment decision exists for this order at the snapshot.
+Mixed-order adjustment evidence correctly prevents current delivery verification;
+PR #81 must not be bypassed to mark personal retention as a delivery.
+
+Item 466 has capacity 3 and committed quantity 2. Another quantity-one unit is
+committed to VM-2026-497D5F3F in its own PREPARED batch. One unit remains free.
+A whole-listing unlist or capacity reset would affect unrelated inventory.
+Do not use the new ordinary withdrawal action for this historical correction.
+
+Item 043 compatibility discrepancy: the approved NO LONGER FOR SALE intent must
+remain authoritative. The current source is AVAILABLE, the live override is absent,
+and committed stock projects SOLD. There is no dedicated owner-withdrawal record
+in the current schema. This task does not change that production representation.
+The historical correction must explicitly restore the approved non-sale meaning.
+
+Smallest safe corrective procedure, PROPOSED ONLY:
+1. Prepare a narrowly scoped, separately reviewed non-sale correction keyed to the
+   exact order, four quantity-one lines, payment ID
+   c5929d87-e991-41bb-a468-2ddca8605c6d, adjustment ID
+   375c0bab-e233-45c2-ad12-2ecb8db53a55, and the batch/revision above. Obtain a
+   fresh read-only snapshot and compare exact identities/hashes before execution.
+2. Append owner-authorized NO_CASH_OWNER_RETENTION evidence referencing the
+   original financial and PREPARE records. Retain every original amount, receipt,
+   timestamp and audit record; reports must distinguish this correction from
+   received/refunded cash and genuine customer sales. Do not delete history or
+   run the existing duplicate-payment void action on this verified payment.
+3. Add an explicit non-delivery closure for this batch/order so it no longer
+   appears in outstanding delivery work and cannot be automatically assigned
+   again. The present schema has no honest terminal non-delivery batch status:
+   OPEN, PREPARED, DELIVERED and LEGACY_FROZEN are insufficient. This requires
+   a small separately approved follow-up patch/migration, not an arbitrary status
+   edit or misuse of cancellation, merge, reopen or historical DELIVERED.
+4. Preserve physical unavailability of retained units without creating a sale.
+   Keep the existing committed stock reservation as evidence; derive the owner-
+   retained classification from exact order-line correction evidence so counts
+   and reports do not call it a customer sale. Hide 043/411/432 as owner retained.
+   For 466, reclassify only this order's one unit; preserve the other customer
+   commitment and the free unit. A decision to retain additional 466 units would
+   require explicit additional authorization.
+5. Execute all approved operational changes atomically under the existing order,
+   product and fulfillment lock order, with exact revision checks and one audit
+   event. Validate only the intended order/unit/batch changed; preserve unrelated
+   orders, appointments, finances and pickup-control ACTIVE revision 2.
+
+No executable production correction is included. Owner decisions: review the
+ordinary withdrawal PR/migration; separately authorize development/review of the
+historical non-sale correction above; then separately approve its exact execution.
+This request authorizes no merge, deployment, migration, correction, publishing
+unlock or change to the ACTIVE pickup-scheduling control.
