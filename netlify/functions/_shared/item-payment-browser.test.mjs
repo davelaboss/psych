@@ -1,3 +1,6 @@
+import { readPickupWriteControl, setPickupWriteControl } from './pickup-write-control.mjs';
+import { createPickupContainmentHandler } from '../admin-pickup-containment.mjs';
+import { initializePickupControlForTests } from './test-support/pickup-control.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -10,15 +13,20 @@ import { appendItemPaymentDecision, readItemPaymentDecisions } from './item-paym
 import { setInventoryDatabaseClientForTests } from './inventory-database.mjs';
 
 let db,browser;
-const assets=Object.fromEntries(await Promise.all(['js/checkout.js','js/admin.js','css/site.css'].map(async f=>[f,await readFile(new URL(`../../../${f}`,import.meta.url),'utf8')])));
+const assets=Object.fromEntries(await Promise.all(['js/checkout.js','js/admin.js','js/admin-retiros.js','css/site.css'].map(async f=>[f,await readFile(new URL(`../../../${f}`,import.meta.url),'utf8')])));
 const site = await readFile(new URL('../../../js/site.js',import.meta.url),'utf8');
 const siteHelpers = site.slice(site.indexOf('function formatPYG('));
+
 test.before(async()=>{
   db=new PGlite(); browser=await chromium.launch({headless:true});
   for(const name of ['20261001_operational_inventory','20261005_pickup_notifications','20261006_notification_recipients','20261010_pickup_fulfillment_parts','20261102_pickup_blackouts','20261114_item_payment_pickup']) await db.exec(await readFile(new URL(`../../database/migrations/${name}.sql`,import.meta.url),'utf8'));
+  await initializePickupControlForTests(db);
   setInventoryDatabaseClientForTests({pool:{query:(...args)=>db.query(...args),connect:async()=>({query:(...args)=>db.query(...args),release(){}})}});
 });
+test.beforeEach(async()=>{const state=await readPickupWriteControl();if(state.paused)await setPickupWriteControl({id:randomUUID(),paused:false,expectedRevision:state.revision,reason:'Reset isolated test fixture'});});
+
 test.after(async()=>{await browser.close();await db.close();setInventoryDatabaseClientForTests(undefined);});
+
 for(const mobile of [false,true]) for(const kind of ['customer','admin']) test(`${kind} ${mobile?'mobile':'desktop'} shows per-Item eligibility, preserves a stale appointment, and sends explicit membership`,async t=>{
   t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-11-14T12:00:00Z')});
   const session=randomUUID(),id=`VM-DEMO-${randomUUID()}`;
@@ -92,7 +100,57 @@ for(const mobile of [false,true]) for(const kind of ['customer','admin']) test(`
   await replace.locator('[role="alert"]').waitFor({state:'visible'});
   assert.match(await replace.locator('[role="alert"]').innerText(),/Admin debe confirmar|únicamente artículos/);
   assert.deepEqual((await db.query('SELECT * FROM pickup_appointments WHERE order_id=$1',[id])).rows,before);
+  const open = await readPickupWriteControl();
+  await setPickupWriteControl({id:randomUUID(),paused:true,expectedRevision:open.revision,reason:'Synthetic emergency pause'});
+  // This form was rendered before containment was activated.
+  await replace.locator('button[type="submit"]').click();
+  await replace.locator('[role="alert"]').filter({hasText:'pausados'}).waitFor();
+  assert.deepEqual((await db.query('SELECT * FROM pickup_appointments WHERE order_id=$1',[id])).rows,before);
+  const refresh = () => page.evaluate(async({order,kind}) => kind==='admin' ? setupAdminPickup(order) : setupPickupScheduler(order,'synthetic-access'),{order,kind});
+  await refresh();
+  assert.match(await target.innerText(),/pausad/);
+  assert.equal(await target.locator('[data-admin-pickup-form], [data-pickup-timing-key], [data-admin-cancel-pickup]').count(),0);
+  assert.match(await target.innerText(),/turno existente se conserva|horario existente se conserva/);
+  if(kind==='admin') assert.equal(await target.locator('[data-item-payment-decision] button[type=submit]').isDisabled(),true);
+  const paused = await readPickupWriteControl();
+  await setPickupWriteControl({id:randomUUID(),paused:false,expectedRevision:paused.revision,reason:'Synthetic verified recovery'});
+  await refresh();
+  assert.ok(await target.locator('[data-admin-pickup-form], [data-pickup-timing-key]').count()>0);
+  if(kind==='admin') assert.equal(await target.locator('[data-item-payment-decision] button[type=submit]').isDisabled(),false);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal overflow');
   if(process.env.PICKUP_DEMO_OUTPUT_DIR){await mkdir(process.env.PICKUP_DEMO_OUTPUT_DIR,{recursive:true});await target.screenshot({path:path.join(process.env.PICKUP_DEMO_OUTPUT_DIR,`${kind}-${mobile?'mobile':'desktop'}-payment-enforcement.png`)});}
   assert.deepEqual(errors,[]);await page.close();
+});
+
+for(const mobile of [false,true]) test(`owner containment ${mobile?'mobile':'desktop'} confirms pause, records reason, refreshes before resume`,async()=>{
+  const handler=createPickupContainmentHandler({authorized:r=>r.headers.get('x-admin-token')==='synthetic'});
+  const page=await browser.newPage({viewport:mobile?{width:390,height:844}:{width:1440,height:1000}});
+  page.setDefaultTimeout(5000);
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/*',async route=>{
+    const request=route.request(),url=new URL(request.url());
+    if(url.pathname==='/harness') return route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${assets['css/site.css']}</style></head><body><main style="max-width:900px;margin:auto;padding:16px"><section id="admin-pickup-containment"></section></main></body></html>`});
+    if(url.pathname==='/api/admin/pickup-containment'){
+      const response=await handler(new Request(url,{method:request.method(),headers:request.headers(),body:request.method()==='POST'?request.postData():undefined}));
+      return route.fulfill({status:response.status,json:await response.json()});
+    }
+    return route.abort();
+  });
+  await page.goto('https://pickup.test/harness');await page.addScriptTag({content:assets['js/admin.js']});await page.addScriptTag({content:assets['js/admin-retiros.js']});
+  await page.evaluate(async()=>{ADMIN_STATE.token='synthetic';injectAdminStyles();await loadPickupContainment();});
+  const target=page.locator('#admin-pickup-containment');assert.match(await target.innerText(),/ACTIVO/);
+  await target.locator('textarea').fill('Synthetic containment owner reason');
+  await target.getByRole('button',{name:'Pausar operaciones',exact:true}).click();
+  await target.locator('[data-containment-result]').filter({hasText:'Pausa confirmada'}).waitFor().catch(async e=>{throw new Error(e.message+' UI: '+await target.innerText());});
+  assert.equal((await readPickupWriteControl()).paused,true);
+  assert.equal(await target.getByRole('button',{name:'Pausar operaciones',exact:true}).isDisabled(),true);
+  await target.getByRole('button',{name:'Consultar estado',exact:true}).click();
+  await target.getByRole('button',{name:'Reanudar operaciones',exact:true}).waitFor();
+  await target.locator('summary').click();
+  assert.match(await target.innerText(),/Synthetic containment owner reason/);
+  await target.locator('textarea').fill('Synthetic recovery verified');
+  await target.getByRole('button',{name:'Reanudar operaciones',exact:true}).click();
+  await target.locator('[data-containment-result]').filter({hasText:'Reanudación confirmada'}).waitFor();
+  assert.equal((await readPickupWriteControl()).paused,false);
+  assert.deepEqual(errors,[]);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.close();
 });

@@ -1,3 +1,4 @@
+import { requirePickupWrites, pickupWritesPaused } from './pickup-write-control.mjs';
 import { database, inventoryTransaction, snapshotWithReservation } from './inventory-database.mjs';
 import { PICKUP_RULES } from './commerce.mjs';
 import { deriveOrderFulfillmentParts, orderFulfillmentPart, SCHEDULABLE_ORDER_STATUSES } from './order-fulfillments.mjs';
@@ -103,12 +104,14 @@ export async function pickupFulfillments(order) {
   const decisions = await readItemPaymentDecisions(order.id);
   const appointments = new Map((await getPickupAppointments(order.id))
     .map(appointment => [appointment.timingKey, appointment]));
+  const writesPaused = await pickupWritesPaused();
   return Promise.all(deriveOrderFulfillmentParts(order, decisions).map(async part => {
     const appointment = appointments.get(part.timingKey) || null;
     return {
       ...part,
       appointment,
-      slots: await pickupAvailability(order, part.timingKey, appointment, decisions),
+      writesPaused,
+      slots: writesPaused ? [] : await pickupAvailability(order, part.timingKey, appointment, decisions),
     };
   }));
 }
@@ -121,6 +124,7 @@ export async function changePickup({ orderId, timingKey, slotKey, actor, itemIds
   const queueNotifications = dependencies.queueNotifications || queueOrderNotifications;
   const allowedSlotKeys = dependencies.slotKeys || pickupSlotKeys;
   return runTransaction(async client => {
+    await requirePickupWrites(client, { lock: true });
     const orderRow = (await client.query('SELECT * FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
     if (!orderRow) throw Object.assign(new Error('Pedido no encontrado.'), { status: 404 });
     const order = snapshotWithReservation(orderRow);

@@ -1,0 +1,34 @@
+SELECTIVE CONTAINMENT VALIDATION
+Base release: 066579a5b55ef55ae4a0749bab9dadb823d427d0
+Branch: dev/pickup-selective-containment-20261114
+Database: disposable localhost PostgreSQL 18.6, synthetic fixtures only.
+
+Final focused run: 16 tests, 16 passed, 0 failures, 0 skipped.
+- 8 independent-worker PostgreSQL scenarios: additive preservation and paused
+  default; aliases/direct functions; real booking drain; a request behind an
+  uncommitted pause; real allocation and exception drains; lock timeout without
+  false acknowledgement or evidence; concurrent controls/stale resume/idempotent
+  retry; append-only evidence and missing-state fail-closed behavior.
+- 2 cart/checkout integration scenarios: immediate and delayed purchases retain
+  frozen pricing and correct cart/order reservations while pickup writes are paused.
+- 6 browser scenarios: customer/Admin desktop/mobile stale forms, pause messaging,
+  preserved appointments, disabled writes and recovery; owner desktop/mobile
+  authenticated pause, recorded reason, refresh and deliberate resume.
+
+Regression run: 946 tests, 945 passed, 1 failed, 0 skipped.
+The sole failure is the previously documented storefront-discovery source-regex
+expectation in storefront-discovery.test.mjs:100. Storefront implementation and
+that test are unchanged from the approved release. Its PR79-only Governance
+acceptance must be carried forward explicitly for any newly approved release.
+Existing eight PostgreSQL booking/capacity/allocation worker tests also passed in
+this run with the new guard enabled and explicitly opened synthetic fixtures.
+Syntax checks and git diff whitespace validation passed.
+
+No new material regression was found. No production records, hosting configuration,
+publishing lock, deployment, approved release branch or prepared artifact changed.
+
+NOT PRODUCTION-READY ON THIS EVIDENCE ALONE: application guards do not retrofit
+old immutable deployments. Before release, separately authorize and verify the
+existing Netlify unpublished-deploy traffic restriction described in the operating
+procedure, approve the new migration and resulting code/deployment, and perform
+controlled read-only production verification. No rollback/drop/backfill is proposed.

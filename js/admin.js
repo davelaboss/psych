@@ -6097,21 +6097,22 @@ async function setupAdminPickup(order) {
           <p>Artículos: ${(part.items || []).map(item => adminEscape(adminFormatItem(item.itemNumber))).join(', ')}</p>
           ${appointment ? `<p><strong>Agendado:</strong> ${adminEscape(appointment.slotKey.replace('|', ' · '))}</p>` : '<p>Sin horario agendado.</p>'}
           ${appointment ? `<p>Items agendados: ${(part.items || []).filter(item => appointment.itemIds == null || appointment.itemIds.includes(item.productId)).map(item => adminEscape(adminFormatItem(item.itemNumber))).join(', ')}. El turno existente se conserva.</p>` : ''}
+          ${part.writesPaused ? '<p role="status">Cambios de retiros y decisiones por artículo pausados. Los registros existentes se conservan.</p>' : ''}
           <p>Inmediatos: pago total confirmado. Posteriores: seña acordada confirmada y saldo antes del retiro. Subir un comprobante no habilita el agendamiento.</p>
           <ul>${(part.itemEligibility || []).map(item => `<li>${adminEscape(adminFormatItem(part.items.find(i => i.productId === item.productId)?.itemNumber))}: ${item.schedulingEligible ? 'Habilitado' : 'Pendiente de pago, asignación o revisión'} · Asignado ${adminMoney(item.fundedPYG)} · Requerido ${item.requiredPYG == null ? 'Revisar acuerdo' : adminMoney(item.requiredPYG)}</li>`).join('')}</ul>
           ${part.schedulingEligible ? '<p><strong>Pago requerido confirmado para los artículos habilitados.</strong></p>' : '<p>Agendamiento no disponible: revisá los pagos por artículo y si la reserva sigue activa.</p>'}
-          ${part.schedulingEligible && part.slots.length ? `<form data-admin-pickup-form>
+          ${!part.writesPaused && part.schedulingEligible && part.slots.length ? `<form data-admin-pickup-form>
             <fieldset><legend>Artículos para este retiro</legend>${(part.items || []).filter(item => (part.schedulableItemIds || []).includes(item.productId)).map(item => `<label><input type="checkbox" name="itemIds" value="${adminEscapeAttribute(item.productId)}"${!appointment || appointment.itemIds == null || appointment.itemIds.includes(item.productId) ? ' checked' : ''}> ${adminEscape(adminFormatItem(item.itemNumber))}</label>`).join('')}</fieldset>
             <label>Horario <select name="slotKey" required><option value="">Seleccioná fecha y horario</option>
               ${part.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
                 `<option value="${adminEscapeAttribute(slot.key)}"${slot.selected ? ' selected' : ''}>${adminEscape(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}</select></label>
             <button class="primary-action" type="submit">${appointment ? 'Cambiar este retiro' : 'Agendar este retiro'}</button>
           </form>` : ''}
-          ${appointment ? '<button class="secondary-action" type="button" data-admin-cancel-pickup>Cancelar este retiro</button>' : ''}
+          ${appointment && !part.writesPaused ? '<button class="secondary-action" type="button" data-admin-cancel-pickup>Cancelar este retiro</button>' : ''}
           <p class="form-error" data-admin-pickup-error role="alert" hidden></p>
         </article>`;
       }).join('')}</div>`;
-    target.insertAdjacentHTML('beforeend', adminItemPaymentEditor(order, data.decisions || []));
+    target.insertAdjacentHTML('beforeend', adminItemPaymentEditor(order, data.decisions || [], (data.fulfillments || []).some(part => part.writesPaused)));
     bindAdminItemPaymentEditor(target, order);
     target.querySelectorAll('[data-admin-pickup-part]').forEach(partElement => {
       const timingKey = partElement.dataset.adminPickupPart;
@@ -6145,12 +6146,12 @@ async function setupAdminPickup(order) {
 }
 
 
-function adminItemPaymentEditor(order, decisions) {
+function adminItemPaymentEditor(order, decisions, writesPaused = false) {
   const undone = new Set(decisions.map(e => e.reverses_id).filter(Boolean));
   return `<details class="admin-detail-card"><summary>Asignaciones y excepciones de pago por artículo</summary>
     <p>Solo Admin. Asigná fondos ya confirmados a un artículo. No se cambian precios, pagos ni turnos existentes. Los pedidos de un solo artículo reconocen automáticamente los pagos verificados suficientes.</p>
     <p>Las notas históricas no cambian los requisitos automáticamente. Una excepción debe registrar expresamente el importe para agendar y el importe total para entregar.</p>
-    <form data-item-payment-decision>
+    <form data-item-payment-decision><fieldset${writesPaused ? ' disabled' : ''}><legend>Decisión de Admin${writesPaused ? ' · Pausado' : ''}</legend>
       <label>Decisión<select name="kind" required><option value="">Seleccioná una acción</option>
         <option value="ALLOCATE">Asignar pago confirmado</option><option value="REVERSE">Revertir asignación</option>
         <option value="REQUIREMENT">Aprobar excepción acordada por artículo</option><option value="REVOKE">Revocar excepción</option></select></label>
@@ -6162,7 +6163,7 @@ function adminItemPaymentEditor(order, decisions) {
       <label>Decisión a revertir / revocar<select name="reversesId"><option value="">Seleccioná una decisión</option>${decisions.filter(e => ['ALLOCATE', 'REQUIREMENT'].includes(e.kind) && !undone.has(e.id)).map(e => `<option value="${adminEscapeAttribute(e.id)}">${adminEscape(e.kind)} · ${adminEscape(e.product_id)} · ${adminEscape(e.id)}</option>`).join('')}</select></label>
       <label>Nota de auditoría y referencia al acuerdo<textarea name="note" maxlength="2000" required></textarea></label>
       <button type="submit" class="primary-action">Registrar decisión de Admin</button><p role="alert" data-item-payment-error></p>
-    </form><h4>Historial de decisiones</h4><ul>${decisions.map(e => `<li>${adminEscape(e.kind)} · ${adminEscape(e.product_id || e.reverses_id)} · ${adminEscape(e.amount_pyg ?? e.scheduling_required_pyg ?? '')} · ${adminEscape(e.note)}${undone.has(e.id) ? ' · Revertida / revocada' : ''}</li>`).join('') || '<li>Sin decisiones explícitas.</li>'}</ul></details>`;
+    </fieldset></form><h4>Historial de decisiones</h4><ul>${decisions.map(e => `<li>${adminEscape(e.kind)} · ${adminEscape(e.product_id || e.reverses_id)} · ${adminEscape(e.amount_pyg ?? e.scheduling_required_pyg ?? '')} · ${adminEscape(e.note)}${undone.has(e.id) ? ' · Revertida / revocada' : ''}</li>`).join('') || '<li>Sin decisiones explícitas.</li>'}</ul></details>`;
 }
 function bindAdminItemPaymentEditor(target, order) {
   const form = target.querySelector('[data-item-payment-decision]');

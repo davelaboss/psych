@@ -61,11 +61,13 @@ function renderRetirosTab() {
     <div class="admin-section-heading-v2"><div><span class="section-kicker">RETIROS</span><h2>Calendario y disponibilidad</h2>
     <p>Hora de Paraguay · America/Asuncion. Elegí una fecha para ver los turnos o bloquear horarios.</p></div>
     <button type="button" class="secondary-action" data-retiros-refresh>Actualizar</button></div>
+    <section id="admin-pickup-containment" aria-label="Pausa de emergencia"></section>
     <p data-retiros-status role="status">Cargando calendario…</p>
     <div data-retiros-calendar></div><div data-retiros-day></div>
     <section id="admin-upcoming-pickups"><h2>Próximos retiros</h2><p>Cargando…</p></section>
   </section>`;
   target.querySelector('[data-retiros-refresh]').addEventListener('click', () => loadRetirosMonth());
+  void loadPickupContainment();
   void loadRetirosMonth();
   void loadUpcomingPickups();
 }
@@ -214,3 +216,43 @@ function bindRetirosBlockForm(target) {
 window.addEventListener('focus', () => {
   if (ADMIN_STATE.activeTab === 'retiros' && !document.querySelector('[data-retiro-block-form]:focus-within')) void loadRetirosMonth();
 });
+
+
+async function loadPickupContainment() {
+  const target = document.getElementById('admin-pickup-containment'); if (!target) return;
+  target.innerHTML = '<h3>Pausa de emergencia</h3><p role="status">Consultando estado…</p>';
+  const refresh = () => void loadPickupContainment();
+  try {
+    const { state } = await adminFetch('/api/admin/pickup-containment');
+    if (!target.isConnected) return;
+    target.innerHTML = `<h3>Pausa de emergencia</h3>
+      <p role="status"><strong>${state.paused ? 'PAUSADO' : 'ACTIVO'}</strong> · Revisión ${state.revision}</p>
+      <p>Pausa nuevos turnos, cambios y cancelaciones de retiros, y asignaciones o excepciones por artículo. El catálogo, las compras y la consulta de pedidos continúan.</p>
+      <form data-containment-form><label>Motivo de auditoría<textarea name="reason" maxlength="1000" required></textarea></label>
+      <button class="primary-action" type="submit">${state.paused ? 'Reanudar operaciones' : 'Pausar operaciones'}</button></form>
+      <button type="button" class="secondary-action" data-containment-refresh>Consultar estado</button>
+      <p data-containment-result role="status"></p>
+      <details><summary>Historial de la pausa</summary><ul>${(state.events || []).map(e => `<li>Rev. ${e.revision} · ${e.paused ? 'PAUSADO' : 'ACTIVO'} · ${adminEscape(e.actor)} · ${adminEscape(e.created_at)} · ${adminEscape(e.reason)} · ${adminEscape(e.id)}</li>`).join('')}</ul></details>`;
+    target.querySelector('[data-containment-refresh]').addEventListener('click', refresh);
+    const form = target.querySelector('form');
+    form.addEventListener('submit', async event => {
+      event.preventDefault(); const button = form.querySelector('button'); if (button.disabled) return;
+      const reason = String(new FormData(form).get('reason') || '').trim(); if (!reason) return;
+      button.disabled = true; const result = target.querySelector('[data-containment-result]');
+      result.textContent = 'Esperando confirmación del servidor…';
+      try {
+        const saved = await adminFetch('/api/admin/pickup-containment', { method: 'POST',
+          headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+            id: crypto.randomUUID(), paused: !state.paused, expectedRevision: state.revision, reason }) });
+        // The server's CURRENT state is authoritative, including an idempotent replay.
+        result.textContent = `${saved.state.paused ? 'Pausa confirmada' : 'Reanudación confirmada'} · Revisión ${saved.state.revision}. Consultá el estado para continuar.`;
+      } catch (error) {
+        result.textContent = `${error.message} No asumas que se confirmó. Consultá el estado antes de continuar.`;
+      }
+      // Do not enable an action based on a stale revision or uncertain response.
+    });
+  } catch (error) {
+    target.innerHTML = `<h3>Pausa de emergencia</h3><p role="alert">No se pudo confirmar el estado. ${adminEscape(error.message)}</p><button type="button" class="secondary-action">Consultar estado</button>`;
+    target.querySelector('button').addEventListener('click', refresh);
+  }
+}

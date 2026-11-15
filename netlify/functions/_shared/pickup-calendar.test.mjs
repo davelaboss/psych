@@ -1,3 +1,4 @@
+import { initializePickupControlForTests } from './test-support/pickup-control.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -17,6 +18,7 @@ test.before(async () => {
     '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts', '20261114_item_payment_pickup']) {
     await db.exec(await readFile(new URL(`../../database/migrations/${name}.sql`, import.meta.url), 'utf8'));
   }
+  await initializePickupControlForTests(db);
   setInventoryDatabaseClientForTests({ pool: { query: (...args) => db.query(...args),
     connect: async () => ({ query: (...args) => db.query(...args), release() {} }) } });
 });

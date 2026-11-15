@@ -1,3 +1,4 @@
+import { initializePickupControlForTests } from './test-support/pickup-control.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -31,6 +32,7 @@ test.before(async () => {
   db = new PGlite();
   for (const name of migrations) await db.exec(await readFile(new URL(`../../database/migrations/${name}.sql`,import.meta.url),'utf8'));
   await db.exec(migration);
+  await initializePickupControlForTests(db);
   setInventoryDatabaseClientForTests({pool:{query:(...args)=>db.query(...args),connect:async()=>({query:(...args)=>db.query(...args),release(){}})}});
 });
 test.beforeEach(t => t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-11-14T12:00:00Z')}));

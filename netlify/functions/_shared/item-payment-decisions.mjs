@@ -1,3 +1,4 @@
+import { requirePickupWrites } from './pickup-write-control.mjs';
 import { randomUUID } from 'node:crypto';
 import { database, inventoryTransaction, snapshotWithReservation } from './inventory-database.mjs';
 import { orderSchedulingEligible } from './order-fulfillments.mjs';
@@ -22,7 +23,8 @@ export async function requireCollectionPayments(client, items) {
 }
 export async function appendItemPaymentDecision(orderId, input, dependencies = {}) {
   return (dependencies.transaction || inventoryTransaction)(async client => {
-    // Same first lock as confirmation, refunds, voids, renewal and scheduling.
+    await requirePickupWrites(client, { lock: true });
+    // Same order lock as confirmation, refunds, voids, renewal and scheduling.
     const row = (await client.query('SELECT * FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
     if (!row) throw Object.assign(new Error('Pedido no encontrado.'), { status: 404 });
     const order = row.order_snapshot;
