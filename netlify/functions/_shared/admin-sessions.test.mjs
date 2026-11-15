@@ -15,7 +15,7 @@ const request=(body,cookie='',extra={})=>new Request(origin+'/api/admin/session'
  method:body?'POST':'GET',headers:{origin,cookie,'content-type':'application/json',...extra},...(body?{body:JSON.stringify(body)}:{})});
 const login=async rememberMe=>handler(request({action:'login',token:credential,rememberMe}));
 const cookie=response=>response.headers.get('set-cookie').split(';')[0];
-test.before(async()=>{db=new PGlite();await db.exec(await readFile(new URL('../../database/migrations/20261115_admin_sessions.sql',import.meta.url),'utf8'));
+test.before(async()=>{db=new PGlite();await db.exec(await readFile(new URL('../../database/migrations/20261117_admin_sessions.sql',import.meta.url),'utf8'));
  setInventoryDatabaseClientForTests({pool:{query:(...a)=>db.query(...a)}});process.env.ADMIN_TOKEN=credential;});
 test.after(async()=>{setInventoryDatabaseClientForTests(undefined);if(previous===undefined)delete process.env.ADMIN_TOKEN;else process.env.ADMIN_TOKEN=previous;await db.close()});
 

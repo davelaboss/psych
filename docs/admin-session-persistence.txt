@@ -45,7 +45,7 @@ authorize the Netlify owner API. Session database errors are retryable failures,
 not reasons to delete valid cookies or silently fall back to plaintext storage.
 
 COMPATIBILITY / MIGRATION
-Migration netlify/database/migrations/20261115_admin_sessions.sql adds a dedicated
+Migration netlify/database/migrations/20261117_admin_sessions.sql adds a dedicated
 session table/index, with no changes to orders, inventory, financial data,
 appointments or pickup control. No configuration secret is added; the existing
 owner credential binds sessions and remains the sole owner login authority.

@@ -14,7 +14,7 @@ const css=await readFile(new URL('../../../css/site.css',import.meta.url),'utf8'
 const origin='https://isolated.test',credential='synthetic-browser-owner';
 let db;const previous=process.env.ADMIN_TOKEN;
 test.before(async()=>{
- db=new PGlite();await db.exec(await readFile(new URL('../../database/migrations/20261115_admin_sessions.sql',import.meta.url),'utf8'));
+ db=new PGlite();await db.exec(await readFile(new URL('../../database/migrations/20261117_admin_sessions.sql',import.meta.url),'utf8'));
  setInventoryDatabaseClientForTests({pool:{query:(...a)=>db.query(...a)}});process.env.ADMIN_TOKEN=credential;
 });
 test.after(async()=>{setInventoryDatabaseClientForTests(undefined);if(previous===undefined)delete process.env.ADMIN_TOKEN;else process.env.ADMIN_TOKEN=previous;await db.close()});
