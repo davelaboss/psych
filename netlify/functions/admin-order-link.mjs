@@ -4,7 +4,7 @@ import { orderAccessToken } from './_shared/order-access.mjs';
 
 export function createAdminOrderLinkHandler({ query = (sql, params) => database().pool.query(sql, params) } = {}) {
   return async request => {
-    if (!adminAuthorized(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
+    if (!await adminAuthorized(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
     if (request.method !== 'GET') return jsonResponse({ error: 'Método no permitido.' }, 405);
     const url = new URL(request.url);
     const orderId = String(url.searchParams.get('id') || '').trim();

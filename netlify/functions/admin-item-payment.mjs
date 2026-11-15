@@ -2,7 +2,7 @@ import { adminAuthorized, jsonResponse } from './_shared/commerce.mjs';
 import { appendItemPaymentDecision, readItemPaymentDecisions } from './_shared/item-payment-decisions.mjs';
 export function createItemPaymentHandler(dependencies = {}) {
   return async request => {
-    if (!(dependencies.authorized || adminAuthorized)(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
+    if (!await (dependencies.authorized || adminAuthorized)(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
     if (!['GET', 'POST'].includes(request.method)) return jsonResponse({ error: 'Método no permitido.' }, 405);
     try {
       const input = request.method === 'GET' ? Object.fromEntries(new URL(request.url).searchParams) : await request.json();

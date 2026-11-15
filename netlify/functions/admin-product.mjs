@@ -55,7 +55,7 @@ function filtered(source, allowed) {
 
 
 export default async function handler(request) {
-  if (!adminAuthorized(request)) {
+  if (!await adminAuthorized(request)) {
     return jsonResponse(
       { error: 'Acceso no autorizado.' },
       401
