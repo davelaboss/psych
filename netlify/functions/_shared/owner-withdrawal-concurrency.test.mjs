@@ -13,7 +13,7 @@ test.before(async()=>{
  const u=new URL(connectionString);assert.ok(['127.0.0.1','localhost','[::1]'].includes(u.hostname));assert.match(u.pathname,/^\/pickup_test_[a-z0-9_]+$/);
  control=new pg.Pool({connectionString});schema='withdraw_test_'+randomUUID().replaceAll('-','');
  await control.query(`CREATE SCHEMA ${schema}`);pool=new pg.Pool({connectionString,max:8,options:`-c search_path=${schema}`});
- for(const m of ['20261001_operational_inventory','20261002_cart_extension','20261003_buyer_groups','20261009_fulfillment_batches','20261115_owner_withdrawal'])
+ for(const m of ['20261001_operational_inventory','20261002_cart_extension','20261003_buyer_groups','20261009_fulfillment_batches','20261116_owner_withdrawal'])
    await pool.query(await readFile(new URL(`../../database/migrations/${m}.sql`,import.meta.url),'utf8'));
  setInventoryDatabaseClientForTests({pool});
 });

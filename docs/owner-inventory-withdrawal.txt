@@ -17,7 +17,7 @@ or syncing source fields cannot relist a withdrawn Item. Public catalog/search
 exclude UNLISTED; direct-link purchases and stale claims fail under SQL locks.
 Late payment confirmation and expired-order receipt reclamation also fail closed.
 
-Migration: netlify/database/migrations/20261115_owner_withdrawal.sql adds a nullable
+Migration: netlify/database/migrations/20261116_owner_withdrawal.sql adds a nullable
 JSONB audit column and evidence/immutability constraints to operational_inventory.
 No backfill or historical correction. Existing code remains compatible with the
 extra column; new catalog code can read a pre-migration row via to_jsonb. The

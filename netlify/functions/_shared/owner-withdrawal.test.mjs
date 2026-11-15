@@ -16,7 +16,7 @@ const product = () => ({id:randomUUID(),itemNumber:999,title:'Synthetic owner It
   saleMode:'IMMEDIATE',depositPercent:100});
 const migrations=['20261001_operational_inventory','20261002_cart_extension','20261003_buyer_groups',
   '20261004_order_reservation_events','20261005_pickup_notifications','20261006_notification_recipients',
-  '20261009_fulfillment_batches','20261010_pickup_fulfillment_parts','20261113_cart_pricing','20261115_owner_withdrawal'];
+  '20261009_fulfillment_batches','20261010_pickup_fulfillment_parts','20261113_cart_pricing','20261116_owner_withdrawal'];
 test.before(async()=>{
  db=new PGlite();for(const m of migrations)await db.exec(await readFile(new URL(`../../database/migrations/${m}.sql`,import.meta.url),'utf8'));
  setInventoryDatabaseClientForTests({pool:{query:(...a)=>db.query(...a),connect:async()=>({query:(...a)=>db.query(...a),release(){}})}});
