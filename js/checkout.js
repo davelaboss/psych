@@ -752,6 +752,13 @@ function displayOrder(
   const main =
     document.querySelector('main');
 
+  if(order.ownerRetention?.kind==='NO_CASH_OWNER_RETENTION'){
+    main.innerHTML=`<section class="order-shell"><h1>Retención personal</h1><p>${escapeHtml(order.id)}</p>
+      <section class="checkout-card" role="status"><p>Los artículos fueron retenidos por David y María. No hubo intercambio real de dinero, venta a cliente ni entrega.</p>
+      <p>No realices una transferencia. El registro original se conserva como historial.</p></section></section>`;
+    return;
+  }
+
   if (order.status === 'CANCELLED') {
     const cancellationMessage = order.cancelledBy === 'CUSTOMER'
       ? 'Cancelaste este pedido. Los artículos fueron liberados y ya no están reservados para vos.'

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { liquidationPrice, newPurchaseTerms, withCartPricing } from './liquidation.mjs';
 import { withPublicPurchaseAvailability } from './purchase-eligibility.mjs';
 import { applyOwnerWithdrawal } from './owner-withdrawal.mjs';
+import { ownerRetentionProduct, isOwnerRetainedOrder } from './owner-retention-core.mjs';
 import { dispatchSellerNotificationsSafely } from './seller-notifications.mjs';
 
 export const SALES_OPEN_AT =
@@ -444,6 +445,7 @@ export async function loadCatalog(origin, dependencies = {}) {
       }
     )
     .map(product => applyOwnerWithdrawal(product, committedInventory.get(product.id)))
+    .map(product => ownerRetentionProduct(product, committedInventory.get(product.id)))
     .map(correctItem054058DefectNote)
     .sort(
       (a, b) =>
@@ -633,6 +635,8 @@ export function publicOrder(order) {
     updatedAt: order.updatedAt,
 
     status: order.status,
+    ...(isOwnerRetainedOrder(order) ? { ownerRetention: {kind:order.ownerRetention.kind,
+      correctionId:order.ownerRetention.correctionId,recordedAt:order.ownerRetention.recordedAt} } : {}),
     cancelledBy: order.cancelledBy || null,
 
     buyer: {

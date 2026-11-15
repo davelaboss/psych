@@ -1,6 +1,7 @@
 import { timingKeyForItem, timingLabel } from './fulfillment-batches-core.mjs';
 import { withPaymentState } from './order-payments.mjs';
 import { itemPaymentEligibility } from './item-payment-eligibility.mjs';
+import { isOwnerRetainedOrder } from './owner-retention-core.mjs';
 
 export const SCHEDULABLE_ORDER_STATUSES = Object.freeze([
   'AWAITING_INITIAL_PAYMENT', 'RECEIPT_RECEIVED', 'VERIFYING_PAYMENT',
@@ -9,6 +10,7 @@ export const SCHEDULABLE_ORDER_STATUSES = Object.freeze([
 ]);
 
 export function orderSchedulingEligible(order, now = Date.now()) {
+  if(isOwnerRetainedOrder(order))return false;
   if (!SCHEDULABLE_ORDER_STATUSES.includes(order?.status) || order.reservationState === 'EXPIRED') return false;
   // Booking never renews an unpaid hold. Protected/committed orders have no deadline.
   return order.status !== 'AWAITING_INITIAL_PAYMENT' || !order.holdExpiresAt ||
@@ -53,7 +55,7 @@ export function deriveOrderFulfillmentParts(order, decisions = []) {
     const itemEligibility = part.items.map(item => ({ ...funding.get(item.productId),
       schedulingEligible: orderSchedulingEligible(current) && Boolean(funding.get(item.productId)?.schedulingEligible) }));
     const handoverEligible = current.status !== 'CANCELLED' && itemEligibility.every(item => item.handoverEligible);
-    const status = current.status === 'CANCELLED' ? 'CANCELLED' : handoverEligible ? 'READY_FOR_PICKUP' :
+    const status = isOwnerRetainedOrder(current) ? 'OWNER_RETAINED' : current.status === 'CANCELLED' ? 'CANCELLED' : handoverEligible ? 'READY_FOR_PICKUP' :
       part.timingKey === 'IMMEDIATE' ? 'WAITING_FOR_CURRENT_PAYMENT' : 'WAITING_FOR_FINAL_PAYMENT';
     return {
       ...part,

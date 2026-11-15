@@ -1,4 +1,5 @@
 import { getDatabase } from '@netlify/database';
+import {isOwnerRetainedOrder} from './owner-retention-core.mjs';
 import { createHash } from 'node:crypto';
 import {
   applyPaymentConfirmation,
@@ -311,9 +312,10 @@ export async function synchronizeOrderProjection(orderId, writer) {
     return row.order_snapshot;
   });
 }
-async function orderLock(client, orderId) {
+async function orderLock(client, orderId, {allowRetention=false} = {}) {
   const row = (await client.query('SELECT * FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
   if (!row) return null;
+  if(!allowRetention&&isOwnerRetainedOrder(row.order_snapshot))throw fail('Retención personal cerrada. El historial no admite cambios.');
   const rows = (await client.query("SELECT * FROM inventory_reservations WHERE order_id=$1 AND phase IN ('ORDER','COMMITTED') ORDER BY product_id", [orderId])).rows;
   const products = await productLocks(client, rows.map(item => item.product_id));
   return { row, rows, products };
@@ -374,7 +376,7 @@ async function reclaimExpiredOrderLocked(client, locked, timestamp) {
 
 export async function refreshOrderReservation(orderId) {
   return inventoryTransaction(async client => {
-    const locked = await orderLock(client, orderId);
+    const locked = await orderLock(client, orderId, {allowRetention:true});
     if (!locked) return null;
     return reclaimExpiredOrderLocked(client, locked, await now(client));
   });
@@ -615,7 +617,14 @@ export async function listOrderSnapshots() {
 
 export async function readCommittedInventory() {
   const rows = (await database().pool.query(
-    "SELECT product_id,capacity,committed_quantity,to_jsonb(operational_inventory)->'owner_withdrawal' AS owner_withdrawal FROM operational_inventory"
+    `SELECT product_id,capacity,committed_quantity,to_jsonb(operational_inventory)->'owner_withdrawal' AS owner_withdrawal,
+      COALESCE((SELECT sum(CASE WHEN item->>'quantity'='1' THEN 1 ELSE 0 END)
+        FROM checkout_attempts a CROSS JOIN LATERAL jsonb_array_elements(COALESCE(a.order_snapshot->'ownerRetention'->'items','[]'::jsonb)) item
+        WHERE a.order_id='VM-2026-514DA2AA'
+          AND a.order_snapshot->'ownerRetention'->>'kind'='NO_CASH_OWNER_RETENTION'
+          AND a.order_snapshot->'ownerRetention'->>'correctionId'='owner-retention-VM-2026-514DA2AA-v1'
+          AND item->>'productId'=operational_inventory.product_id),0) AS owner_retained_quantity
+      FROM operational_inventory`
   )).rows;
   return new Map(rows.map(row => [row.product_id, row]));
 }

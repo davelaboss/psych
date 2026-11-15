@@ -597,6 +597,8 @@ export default async function handler(request) {
           return {
             ...authoritative,
             ...(live?.ownerWithdrawal ? { status: 'UNLISTED', ownerWithdrawal: live.ownerWithdrawal } : {}),
+            ...(live?.quantityOwnerRetained ? { status:live.status,quantitySold:live.quantitySold,
+              quantityOwnerRetained:live.quantityOwnerRetained } : {}),
 
             published:
               Boolean(live) && live.status !== 'UNLISTED' && !(decision && live.status === 'NEEDS_REVIEW'),
@@ -653,6 +655,8 @@ export default async function handler(request) {
         ...normalizeLiveOnly(live),
         published: live.status !== 'UNLISTED',
         ...(live.ownerWithdrawal ? { ownerWithdrawal: live.ownerWithdrawal } : {}),
+        ...(live.quantityOwnerRetained ? {quantityOwnerRetained:live.quantityOwnerRetained,
+          quantitySold:live.quantitySold,status:live.status} : {}),
 
         live: {
           id: live.id,

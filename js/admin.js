@@ -469,10 +469,16 @@ async function loadAdminDashboard() {
 }
 
 
+function adminIsOwnerRetention(order) {
+  return order?.id==='VM-2026-514DA2AA' && order.ownerRetention?.kind==='NO_CASH_OWNER_RETENTION' &&
+    order.ownerRetention.correctionId==='owner-retention-VM-2026-514DA2AA-v1';
+}
+
 function buildAdminStats(
   orders,
   products
 ) {
+  orders=orders.filter(order=>!adminIsOwnerRetention(order));
   const published =
     products.filter(
       (product) =>
@@ -2236,7 +2242,9 @@ function renderLegacyProductRow(
   product
 ) {
   const publicState =
-    product.ownerWithdrawal
+    product.quantityOwnerRetained
+      ? `<span class="admin-pill">Retención personal: ${Number(product.quantityOwnerRetained)} · ${product.live?.status==='AVAILABLE'?'Otras unidades conservan su disponibilidad':'NO LONGER FOR SALE'}</span>`
+      : product.ownerWithdrawal
       ? '<span class="admin-pill">Retirado de la venta · NO LONGER FOR SALE</span>'
       : product.published
       ? `
@@ -2544,6 +2552,7 @@ function renderLegacyProductDetail(
       }
 
       <section class="admin-withdrawal" aria-label="Retirar de la venta">
+        ${product.quantityOwnerRetained ? `<p role="status">Unidades retenidas por David y María: ${Number(product.quantityOwnerRetained)}. No son ventas ni entregas. Las demás unidades conservan sus compromisos y disponibilidad.</p>` : ''}
         ${product.ownerWithdrawal
           ? `<p role="status"><strong>Retirado de la venta · NO LONGER FOR SALE.</strong> Acción del propietario registrada el ${adminEscape(new Date(product.ownerWithdrawal.recordedAt).toLocaleString('es-PY', { timeZone: 'America/Asuncion' }))}. Sin venta ni entrega.</p>`
           : product.live?.status === 'AVAILABLE' ? `<button type="button" class="secondary-action" data-withdraw-product>Retirar de la venta</button>
@@ -4509,17 +4518,22 @@ function fulfillmentBatchesForFilter(filter = ADMIN_STATE.fulfillmentFilter) {
 
 
 function renderFulfillmentBatchSheet(batch, printable = printableFulfillmentBatches()) {
+  if(batch.status==='CLOSED_OWNER_WITHDRAWAL')return `<article class="buyer-sheet"><h2>Retención personal — cerrada sin entrega</h2>
+    <p>Los artículos fueron retenidos por David y María. No hubo intercambio real de dinero, venta a cliente ni entrega.</p>
+    <p>Lote ${adminEscape(batch.fulfillmentBatchId)} · revisión ${Number(batch.revision)}</p>
+    <ul>${batch.items.map(i=>`<li>${adminEscape(adminFormatItem(i.itemNumber))} · ${adminEscape(i.title)} · Cantidad ${Number(i.quantity)}</li>`).join('')}</ul>
+    <p>El historial original se conserva. Esta planilla no admite acciones de entrega ni cambios.</p></article>`;
   const combineTargets = printable.filter((candidate) =>
     candidate.fulfillmentBatchId !== batch.fulfillmentBatchId &&
     candidate.buyerGroupId === batch.buyerGroupId &&
     candidate.timingKey === batch.timingKey &&
-    candidate.status !== 'DELIVERED'
+    candidate.status !== 'DELIVERED' && candidate.status !== 'CLOSED_OWNER_WITHDRAWAL'
   );
   const hasDifferentTimingForBuyer = printable.some(candidate =>
     candidate.fulfillmentBatchId !== batch.fulfillmentBatchId &&
     candidate.buyerGroupId === batch.buyerGroupId &&
     candidate.timingKey !== batch.timingKey &&
-    candidate.status !== 'DELIVERED');
+    candidate.status !== 'DELIVERED' && candidate.status !== 'CLOSED_OWNER_WITHDRAWAL');
   return `
   <article class="buyer-sheet" data-fulfillment-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
     <header>
@@ -4691,6 +4705,7 @@ function fulfillmentStatusLabel(status) {
     PREPARED: 'Preparado',
     DELIVERED: 'Entregado',
     LEGACY_FROZEN: 'Histórico congelado',
+    CLOSED_OWNER_WITHDRAWAL: 'Retención personal — cerrada sin entrega',
   })[status] || status;
 }
 
@@ -4996,7 +5011,7 @@ function renderOrdersTab({ preserveDetails = false } = {}) {
                   <span>
                     ${order.status === 'AWAITING_INITIAL_PAYMENT' && order.holdExpiresAt
                       ? `Esperando transferencia - reservado hasta ${adminEscape(adminOrderDeadline(order.holdExpiresAt))}`
-                      : adminStatus(order.status)}
+                      : adminIsOwnerRetention(order) ? 'Retención personal — sin dinero ni entrega' : adminStatus(order.status)}
                   </span>
                 </div>
 
@@ -5340,6 +5355,7 @@ function adminOrderSearchText(order) {
 
 
 function adminOrderMatchesFilter(order, filter) {
+  if(adminIsOwnerRetention(order))return filter==='ALL';
   const status = order.status;
 
   const groups = {
@@ -5478,6 +5494,18 @@ function renderAdminOrderDetail(
   order,
   target
 ) {
+  if(adminIsOwnerRetention(order)){
+    target.innerHTML=`<section class="admin-detail-card" role="status"><h2>Retención personal — sin dinero ni entrega</h2>
+      <p>${adminEscape(order.id)} · Los cuatro artículos fueron retenidos por David y María. No hubo intercambio real de dinero.</p>
+      <ul>${(order.items||[]).map(i=>`<li>${adminEscape(adminFormatItem(i.itemNumber))} · ${adminEscape(i.title)} · Cantidad ${Number(i.quantity)}</li>`).join('')}</ul>
+      <h3>Evidencia histórica conservada</h3>
+      <p>Los siguientes importes son registros originales; no representan dinero realmente recibido o devuelto.</p>
+      <ul>${(order.payments||[]).map(p=>`<li>Pago registrado originalmente: ${adminMoney(p.amountPYG)} · ${adminEscape(p.id)}</li>`).join('')}
+      ${(order.paymentAdjustments||[]).map(a=>`<li>Ajuste registrado originalmente: ${adminMoney(a.amountPYG)} · ${adminEscape(a.id)} · ${adminEscape(a.internalNote||'')}</li>`).join('')}</ul>
+      <p>Corrección: ${adminEscape(order.ownerRetention.correctionId)} · Aprobación: ${adminEscape(order.ownerRetention.approvalReference||'')}.</p>
+      <p>Fotos, comprobantes y auditoría original se conservan. El lote está cerrado sin entrega.</p></section>`;
+    return;
+  }
   const fulfillmentParts = Array.isArray(order.fulfillments) && order.fulfillments.length
     ? order.fulfillments
     : [{ timingKey: 'IMMEDIATE', timingLabel: 'Retiro', items: order.items || [],

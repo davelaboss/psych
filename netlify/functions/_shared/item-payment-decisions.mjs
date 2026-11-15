@@ -1,4 +1,5 @@
 import { requirePickupWrites } from './pickup-write-control.mjs';
+import { isOwnerRetainedOrder } from './owner-retention-core.mjs';
 import { randomUUID } from 'node:crypto';
 import { database, inventoryTransaction, snapshotWithReservation } from './inventory-database.mjs';
 import { orderSchedulingEligible } from './order-fulfillments.mjs';
@@ -28,6 +29,7 @@ export async function appendItemPaymentDecision(orderId, input, dependencies = {
     const row = (await client.query('SELECT * FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
     if (!row) throw Object.assign(new Error('Pedido no encontrado.'), { status: 404 });
     const order = row.order_snapshot;
+    if(isOwnerRetainedOrder(order))throw fail('Retención personal cerrada. No admite decisiones de pago.');
     const events = await readItemPaymentDecisions(orderId, client);
     const id = input.id || randomUUID();
     if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw fail('Identificador de decisión inválido.');
