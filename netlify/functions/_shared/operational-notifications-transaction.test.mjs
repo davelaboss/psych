@@ -50,12 +50,13 @@ test.before(async () => {
   db = new PGlite();
   for (const migration of ['20261001_operational_inventory', '20261002_cart_extension',
     '20261004_order_reservation_events', '20261005_pickup_notifications',
-    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts']) {
+    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts', '20261114_item_payment_pickup']) {
     await db.exec(await readFile(new URL(`../../database/migrations/${migration}.sql`, import.meta.url), 'utf8'));
   }
 });
 
 test.beforeEach(async () => {
+  await db.exec('ALTER TABLE item_payment_decisions DISABLE TRIGGER item_payment_decisions_no_truncate');
   await db.exec('TRUNCATE cart_sessions,operational_inventory RESTART IDENTITY CASCADE');
   pickupClockFrozen = false;
   query = queryWithPickupClock;
@@ -210,7 +211,7 @@ test('payment transactions preserve partial, satisfied-deposit, additional-insta
     assert.equal(row.subject, `${subject} · ${order.id}`);
     assert.match(row.message, new RegExp(`Pagado confirmado: Gs\\. ${total.toLocaleString('es-PY').replaceAll('.', '\\.')}\\nSaldo pendiente: Gs\\. ${remaining.toLocaleString('es-PY').replaceAll('.', '\\.')}`));
     assert.doesNotMatch(row.message, /INTERNAL-SECRET|administrativ|Acción requerida|David,/);
-    if (remaining) assert.doesNotMatch(row.message, /pago total/i);
+    if (remaining) assert.doesNotMatch(row.message, /Confirmamos el pago total/i);
   }
   assert.equal((await rows('SELECT committed_quantity FROM operational_inventory'))[0].committed_quantity, 1);
   assert.equal((await rows("SELECT * FROM seller_notifications WHERE event_type='PAYMENT_CONFIRMED'")).length, 4);
@@ -225,6 +226,12 @@ test('failed payment validation commits neither a notification nor a payment cha
   assert.deepEqual(await rows(), before);
   assert.equal((await rows('SELECT order_snapshot FROM checkout_attempts'))[0].order_snapshot.payments[0].verificationStatus, 'PENDING');
 });
+
+async function legacyBooking(orderId, slotKey) {
+  await db.query('INSERT INTO pickup_windows(slot_key) VALUES($1) ON CONFLICT DO NOTHING',[slotKey]);
+  await db.query(`INSERT INTO pickup_appointments(order_id,timing_key,slot_key,status,changed_by)
+    VALUES($1,'IMMEDIATE',$2,'SCHEDULED','CUSTOMER')`,[orderId,slotKey]);
+}
 
 async function scheduledOrder() {
   const { order } = await created();
@@ -244,6 +251,15 @@ for (const delayed of [false, true]) for (const actor of ['CUSTOMER', 'ADMIN']) 
       const current = await getOrderSnapshot(order.id);
       const [part] = deriveOrderFulfillmentParts(current);
       const keys = pickupSlotKeys(current, part.timingKey, '2026-11-02', '00:00');
+      if (amount < (delayed ? 25_000 : 100_000)) {
+        assert.deepEqual(keys, []);
+        const before = await rows('SELECT * FROM checkout_attempts');
+        await assert.rejects(changePickup({ orderId: order.id, timingKey: part.timingKey,
+          slotKey: delayed ? '2026-12-09|08:00-09:00' : '2026-11-03|08:00-09:00', actor }), /Admin debe confirmar/);
+        assert.deepEqual(await rows('SELECT * FROM checkout_attempts'), before);
+        assert.equal((await rows('SELECT * FROM pickup_appointments')).length, 0);
+        return;
+      }
       assert.ok(keys.length > 1);
       const tables = ['checkout_attempts', 'inventory_reservations', 'operational_inventory'];
       const state = () => Promise.all(tables.map(table => rows(`SELECT * FROM ${table}`)));
@@ -275,27 +291,28 @@ test('expired and cancelled unpaid orders cannot book or retain capacity; schedu
   const cancelled = await created();
   const change = (id, key = slotKey) => changePickup({ orderId: id, timingKey: 'IMMEDIATE', slotKey: key, actor: 'CUSTOMER' },
     { slotKeys: () => [slotKey] });
-  await change(expired.order.id);
-  await change(cancelled.order.id);
+  await legacyBooking(expired.order.id, slotKey);
+  await legacyBooking(cancelled.order.id, slotKey);
   await cancelOrder(cancelled.order.id);
   await query("UPDATE checkout_attempts SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [expired.order.id]);
   const before = await rows('SELECT * FROM checkout_attempts ORDER BY order_id');
   for (const { order } of [expired, cancelled]) {
-    await assert.rejects(change(order.id), /no está activo/); // Includes same-slot retry.
-    await assert.rejects(changePickup({ orderId: order.id, timingKey: 'IMMEDIATE', slotKey, actor: 'ADMIN' }), /no está activo/);
+    await assert.rejects(change(order.id), /Admin debe confirmar/); // Includes same-slot retry.
+    await assert.rejects(changePickup({ orderId: order.id, timingKey: 'IMMEDIATE', slotKey, actor: 'ADMIN' }), /Admin debe confirmar/);
   }
   assert.deepEqual(await rows('SELECT * FROM checkout_attempts ORDER BY order_id'), before);
   const active = await created();
+  await pay(active.order.id, 100_000);
   const slots = await pickupAvailability(await getOrderSnapshot(active.order.id), 'IMMEDIATE');
   assert.equal(slots.find(slot => slot.key === slotKey).remaining, 4);
   assert.deepEqual(await listUpcomingPickups(), []);
   // Existing cancellation remains available even after an unpaid appointment.
-  await change(active.order.id);
-  await cancelOrder(active.order.id);
-  assert.equal((await getOrderSnapshot(active.order.id)).status, 'CANCELLED');
+  await change(expired.order.id, null);
+  await cancelOrder(expired.order.id);
+  assert.equal((await getOrderSnapshot(expired.order.id)).status, 'CANCELLED');
 });
 
-test('Sale Pulse counts unpaid active timing parts and excludes expired, cancelled and delivered parts', async t => {
+test('Sale Pulse counts payment-eligible timing parts and excludes unpaid, expired, cancelled and delivered parts', async t => {
   freezePickupClock(t);
   const unpaid = await created();
   const delayed = await created('buyer@example.com', true);
@@ -307,16 +324,17 @@ test('Sale Pulse counts unpaid active timing parts and excludes expired, cancell
   const load = () => loadSalePulseSnapshot('https://example.com', {
     loadProducts: async () => [],
     query: async (sql, params) => {
-      if (sql.includes('FROM checkout_attempts') || sql.includes('FROM pickup_appointments')) return query(sql, params);
+      if (sql.includes('FROM checkout_attempts') || sql.includes('FROM pickup_appointments') || sql.includes('FROM item_payment_decisions')) return query(sql, params);
       if (sql.includes('FROM fulfillment_batch_items')) return { rows: [{ order_id: delivered.order.id, timing_key: 'IMMEDIATE', all_delivered: true }] };
       return { rows: [] };
     },
   });
-  assert.equal((await load()).operations.eligiblePickupsUnscheduled, 2);
+  assert.equal((await load()).operations.eligiblePickupsUnscheduled, 0);
+  await pay(delayed.order.id, 25_000, 'DEPOSIT');
   const [part] = deriveOrderFulfillmentParts(delayed.order);
   await changePickup({ orderId: delayed.order.id, timingKey: part.timingKey, slotKey: '2026-12-09|08:00-09:00', actor: 'ADMIN' });
   const after = await load();
-  assert.equal(after.operations.eligiblePickupsUnscheduled, 1);
+  assert.equal(after.operations.eligiblePickupsUnscheduled, 0);
   assert.equal(after.operations.scheduledPickupsPending, 1);
   assert.equal((await getOrderSnapshot(unpaid.order.id)).payments.length, 0);
 });
@@ -324,7 +342,7 @@ test('Sale Pulse counts unpaid active timing parts and excludes expired, cancell
 test('independent reservation renewal never resurrects its expired appointment', async t => {
   freezePickupClock(t);
   const { order } = await created();
-  await changePickup({ orderId: order.id, timingKey: 'IMMEDIATE', slotKey: '2026-11-03|08:00-09:00', actor: 'CUSTOMER' });
+  await legacyBooking(order.id, '2026-11-03|08:00-09:00');
   await query("UPDATE checkout_attempts SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [order.id]);
   await query("UPDATE inventory_reservations SET expires_at=clock_timestamp()-interval '1 minute' WHERE order_id=$1", [order.id]);
   const result = await refreshOrderReservation(order.id);
@@ -340,12 +358,17 @@ test('an unpaid hold expiring while waiting for the date lock cannot save a repl
   freezePickupClock(t);
   const { order } = await created();
   const original = '2026-11-03|08:00-09:00', replacement = '2026-11-03|09:00-10:00';
-  await changePickup({ orderId: order.id, timingKey: 'IMMEDIATE', slotKey: original, actor: 'CUSTOMER' });
+  await legacyBooking(order.id, original);
+  // An explicit zero-threshold Item agreement permits the expiry safeguard
+  // to be exercised independently of the new payment threshold.
+  await db.query(`INSERT INTO item_payment_decisions(id,order_id,kind,product_id,scheduling_required_pyg,collection_required_pyg,actor,note)
+    VALUES($1,$2,'REQUIREMENT',$3,0,100000,'ADMIN','Synthetic agreement')`, [randomUUID(),order.id,order.items[0].productId]);
+  const decisions = (await db.query('SELECT * FROM item_payment_decisions WHERE order_id=$1',[order.id])).rows;
   const before = await rows('SELECT * FROM pickup_appointments');
   const notices = await rows();
   const expiry = Number(order.holdExpiresAt);
   t.mock.timers.setTime(expiry - 1);
-  assert.ok(pickupSlotKeys(order, 'IMMEDIATE').includes(replacement));
+  assert.ok(pickupSlotKeys(order, 'IMMEDIATE', undefined, undefined, decisions).includes(replacement));
   let waitedForDateLock = false;
   query = async (sql, params) => {
     const result = await queryWithPickupClock(sql, params);
@@ -775,7 +798,8 @@ test('administrative-looking historical rows without the complete new envelope r
 
 test('each pickup email retries independently when only its provider request fails', async () => {
   for (const failAgenda of [false, true]) {
-    await db.exec('TRUNCATE cart_sessions,operational_inventory RESTART IDENTITY CASCADE');
+    await db.exec('ALTER TABLE item_payment_decisions DISABLE TRIGGER item_payment_decisions_no_truncate');
+  await db.exec('TRUNCATE cart_sessions,operational_inventory RESTART IDENTITY CASCADE');
     const { change } = await scheduledOrder();
     await change(slots[0]);
     await db.exec("DELETE FROM seller_notifications WHERE event_type NOT LIKE 'PICKUP_%'");
@@ -895,7 +919,8 @@ test('scheduled backlog worker advances past failed older messages and retries b
 
 test('scheduled backlog worker recovers durable pickup messages after a transient database failure', async () => {
   for (const failurePoint of ['FROM order_reservation_events', 'SELECT * FROM seller_notifications']) {
-    await db.exec('TRUNCATE cart_sessions,operational_inventory RESTART IDENTITY CASCADE');
+    await db.exec('ALTER TABLE item_payment_decisions DISABLE TRIGGER item_payment_decisions_no_truncate');
+  await db.exec('TRUNCATE cart_sessions,operational_inventory RESTART IDENTITY CASCADE');
     await pickupBehindBacklog(3);
     const calls = mockProvider();
     await dispatchSellerNotificationsSafely();

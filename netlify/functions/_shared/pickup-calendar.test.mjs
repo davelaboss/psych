@@ -14,21 +14,22 @@ const clock = Date.parse('2026-11-01T12:00:00Z');
 test.before(async () => {
   db = new PGlite();
   for (const name of ['20261001_operational_inventory', '20261005_pickup_notifications',
-    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts']) {
+    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts', '20261114_item_payment_pickup']) {
     await db.exec(await readFile(new URL(`../../database/migrations/${name}.sql`, import.meta.url), 'utf8'));
   }
   setInventoryDatabaseClientForTests({ pool: { query: (...args) => db.query(...args),
     connect: async () => ({ query: (...args) => db.query(...args), release() {} }) } });
 });
 test.beforeEach(t => t.mock.timers.enable({ apis: ['Date'], now: clock }));
-test.beforeEach(async () => { await db.exec('TRUNCATE cart_sessions,pickup_blackouts,pickup_windows CASCADE'); });
+test.beforeEach(async () => { await db.exec('ALTER TABLE item_payment_decisions DISABLE TRIGGER item_payment_decisions_no_truncate');
+  await db.exec('TRUNCATE cart_sessions,pickup_blackouts,pickup_windows CASCADE'); });
 test.after(async () => { setInventoryDatabaseClientForTests(undefined); await db.close(); });
 
 async function fixture(slotKey, { legacy = false, name = 'Comprador sintético' } = {}) {
   const id = `VM-SYNTHETIC-${randomUUID()}`, session = randomUUID();
   const order = { id, status: 'PAID_IN_FULL', buyer: { name, phone: '+595 000 123' },
     totals: { totalPYG: 100, dueNowPYG: 100, futureBalancePYG: 0 },
-    items: [{ productId: 'synthetic', itemNumber: 381, quantity: 1, saleMode: 'IMMEDIATE', unitPricePYG: 100, dueNowPYG: 100 }],
+    items: [{ productId: 'synthetic', itemNumber: 381, quantity: 1, saleMode: 'IMMEDIATE', unitPricePYG: 100, dueNowPYG: 100, futureBalancePYG: 0 }],
     payments: [{ id: 'paid', type: 'FULL', amountPYG: 100, amountSource: 'ADMIN_VERIFIED',
       verifiedBy: 'ADMIN', verificationStatus: 'CONFIRMED' }], paymentAdjustments: [] };
   await db.query('INSERT INTO cart_sessions(session_id) VALUES($1)', [session]);

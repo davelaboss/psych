@@ -156,6 +156,7 @@ function transitionClient({
   revision = 4,
   preparedAt = '2026-09-20T10:00:00.000Z',
   mergedIntoBatchId = null,
+  paymentAmount = 100,
 }) {
   const batchId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const itemRows = [{ order_id: 'ORDER-1', product_id: 'item-062' }];
@@ -179,6 +180,10 @@ function transitionClient({
       queries.push({ sql, params });
       if (sql.includes('SELECT * FROM fulfillment_batches')) return { rows: [batch] };
       if (sql.includes('SELECT order_id,product_id')) return { rows: itemRows };
+      if (sql.includes('SELECT * FROM checkout_attempts')) return { rows: [{order_snapshot:{status:'PAYMENT_CONFIRMED',
+        items:[{productId:'item-062',saleMode:'IMMEDIATE',dueNowPYG:100,futureBalancePYG:0}],
+        payments:[{id:'paid',amountPYG:paymentAmount,amountSource:'ADMIN_VERIFIED',verifiedBy:'ADMIN',verificationStatus:'CONFIRMED'}]}}] };
+      if (sql.includes('FROM item_payment_decisions')) return {rows:[]};
       if (sql.includes('UPDATE fulfillment_batches SET')) {
         batch = {
           ...batch,
@@ -287,6 +292,12 @@ test('prepared delivery remains normal and does not receive historical audit con
   assert.equal(fixture.events.length, 1);
   assert.equal(fixture.events[0][0], 'DELIVER');
   assert.deepEqual(JSON.parse(fixture.events[0][6]), {});
+});
+test('current prepared delivery rejects an insufficient Item payment before changing the batch or its audit history',async()=>{
+  const fixture=transitionClient({status:'PREPARED',paymentAmount:25});
+  await assert.rejects(transitionBatch(fixture.client,{batchId:fixture.batchId,action:'DELIVER',expectedRevision:4}),/Antes de entregar/);
+  assert.equal(fixture.events.length,0);
+  assert.equal(fixture.queries.filter(({sql})=>/^\s*(?:INSERT|UPDATE|DELETE)\b/.test(sql)).length,0);
 });
 
 test('reopen accepts the current revision and restores open state', () => {

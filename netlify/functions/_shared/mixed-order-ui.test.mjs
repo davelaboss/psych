@@ -14,16 +14,16 @@ test('customer portal renders and schedules each fulfillment timing independentl
   assert.match(checkout, /Saldo posterior de estos artículos/);
   assert.match(checkout, /data-pickup-timing-key/);
   assert.match(checkout, /timingKey: form\.dataset\.pickupTimingKey/);
-  assert.match(checkout, /Agendamiento no disponible/);
+  assert.match(checkout, /Consultá la habilitación de cada artículo/);
   assert.match(checkout, /part\.schedulingEligible/);
 });
 
 test('customer and admin pickup endpoints preserve their existing authorization boundaries', () => {
   assert.match(customerPickup, /getAuthorizedOrder\(orderId, access\)/);
   assert.match(customerPickup, /fulfillments: await pickupFulfillments\(order\)/);
-  assert.match(customerPickup, /changePickup\(\{ orderId, timingKey, slotKey, actor: 'CUSTOMER' \}\)/);
+  assert.match(customerPickup, /changePickup\(\{ orderId, timingKey, slotKey, actor: 'CUSTOMER'/);
   assert.match(adminPickup, /adminAuthorized\(request\)/);
-  assert.match(adminPickup, /changePickup\(\{ orderId, timingKey, slotKey: params\.slotKey \|\| null, actor: 'ADMIN' \}\)/);
+  assert.match(adminPickup, /changePickup\(\{ orderId, timingKey, slotKey: params\.slotKey \|\| null, actor: 'ADMIN'/);
 });
 
 test('admin order detail separates fulfillment, money, grouping, pickup, and actions', () => {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { database, inventoryTransaction } from './inventory-database.mjs';
 import { ensureAllBuyerGroups } from './buyer-groups.mjs';
+import { requireCollectionPayments } from './item-payment-decisions.mjs';
 import {
   FULFILLMENT_LOCK,
   assertExpectedRevision,
@@ -245,6 +246,10 @@ export async function transitionBatch(client, {
   }
 
   const items = await affectedItems(client, batchId);
+  // PREPARED -> DELIVERED records a current collection. LEGACY_FROZEN's
+  // separate, explicitly confirmed action records a completed historical
+  // delivery; preserve that retrospective workflow and its evidence.
+  if (action === 'DELIVER' && batch.status === 'PREPARED') await requireCollectionPayments(client, items);
   const updated = (await client.query(`UPDATE fulfillment_batches SET
       status=$2,
       auto_attach=$3,

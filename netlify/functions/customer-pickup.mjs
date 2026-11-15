@@ -15,7 +15,8 @@ export default async function handler(request) {
       if (!slotKey) return jsonResponse({ error: 'Elegí un horario.' }, 400);
       const timingKey = String(params.timingKey || '').trim();
       if (!timingKey) return jsonResponse({ error: 'Falta el tipo de retiro.' }, 400);
-      await changePickup({ orderId, timingKey, slotKey, actor: 'CUSTOMER' });
+      await changePickup({ orderId, timingKey, slotKey, actor: 'CUSTOMER',
+        itemIds: params.itemIds, expectedRevision: params.expectedRevision });
       await dispatchSellerNotificationsSafely();
     }
     return jsonResponse({ ok: true, fulfillments: await pickupFulfillments(order) });

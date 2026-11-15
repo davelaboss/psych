@@ -18,7 +18,7 @@ test.before(async () => {
   process.env.ADMIN_TOKEN = 'synthetic-owner';
   browser = await chromium.launch({ headless: true }); db = new PGlite();
   for (const name of ['20261001_operational_inventory', '20261005_pickup_notifications', '20261006_notification_recipients',
-    '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts']) {
+    '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts', '20261114_item_payment_pickup']) {
     await db.exec(await readFile(new URL(`../../database/migrations/${name}.sql`, import.meta.url), 'utf8'));
   }
   setInventoryDatabaseClientForTests({ pool: { query: (...args) => db.query(...args),
@@ -30,13 +30,14 @@ test.after(async () => {
 });
 
 async function seed() {
+  await db.exec('ALTER TABLE item_payment_decisions DISABLE TRIGGER item_payment_decisions_no_truncate');
   await db.exec('TRUNCATE cart_sessions,pickup_blackouts,pickup_windows CASCADE');
   const orders = [];
   for (const [id, name, time] of [['VM-DEMO-001', 'Ana (demostración)', '09:00-10:00'], ['VM-DEMO-002', 'Bruno (demostración)', '08:00-12:00']]) {
     const session = randomUUID();
     const order = { id, createdAt: Date.parse('2026-11-01T12:00:00Z'), status: 'PAID_IN_FULL', buyer: { name, phone: id === 'VM-DEMO-001' ? '(0981) 123-456' : '+595 982 234 567', email: '' },
       totals: { totalPYG: 100000, dueNowPYG: 100000, futureBalancePYG: 0 },
-      items: [{ productId: 'synthetic', itemNumber: 381, title: 'Artículo de demostración', quantity: 1, saleMode: 'IMMEDIATE', unitPricePYG: 100000, dueNowPYG: 100000 }],
+      items: [{ productId: 'synthetic', itemNumber: 381, title: 'Artículo de demostración', quantity: 1, saleMode: 'IMMEDIATE', unitPricePYG: 100000, dueNowPYG: 100000, futureBalancePYG: 0 }],
       payments: [{ id: 'paid', type: 'FULL', amountPYG: 100000, amountSource: 'ADMIN_VERIFIED', verifiedBy: 'ADMIN', verificationStatus: 'CONFIRMED' }], paymentAdjustments: [] };
     orders.push(order);
     await db.query('INSERT INTO cart_sessions(session_id) VALUES($1)', [session]);

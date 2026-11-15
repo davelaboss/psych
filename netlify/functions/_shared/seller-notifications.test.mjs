@@ -153,7 +153,7 @@ test('full payment for immediate and delayed orders links directly to the pickup
     }, { paymentState: 'FULLY_PAID', verifiedAmountPYG: 100_000, previousConfirmedPaidPYG: 0 });
     assertEnvelope(text);
     assert.match(text, /Confirmamos el pago total de tu pedido VM-2026-TEST\./);
-    assert.match(text, /Podés elegir o cambiar el horario de retiro desde este enlace:/);
+    assert.match(text, /Consultá los artículos habilitados/);
     assertOneOrderAction(text, true);
   }
 });
@@ -184,8 +184,8 @@ test('mixed-order due-now confirmation links to the immediate scheduler without 
         dueNowPYG: 12_500, futureBalancePYG: 37_500 },
     ],
   }, { paymentState: 'DEPOSIT_SATISFIED', verifiedAmountPYG: 72_500, previousConfirmedPaidPYG: 0 });
-  assert.match(text, /retiros inmediatos y posteriores sin pago previo/);
-  assert.match(text, /Agendar no confirma pagos ni autoriza la entrega/);
+  assert.match(text, /Admin debe asignar el pago a cada artículo/);
+  assert.match(text, /Subir un comprobante no habilita el agendamiento/);
   assertOneOrderAction(text, true);
 });
 
