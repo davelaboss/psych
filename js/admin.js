@@ -1,4 +1,5 @@
 const ADMIN_SESSION_KEY = 'mudanza-admin-token';
+const ADMIN_COOKIE_SESSION = 'cookie-session';
 
 const ADMIN_STATE = {
   token: '',
@@ -43,23 +44,25 @@ window.addEventListener('load', function () {
 });
 
 
-function renderAdmin() {
+async function renderAdmin() {
   document.title =
     'Panel vendedor | Venta de Mudanza';
 
-  const token =
-    sessionStorage.getItem(
-      ADMIN_SESSION_KEY
-    );
-
-  if (!token) {
-    renderAdminLogin();
-    return;
+  // Remove the former per-tab plaintext credential. Existing users authenticate
+  // once after deployment; only the server's HttpOnly cookie persists afterward.
+  sessionStorage.removeItem(ADMIN_SESSION_KEY);
+  try {
+    await adminFetch('/api/admin/session');
+    ADMIN_STATE.token = ADMIN_COOKIE_SESSION;
+    await loadAdminDashboard();
+  } catch (error) {
+    if (error.status === 401) renderAdminLogin();
+    else {
+      const main = document.querySelector('main');
+      main.innerHTML = '<section class="checkout-shell"><p role="alert">No se pudo comprobar la sesión. Intentá nuevamente.</p><button type="button" id="admin-retry-session" class="secondary-action">Reintentar</button></section>';
+      document.getElementById('admin-retry-session').addEventListener('click', renderAdmin);
+    }
   }
-
-  ADMIN_STATE.token = token;
-
-  loadAdminDashboard();
 }
 
 
@@ -101,6 +104,12 @@ function renderAdminLogin() {
           >
         </label>
 
+        <label class="admin-editor-checkbox">
+          <input type="checkbox" name="rememberMe">
+          <span>Mantener sesión iniciada</span>
+        </label>
+        <p>Hasta 30 días en un dispositivo de confianza. Sin marcar: 12 horas.</p>
+
         <p
           id="admin-login-error"
           class="form-error"
@@ -123,10 +132,11 @@ function renderAdminLogin() {
       'submit',
       async function (event) {
         event.preventDefault();
+        const form = event.currentTarget;
 
         const data =
           new FormData(
-            event.currentTarget
+            form
           );
 
         const token =
@@ -140,15 +150,11 @@ function renderAdminLogin() {
           );
 
         try {
-          await fetchAdminOrders(token);
-
-          sessionStorage.setItem(
-            ADMIN_SESSION_KEY,
-            token
-          );
-
-          ADMIN_STATE.token =
-            token;
+          await adminFetch('/api/admin/session', { method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'login', token, rememberMe: data.get('rememberMe') === 'on' }) });
+          form.querySelector('[name="token"]').value = '';
+          ADMIN_STATE.token = ADMIN_COOKIE_SESSION;
 
           await loadAdminDashboard();
         } catch (error) {
@@ -173,16 +179,14 @@ async function adminFetch(
       options.headers || {}
     );
 
-  headers.set(
-    'x-admin-token',
-    ADMIN_STATE.token
-  );
+  if (ADMIN_STATE.token && ADMIN_STATE.token !== ADMIN_COOKIE_SESSION) headers.set('x-admin-token', ADMIN_STATE.token);
 
   const response =
     await fetch(
       url,
       {
         ...options,
+        credentials: 'same-origin',
         headers,
         cache:
           options.cache ||
@@ -213,10 +217,10 @@ async function adminFetch(
     await response.json();
 
   if (!response.ok) {
-    throw new Error(
+    throw Object.assign(new Error(
       data.error ||
       'No se pudo completar la operación.'
-    );
+    ), { status: response.status });
   }
 
   return data;
@@ -240,12 +244,13 @@ async function fetchAdminOrders(
   request.promise = (async () => {
     try {
       const response = await fetch('/api/admin/orders', {
-        headers: { 'x-admin-token': token },
+        headers: token && token !== ADMIN_COOKIE_SESSION ? { 'x-admin-token': token } : {},
+        credentials: 'same-origin',
         cache: 'no-store',
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'No se pudieron cargar los pedidos.');
+        throw Object.assign(new Error(data.error || 'No se pudieron cargar los pedidos.'), { status: response.status });
       }
       if (!Array.isArray(data.orders)) throw new Error('Respuesta de pedidos inválida.');
       const orders = data.orders;
@@ -407,10 +412,7 @@ async function loadAdminDashboard() {
     renderAdminShell();
   } catch (error) {
     if (
-      error instanceof Error &&
-      /no autorizado/i.test(
-        error.message
-      )
+      error.status === 401
     ) {
       sessionStorage.removeItem(
         ADMIN_SESSION_KEY
@@ -604,6 +606,7 @@ function renderAdminShell() {
           >
             Cerrar sesión
           </button>
+          <button id="admin-revoke-sessions" class="text-action" type="button">Cerrar todas las sesiones</button>
         </div>
       </header>
 
@@ -692,16 +695,10 @@ function renderAdminShell() {
     )
     ?.addEventListener(
       'click',
-      function () {
-        sessionStorage.removeItem(
-          ADMIN_SESSION_KEY
-        );
-
-        ADMIN_STATE.token = '';
-
-        renderAdminLogin();
-      }
+      () => logoutAdmin()
     );
+
+  document.getElementById('admin-revoke-sessions')?.addEventListener('click', () => logoutAdmin(true));
 
   document
     .getElementById(
@@ -6378,6 +6375,19 @@ async function recordAdminPostSaleAdjustment(event, orderId) {
   }
 }
 
+
+async function logoutAdmin(all = false) {
+  if (all && !window.confirm('¿Cerrar todas las sesiones de Admin, incluida esta?')) return;
+  try {
+    await adminFetch('/api/admin/session', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: all ? 'revoke-all' : 'logout' }) });
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    ADMIN_STATE.token = '';
+    ADMIN_STATE.orders = [];
+    ADMIN_STATE.inventory = [];
+    renderAdminLogin();
+  } catch (error) { window.alert(error.message || 'No se pudo cerrar la sesión. Intentá nuevamente.'); }
+}
 
 function exportAdminInventory() {
   const payload = {

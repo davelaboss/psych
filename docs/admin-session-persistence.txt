@@ -1,0 +1,88 @@
+ADMIN SESSION PERSISTENCE — DEVELOPMENT / GOVERNANCE REVIEW ONLY
+Base: 8b4f7da401757c81302dfecce3c34e00a7676691
+
+VERIFIED FINDINGS
+The deployed Netlify Admin stores the owner's reusable credential under
+mudanza-admin-token in sessionStorage, then sends x-admin-token on each request.
+The server compares it with ADMIN_TOKEN. There is no session record, expiring
+cookie, refresh flow, or ten-minute server timeout in this deployed path. Browser
+sessionStorage belongs to one tab and is lost when that tab closes; a new or
+reopened tab can therefore ask for login. David confirmed the symptom follows
+reopening/switching tabs. This establishes the persistence defect; the precise
+reported ten-minute cadence has not been independently reproduced. Switching
+back to the exact same surviving tab alone should not clear sessionStorage.
+
+IMPLEMENTATION
+Retain the existing owner credential and server authorization boundaries. Exchange
+the credential at login for a random 256-bit token in a host-only Secure, HttpOnly,
+SameSite=Strict cookie. Only its SHA-256 hash, OWNER role, credential binding,
+creation/expiry and revocation timestamps are stored in the existing PostgreSQL
+database. No password or session secret is stored in localStorage/sessionStorage.
+No new account provider, reviewer account, OAuth or identity system is introduced.
+
+Unselected Mantener sesión iniciada: absolute 12-hour session. Selected: absolute
+30-day session. Both cookies survive normal refresh, navigation and browser
+restart. Reads never slide expiry or update business records. Database time is
+authoritative. Every Admin handler now awaits current server authorization.
+Invalid, expired, revoked or malformed sessions fail closed. Existing credential
+headers remain supported for established integrations; the new browser no longer
+uses that permanent secret after login. Changing ADMIN_TOKEN invalidates sessions
+bound to the old credential while the new credential is in use.
+
+Explicit Cerrar sesión revokes the current session server-side before clearing its
+cookie. Cerrar todas las sesiones revokes active sessions bound to this owner
+credential. Old cookies then fail on new requests in other tabs/devices. Existing
+in-flight operations remain subject to their original transaction safeguards.
+The pre-existing shared owner credential can still start a new session until it
+is rotated; session revocation does not revoke the owner's credential itself.
+
+Cookie-authenticated mutations, login and logout require the exact same Origin;
+cross-site and sibling-site requests fail. Existing OWNER/REVIEWER source and
+permissions are preserved. The deployed Netlify operational API has only the
+owner credential, not a reviewer login; legacy source/ reviewer-access.ts and
+admin-auth.ts are unchanged. Reviewer cookies/client-supplied roles cannot
+authorize the Netlify owner API. Session database errors are retryable failures,
+not reasons to delete valid cookies or silently fall back to plaintext storage.
+
+COMPATIBILITY / MIGRATION
+Migration netlify/database/migrations/20261115_admin_sessions.sql adds a dedicated
+session table/index, with no changes to orders, inventory, financial data,
+appointments or pickup control. No configuration secret is added; the existing
+owner credential binds sessions and remains the sole owner login authority.
+Apply the reviewed migration before any future authorized deployment. The old
+code can ignore the new table; rolling back code loses the cookie login UI and
+requires the legacy login again. No migration was executed in production.
+
+One login is required after a future deployment: remove the old per-tab plaintext
+credential, do not silently migrate it, and obtain explicit remembered-device
+choice. Existing historical reviewer sessions are unchanged. Cookies are bound
+to the exact host; switching between an apex domain, www or a preview origin
+requires login on that host. Clearing cookies/private browsing or browser policy
+can still end persistence. Desktop/mobile automation uses Chromium; Safari and
+Firefox have not been independently tested in this task.
+
+SECURITY IMPLICATIONS
+As expressly requested, a trusted device may retain full owner access for up to
+30 days. Someone with access to that unlocked browser profile may use the owner
+session. The checkbox is off by default; logout, all-session revocation and fixed
+expiry remain available. HttpOnly prevents script reads of the token, but does
+not claim to eliminate XSS. No customer payment, pickup, reservation or final
+handover safeguard is weakened. There is no added consequential policy exception
+beyond the requested remembered-device duration. Governance must review before
+release; no production session was created, revoked or modified by this task.
+
+VALIDATION
+254/254 focused tests passed, zero skipped. Four real Chromium profile close/
+reopen cases cover 12-hour and 30-day sessions on desktop/mobile. Additional
+coverage includes cross-tab/refresh, legacy credential removal, exact server
+expiry, replay after logout, all-device revocation, credential binding, malformed
+cookies, same-origin enforcement, role spoofing, retry after database failure,
+and both GET/POST unauthorized calls to every deployed Admin handler. Existing
+customer cart, partial payment/refund/credit/exception protections, PR #81,
+fulfillment, calendar and pickup containment regressions pass. PostgreSQL
+independent-worker regressions use only disposable localhost PostgreSQL 18.6.
+
+The inventory-withdrawal PR is independent and starts at the same baseline.
+No merge, deployment, production migration or correction, publishing unlock,
+historical order change or alteration to the ACTIVE pickup control is authorized.
+Stop for Governance review.

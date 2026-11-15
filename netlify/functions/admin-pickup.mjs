@@ -6,7 +6,7 @@ import { dispatchSellerNotificationsSafely } from './_shared/seller-notification
 import { readItemPaymentDecisions } from './_shared/item-payment-decisions.mjs';
 
 export default async function handler(request) {
-  if (!adminAuthorized(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
+  if (!await adminAuthorized(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
   if (!['GET', 'POST'].includes(request.method)) return jsonResponse({ error: 'Método no permitido.' }, 405);
   try {
     const params = request.method === 'GET' ? new URL(request.url).searchParams : await request.json();

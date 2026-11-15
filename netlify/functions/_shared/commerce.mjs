@@ -682,22 +682,7 @@ export function publicOrder(order) {
   };
 }
 
-export function adminAuthorized(request) {
-  const expected = String(
-    process.env.ADMIN_TOKEN || ''
-  );
-
-  const provided = String(
-    request.headers.get('x-admin-token') || ''
-  );
-
-  return Boolean(
-    expected &&
-    provided &&
-    expected === provided
-  );
-}
-
+export { adminAuthorized } from './admin-sessions.mjs';
 
 export async function listOrders() {
   const store = ordersStore();

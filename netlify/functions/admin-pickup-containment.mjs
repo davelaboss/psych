@@ -3,7 +3,7 @@ import { readPickupWriteControl, setPickupWriteControl } from './_shared/pickup-
 
 export function createPickupContainmentHandler(dependencies = {}) {
   return async request => {
-    if (!(dependencies.authorized || adminAuthorized)(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
+    if (!await (dependencies.authorized || adminAuthorized)(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
     if (!['GET', 'POST'].includes(request.method)) return jsonResponse({ error: 'Método no permitido.' }, 405);
     try {
       const result = request.method === 'POST'

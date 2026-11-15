@@ -115,7 +115,7 @@ export function createAdminSalePulseHandler({
   updateCampaign = updateRegularCampaign,
 } = {}) {
   return async function handler(request) {
-    if (!authorized(request)) {
+    if (!await authorized(request)) {
       return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
     }
     if (!['GET', 'POST'].includes(request.method)) {
