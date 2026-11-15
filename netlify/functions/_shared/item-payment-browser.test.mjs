@@ -117,6 +117,22 @@ for(const mobile of [false,true]) for(const kind of ['customer','admin']) test(`
   await refresh();
   assert.ok(await target.locator('[data-admin-pickup-form], [data-pickup-timing-key]').count()>0);
   if(kind==='admin') assert.equal(await target.locator('[data-item-payment-decision] button[type=submit]').isDisabled(),false);
+  const ledgerBeforeFull=await readItemPaymentDecisions(id);
+  const appointmentsBeforeFull=(await db.query('SELECT * FROM pickup_appointments WHERE order_id=$1',[id])).rows;
+  const fullyPaid={...order,payments:[...order.payments,{id:'final',amountPYG:75,amountSource:'ADMIN_VERIFIED',verifiedBy:'ADMIN',verificationStatus:'CONFIRMED'}]};
+  await db.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[id,JSON.stringify(fullyPaid)]);
+  await refresh();
+  assert.equal(await target.locator('[name="itemIds"][value="449"]').count(),1);
+  assert.match(await target.innerText(),/Pago total del pedido confirmado|Cubierto por pago total del pedido/);
+  assert.deepEqual((await db.query('SELECT * FROM pickup_appointments WHERE order_id=$1',[id])).rows,appointmentsBeforeFull);
+  assert.deepEqual(await readItemPaymentDecisions(id),ledgerBeforeFull);
+  const fullPart=target.locator(kind==='admin'?'[data-admin-pickup-part="IMMEDIATE"]':'form[data-pickup-timing-key="IMMEDIATE"]');
+  await fullPart.locator('[name="itemIds"][value="449"]').check();
+  const savedFull=page.waitForResponse(r=>new URL(r.url()).pathname===(kind==='admin'?'/api/admin/pickup':'/api/orders/pickup')&&r.request().method()==='POST'&&r.status()===200);
+  await fullPart.locator('button[type="submit"]').click();
+  await savedFull;
+  assert.deepEqual(posts.at(-1).itemIds,['381','449']);
+  assert.deepEqual(await readItemPaymentDecisions(id),ledgerBeforeFull);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal overflow');
   if(process.env.PICKUP_DEMO_OUTPUT_DIR){await mkdir(process.env.PICKUP_DEMO_OUTPUT_DIR,{recursive:true});await target.screenshot({path:path.join(process.env.PICKUP_DEMO_OUTPUT_DIR,`${kind}-${mobile?'mobile':'desktop'}-payment-enforcement.png`)});}
   assert.deepEqual(errors,[]);await page.close();

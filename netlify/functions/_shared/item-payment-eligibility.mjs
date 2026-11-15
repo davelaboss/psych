@@ -36,7 +36,7 @@ export function itemPaymentEligibility(order, events = []) {
       !Number.isSafeInteger(sum(allocations.filter(b => b.payment_id === a.payment_id).map(b => Number(b.amount_pyg)))) ||
       sum(allocations.filter(b => b.payment_id === a.payment_id).map(b => Number(b.amount_pyg))) > payment.amountPYG;
   });
-  return items.map(item => {
+  const result = items.map(item => {
     const decision = active.find(e => e.kind === 'REQUIREMENT' && e.product_id === item.productId);
     // Stored due-now and future-balance are line amounts, already rounded and
     // quantity-adjusted when accepted. Never multiply the deposit again.
@@ -68,4 +68,25 @@ export function itemPaymentEligibility(order, events = []) {
       reason: reviewRequired ? 'OWNER_REVIEW_REQUIRED' : schedulingEligible ? 'PAYMENT_SATISFIED' :
         items.length > 1 ? 'ITEM_ALLOCATION_REQUIRED' : 'ADMIN_CONFIRMATION_REQUIRED' };
   });
+  // Full-order recognition never writes allocations or recalculates agreed prices.
+  // Require the frozen order/line amounts to agree; adjustments keep their existing
+  // Item-specific treatment, particularly unattributed mixed-order refunds.
+  const dueNow = sum(items.map(item => validPYG(item.dueNowPYG) ? item.dueNowPYG : NaN));
+  const futureBalance = sum(items.map(item => validPYG(item.futureBalancePYG) ? item.futureBalancePYG : NaN));
+  const total = dueNow + futureBalance;
+  const totals = order?.totals;
+  const verifiedFunds = sum(payments.filter(payment => verifiedPayment(payment)).map(payment => payment.amountPYG));
+  const collectionTotal = sum(result.map(item => item.collectionRequiredPYG));
+  const fullyPaid = items.length > 0 && (items.length > 1 || allocations.length > 0) &&
+    uniqueItems && uniquePayments && !adjustments.length && !invalidAllocations.length &&
+    validPYG(dueNow) && validPYG(futureBalance) && validPYG(total) && total > 0 &&
+    validPYG(totals?.totalPYG) && totals.totalPYG === total &&
+    totals.dueNowPYG === dueNow && totals.futureBalancePYG === futureBalance &&
+    result.every(item => !item.reviewRequired) && validPYG(collectionTotal) &&
+    validPYG(verifiedFunds) && verifiedFunds >= total && verifiedFunds >= collectionTotal;
+  return fullyPaid ? result.map(item => ({ ...item,
+    fundedPYG: item.collectionRequiredPYG, schedulingEligible: true, handoverEligible: true,
+    source: item.source === 'ADMIN_EXCEPTION' ? item.source : 'FULL_ORDER',
+    fundingSource: 'FULL_ORDER', reason: 'PAYMENT_SATISFIED',
+  })) : result;
 }
