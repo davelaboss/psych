@@ -6255,10 +6255,10 @@ async function viewAdminReceipt(
         orderId
       )}&paymentId=${encodeURIComponent(paymentId || '')}`,
       {
-        headers: {
-          'x-admin-token':
-            ADMIN_STATE.token,
-        },
+        credentials: 'same-origin',
+        headers: ADMIN_STATE.token && ADMIN_STATE.token !== ADMIN_COOKIE_SESSION
+          ? { 'x-admin-token': ADMIN_STATE.token }
+          : {},
       }
     );
 
