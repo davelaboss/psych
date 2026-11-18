@@ -458,7 +458,7 @@ function applyLivePublicAuthority(
 
 
 export default async function handler(request) {
-  if (!adminAuthorized(request)) {
+  if (!await adminAuthorized(request)) {
     return jsonResponse(
       {
         error:
@@ -596,9 +596,12 @@ export default async function handler(request) {
 
           return {
             ...authoritative,
+            ...(live?.ownerWithdrawal ? { status: 'UNLISTED', ownerWithdrawal: live.ownerWithdrawal } : {}),
+            ...(live?.quantityOwnerRetained ? { status:live.status,quantitySold:live.quantitySold,
+              quantityOwnerRetained:live.quantityOwnerRetained } : {}),
 
             published:
-              Boolean(live) && !(decision && live.status === 'NEEDS_REVIEW'),
+              Boolean(live) && live.status !== 'UNLISTED' && !(decision && live.status === 'NEEDS_REVIEW'),
             ...(decision ? { reviewDisposition: decision, archived: isReviewArchived(product) } : {}),
             ...(decision && live?.status === 'NEEDS_REVIEW' ? {
               reviewFlag: 'Conflicto de inventario: verificar compromisos y capacidad antes de resolver este Item.',
@@ -650,7 +653,10 @@ export default async function handler(request) {
 
       products.push({
         ...normalizeLiveOnly(live),
-        published: true,
+        published: live.status !== 'UNLISTED',
+        ...(live.ownerWithdrawal ? { ownerWithdrawal: live.ownerWithdrawal } : {}),
+        ...(live.quantityOwnerRetained ? {quantityOwnerRetained:live.quantityOwnerRetained,
+          quantitySold:live.quantitySold,status:live.status} : {}),
 
         live: {
           id: live.id,

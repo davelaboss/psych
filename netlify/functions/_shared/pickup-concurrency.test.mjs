@@ -1,3 +1,6 @@
+import { deriveOrderFulfillmentParts } from './order-fulfillments.mjs';
+import { itemPaymentEligibility } from './item-payment-eligibility.mjs';
+import { initializePickupControlForTests } from './test-support/pickup-control.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -7,6 +10,7 @@ import { changePickup } from './pickup.mjs';
 import { setInventoryDatabaseClientForTests } from './inventory-database.mjs';
 import { drainSellerNotifications } from './seller-notifications.mjs';
 import { changePickupBlackout } from './pickup-calendar.mjs';
+import { appendItemPaymentDecision } from './item-payment-decisions.mjs';
 
 // Optional real PostgreSQL coverage for row blocking and independent workers.
 // Run with PICKUP_TEST_DATABASE_URL pointing to an expendable local database
@@ -30,13 +34,15 @@ test.before(async () => {
   await control.query(`CREATE SCHEMA ${schema}`);
   pool = new pg.Pool({ connectionString, max: 12, options: `-c search_path=${schema}` });
   for (const migration of ['20261001_operational_inventory', '20261005_pickup_notifications',
-    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts']) {
+    '20261006_notification_recipients', '20261010_pickup_fulfillment_parts', '20261102_pickup_blackouts', '20261114_item_payment_pickup']) {
     await pool.query(await readFile(new URL(`../../database/migrations/${migration}.sql`, import.meta.url), 'utf8'));
   }
+  await initializePickupControlForTests(pool);
   setInventoryDatabaseClientForTests({ pool });
 });
 
 test.beforeEach(async () => {
+  if (pool) await pool.query('ALTER TABLE item_payment_decisions DISABLE TRIGGER item_payment_decisions_no_truncate');
   if (pool) await pool.query('TRUNCATE cart_sessions,pickup_blackouts,pickup_windows CASCADE');
   process.env.SELLER_NOTIFICATION_TO = 'seller@example.com';
   process.env.SELLER_NOTIFICATION_FROM = 'test@example.com';
@@ -134,7 +140,7 @@ async function fixture(slotKey) {
   const session = randomUUID();
   const order = { id, buyer: { name: 'Synthetic', phone: '+595 000' }, status: 'PAYMENT_CONFIRMED',
     totals: { totalPYG: 100, dueNowPYG: 100, futureBalancePYG: 0 },
-    items: [{ productId: 'synthetic', saleMode: 'IMMEDIATE', quantity: 1, unitPricePYG: 100, dueNowPYG: 100 }],
+    items: [{ productId: 'synthetic', saleMode: 'IMMEDIATE', quantity: 1, unitPricePYG: 100, dueNowPYG: 100, futureBalancePYG: 0 }],
     payments: [{ id: 'paid', type: 'FULL', amountPYG: 100, amountSource: 'ADMIN_VERIFIED',
       verifiedBy: 'ADMIN', verificationStatus: 'CONFIRMED' }], paymentAdjustments: [] };
   await pool.query('INSERT INTO cart_sessions(session_id) VALUES($1)', [session]);
@@ -183,6 +189,19 @@ test('simultaneous retries of one appointment produce one revision and exactly t
   assert.equal((await notices()).length, 2);
 });
 
+test('independent allocation requests cannot spend the same confirmed payment twice', { skip: !connectionString }, async () => {
+  const id = await fixture();
+  const stored = (await pool.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1',[id])).rows[0].order_snapshot;
+  stored.items.push({ ...stored.items[0],productId:'synthetic-second' });
+  stored.totals={totalPYG:200,dueNowPYG:200,futureBalancePYG:0};
+  await pool.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[id,JSON.stringify(stored)]);
+  const results = await Promise.allSettled(['synthetic','synthetic-second'].map(productId => appendItemPaymentDecision(id,{
+    kind:'ALLOCATE',productId,paymentId:'paid',amountPYG:100,note:'Synthetic concurrent allocation' })));
+  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+  assert.equal(results.find(r=>r.status==='rejected').reason.status,409);
+  assert.equal(Number((await pool.query('SELECT sum(amount_pyg) AS n FROM item_payment_decisions WHERE order_id=$1',[id])).rows[0].n),100);
+});
+
 test('opposite date moves commit without deadlocks and preserve both appointments', { skip: !connectionString }, async () => {
   const next = '2026-11-03|08:00-09:00';
   const [first, second] = await Promise.all([fixture(hourly), fixture(next)]);
@@ -205,4 +224,32 @@ test('independent notification workers claim each ready/agenda email once', { sk
   assert.equal(new Set(calls.map(c => c.key)).size, 2);
   assert.ok(calls.every(c => c.to.length === 1 && c.to[0] === 'seller@example.com'));
   assert.ok((await notices()).every(row => row.status === 'SENT' && row.attempts === 1));
+});
+
+
+test('fully paid mixed order concurrently schedules both timing groups without allocations or financial changes', {skip:!connectionString},async()=>{
+  const id=await fixture();const stored=(await pool.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1',[id])).rows[0].order_snapshot;
+  stored.items.push({...stored.items[0],productId:'delayed-full',saleMode:'DELAYED',dueNowPYG:25,futureBalancePYG:75,pickupWindowStart:'2026-12-09',pickupWindowEnd:'2026-12-12'});
+  stored.totals={totalPYG:200,dueNowPYG:125,futureBalancePYG:75};stored.payments[0].amountPYG=200;
+  await pool.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[id,JSON.stringify(stored)]);
+  const parts=deriveOrderFulfillmentParts(stored),requests=[];
+  for(const part of parts)for(let i=0;i<3;i++){
+    const slotKey=part.timingKey==='IMMEDIATE'?hourly:'2026-12-09|08:00-09:00';
+    requests.push(changePickup({orderId:id,timingKey:part.timingKey,slotKey,actor:'CUSTOMER',itemIds:part.itemIds},{slotKeys:()=>[slotKey]}));
+  }
+  const results=await Promise.all(requests);assert.ok(results.every(a=>a.revision===1));
+  assert.equal((await pool.query('SELECT * FROM pickup_appointments WHERE order_id=$1',[id])).rows.length,2);
+  assert.equal((await pool.query('SELECT * FROM item_payment_decisions WHERE order_id=$1',[id])).rows.length,0);
+  assert.deepEqual((await pool.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1',[id])).rows[0].order_snapshot,stored);
+  assert.equal((await notices()).length,4);
+});
+
+test('full-order recognition does not weaken concurrent allocation overspend protection', {skip:!connectionString},async()=>{
+  const id=await fixture();const stored=(await pool.query('SELECT order_snapshot FROM checkout_attempts WHERE order_id=$1',[id])).rows[0].order_snapshot;
+  stored.items.push({...stored.items[0],productId:'full-second'});stored.totals={totalPYG:200,dueNowPYG:200,futureBalancePYG:0};stored.payments[0].amountPYG=200;
+  await pool.query('UPDATE checkout_attempts SET order_snapshot=$2 WHERE order_id=$1',[id,JSON.stringify(stored)]);
+  const attempts=await Promise.allSettled(stored.items.map(i=>appendItemPaymentDecision(id,{kind:'ALLOCATE',productId:i.productId,paymentId:'paid',amountPYG:150,note:'Synthetic concurrent allocation on fully paid order'})));
+  assert.equal(attempts.filter(r=>r.status==='fulfilled').length,1);assert.equal(attempts.find(r=>r.status==='rejected').reason.status,409);
+  const events=(await pool.query('SELECT * FROM item_payment_decisions WHERE order_id=$1',[id])).rows;assert.equal(events.length,1);assert.equal(Number(events[0].amount_pyg),150);
+  assert.ok(itemPaymentEligibility(stored,events).every(e=>e.fundingSource==='FULL_ORDER'&&e.schedulingEligible&&e.handoverEligible));
 });

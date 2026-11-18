@@ -82,7 +82,7 @@ async function validateReceiptEvidence(entry) {
 }
 
 export default async function handler(request) {
-  if (!adminAuthorized(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
+  if (!await adminAuthorized(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
 
   try {
     if (request.method === 'GET') {

@@ -4,7 +4,7 @@ import { readPickupCalendar, changePickupBlackout } from './_shared/pickup-calen
 // The existing seller credential is the sole OWNER account; never trust a client-supplied role.
 export function createPickupCalendarHandler({ read = readPickupCalendar, change = changePickupBlackout } = {}) {
   return async request => {
-    if (!adminAuthorized(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
+    if (!await adminAuthorized(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
     if (!['GET', 'POST'].includes(request.method)) return jsonResponse({ error: 'Método no permitido.' }, 405);
     try {
       const result = request.method === 'GET'

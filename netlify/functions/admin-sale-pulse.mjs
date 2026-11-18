@@ -4,7 +4,8 @@ import {
   loadCatalog,
 } from './_shared/commerce.mjs';
 import { database, readPurchasableInventory, snapshotWithReservation } from './_shared/inventory-database.mjs';
-import { deriveOrderFulfillmentParts } from './_shared/order-fulfillments.mjs';
+import {isOwnerRetainedOrder} from './_shared/owner-retention-core.mjs';
+import { deriveOrderFulfillmentParts, orderSchedulingEligible } from './_shared/order-fulfillments.mjs';
 import { readCampaignPanel, updateRegularCampaign } from './_shared/regular-campaign.mjs';
 import {
   ANALYTICS_RETENTION_DAYS,
@@ -27,7 +28,7 @@ function eventRow(row) {
   };
 }
 
-function operationalCounts(orderRows, appointmentRows, fulfillmentRows) {
+function operationalCounts(orderRows, appointmentRows, fulfillmentRows, decisions = []) {
   const appointments = new Map(appointmentRows.map((row) => [
     `${row.order_id}\0${row.timing_key}`,
     row,
@@ -40,13 +41,13 @@ function operationalCounts(orderRows, appointmentRows, fulfillmentRows) {
 
   for (const row of orderRows) {
     const order = { ...snapshotWithReservation(row), id: row.order_id };
-    for (const part of deriveOrderFulfillmentParts(order)) {
-      if (!part.schedulingEligible) continue;
+    if (!orderSchedulingEligible(order)) continue;
+    for (const part of deriveOrderFulfillmentParts(order, decisions.filter(e => e.order_id === row.order_id))) {
       const key = `${row.order_id}\0${part.timingKey}`;
       if (delivered.has(key)) continue;
       const scheduled = appointments.get(key)?.status === 'SCHEDULED';
       if (scheduled) scheduledPickupsPending += 1;
-      else eligiblePickupsUnscheduled += 1;
+      else if (part.schedulingEligible) eligiblePickupsUnscheduled += 1;
     }
   }
 
@@ -65,7 +66,7 @@ export async function loadSalePulseSnapshot(origin, dependencies = {}) {
   await query(`DELETE FROM sale_analytics_events
     WHERE occurred_at < clock_timestamp() - $1::interval`, [`${ANALYTICS_RETENTION_DAYS} days`]);
 
-  const [trackingResult, eventResult, orderResult, appointmentResult, fulfillmentResult, products, purchasableInventory] = await Promise.all([
+  const [trackingResult, eventResult, orderResult, appointmentResult, fulfillmentResult, products, purchasableInventory, decisionResult] = await Promise.all([
     query('SELECT min(occurred_at) AS tracking_started_at FROM sale_analytics_events'),
     query(`SELECT occurred_at,event_type,anonymous_session_hash,product_id,campaign_source,
         category,filter_context,result_position,result_count
@@ -85,6 +86,7 @@ export async function loadSalePulseSnapshot(origin, dependencies = {}) {
       GROUP BY membership.order_id,batch.timing_key`),
     loadProducts(origin),
     readPurchasableInventory({ query }),
+    query('SELECT * FROM item_payment_decisions ORDER BY created_at,id'),
   ]);
 
   const orderRows = orderResult.rows || [];
@@ -92,14 +94,15 @@ export async function loadSalePulseSnapshot(origin, dependencies = {}) {
     events: (eventResult.rows || []).map(eventRow),
     products,
     purchasableInventory: completeMarketingInventory(products, purchasableInventory),
-    orders: orderRows.filter((row) => row.committed_at).map((row) => ({
+    orders: orderRows.filter((row) => row.committed_at && !isOwnerRetainedOrder(row.order_snapshot)).map((row) => ({
       committedAt: row.committed_at,
       items: Array.isArray(row.order_snapshot?.items) ? row.order_snapshot.items : [],
     })),
     operationalCounts: operationalCounts(
       orderRows,
       appointmentResult.rows || [],
-      fulfillmentResult.rows || []
+      fulfillmentResult.rows || [],
+      decisionResult.rows || []
     ),
     trackingStartedAt: trackingResult.rows?.[0]?.tracking_started_at || null,
     generatedAt: Date.now(),
@@ -113,7 +116,7 @@ export function createAdminSalePulseHandler({
   updateCampaign = updateRegularCampaign,
 } = {}) {
   return async function handler(request) {
-    if (!authorized(request)) {
+    if (!await authorized(request)) {
       return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
     }
     if (!['GET', 'POST'].includes(request.method)) {

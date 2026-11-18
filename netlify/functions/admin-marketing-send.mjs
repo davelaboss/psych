@@ -2,7 +2,7 @@ import { adminAuthorized, jsonResponse } from './_shared/commerce.mjs';
 import { sendMarketingPacket } from './_shared/marketing-email-service.mjs';
 
 export default async function handler(request) {
-  if (!adminAuthorized(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
+  if (!await adminAuthorized(request)) return jsonResponse({ error: 'Acceso no autorizado.' }, 401);
   if (request.method !== 'POST') return jsonResponse({ error: 'Método no permitido.' }, 405);
 
   try {

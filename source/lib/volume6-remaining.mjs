@@ -396,7 +396,7 @@ export const VOLUME6_REMAINING = Object.freeze([
     "title": "Chevrolet Tracker LTZ 2024 — Chili Red",
     "category": "Vehículos",
     "currency": "USD",
-    "askingPriceUSD": 18000,
+    "askingPriceUSD": 16990,
     "description": "Chevrolet Tracker LTZ 2024, 10.695 km al 06/11/2026, motor 1.2 Turbo Flex (nafta/etanol), caja automática de 6 marchas, color Chili Red. Comprada 0 km en De La Sobera. Muy buen estado general. 6 airbags, ABS, control de estabilidad, alerta de punto ciego, cámara de retroceso y sensores traseros, pantalla MyLink 8 pulgadas con Apple CarPlay y Android Auto, Smart Key, arranque con botón, aire acondicionado funcionando perfectamente, llantas de aleación y barras de techo. Título y cédula verde al día. Lista para transferir. Venta particular del propietario por mudanza. Entrega inmediata; consultas por privado y visitas coordinadas. Pago completo y transferencia en trato privado.",
     "condition": "Muy buen estado general",
     "knownDefects": "",

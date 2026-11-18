@@ -1,4 +1,5 @@
 /api/admin/orders              /.netlify/functions/admin-orders             200
+/api/admin/withdraw-product    /.netlify/functions/admin-withdraw-product   200
 /api/admin/order               /.netlify/functions/admin-order              200
 /api/admin/order-link          /.netlify/functions/admin-order-link         200
 /api/admin/receipt             /.netlify/functions/admin-receipt            200
@@ -15,6 +16,8 @@
 /api/orders/pickup             /.netlify/functions/customer-pickup          200
 /api/orders/cancel             /.netlify/functions/customer-cancel-order    200
 /api/admin/pickup              /.netlify/functions/admin-pickup             200
+/api/admin/pickup-containment  /.netlify/functions/admin-pickup-containment 200
+/api/admin/item-payment        /.netlify/functions/admin-item-payment       200
 /api/admin/pickup-calendar     /.netlify/functions/admin-pickup-calendar    200
 /api/orders/receipt            /.netlify/functions/upload-receipt           200
 /api/admin/legacy-inventory    /.netlify/functions/admin-legacy-inventory   200
@@ -29,3 +32,4 @@
 /pedido/*               /index.html                            200
 /admin                  /index.html                            200
 /api/cart/reservation   /.netlify/functions/cart-reservation    200
+/api/admin/session      /.netlify/functions/admin-session       200

@@ -1,0 +1,86 @@
+FULLY PAID ORDER ELIGIBILITY — GOVERNANCE DEVELOPMENT CHANGE
+Base: 3965660d32d2b51fe43c3cc831d6995cc68e28cc
+Branch: dev/fully-paid-order-eligibility-20261114
+Development and isolated testing only. No production migration or deployment.
+
+BEHAVIOR
+Explicitly Admin-confirmed ADMIN_VERIFIED and LEGACY_RECONCILED funds now cover
+all Items of an unambiguously fully paid order without creating allocations.
+Both pickup scheduling and current Admin delivery recording consume the same
+itemPaymentEligibility result, inside their existing authoritative transaction
+and order locks. Order status, paymentState and displayed zero balance are not
+payment evidence.
+
+The shortcut requires safe integer amounts, unique Item/payment identifiers,
+matching frozen order and Item due-now/future-balance totals, no payment adjustment,
+valid allocation evidence, and enough independently verified funds to cover both
+the frozen order total and the sum of active Item collection requirements. Stored
+line amounts already include historical rounding and quantity; catalog prices and
+historical unit-price recalculation are never used.
+
+Previously allocated confirmed funds need no allocation top-up when the entire
+order is covered. Existing valid allocations and reversals remain in the ledger;
+they neither get duplicated nor become an additional payment requirement. Duplicate
+spending still fails under the existing order lock, including concurrent requests.
+FULL_ORDER/fundingSource describe derived coverage, not a new financial record.
+Admin messaging distinguishes full-order coverage from an explicit allocation.
+
+EXCEPTIONS / SAFEGUARDS
+Existing Item-specific REQUIREMENT decisions retain their scheduling/collection
+amounts and ADMIN_EXCEPTION source. A higher active collection requirement must
+also be covered; full frozen-order payment cannot waive it. A lower exception or
+gift does not lower the frozen-total trigger for this shortcut. On partially paid
+orders, existing per-Item allocation and exception behavior remains in effect.
+
+Opening credits are not automatically treated as received funds. They retain
+explicit Admin allocation requirements. Pending receipts, assumed historical
+funds, voids, duplicate identifiers, invalid allocations, inconsistent frozen totals
+and unsupported evidence cannot establish full-order coverage. Mixed-order refunds
+and adjustments retain their existing fail-closed treatment; known single-Item
+adjustments retain their existing treatment. No refund attribution, free-text
+exception conversion, reconciliation or historical backfill is introduced.
+
+Full financial coverage does not bypass existing authentication, order status,
+reservation, timing, blackout, capacity, membership or revision checks. Emergency
+containment guards are unchanged. Eligibility evaluation creates no appointment,
+payment, allocation, inventory or reservation update. Delivery still requires an
+explicit Admin delivery action; eligibility never marks physical collection by
+itself. David and Maria's final handover verification text and procedure remain.
+
+VALIDATION
+260/260 focused regression tests passed, zero skipped. This includes ten native
+PostgreSQL independent-worker scheduling/allocation tests and eight containment
+worker tests, using only disposable localhost PostgreSQL 18.6. New concurrency
+cases cover full mixed timing-group scheduling with retries and duplicate-spending
+protection while full-order recognition is active.
+
+Final targeted run: 75/75 passed, zero skipped, including two additional edge cases
+(single-Item prior partial allocation; full verified funds plus a pending receipt).
+There are 262 distinct passing focused tests across these runs. Coverage includes
+checkout/cart, scheduling, actual PREPARED-to-DELIVERED transitions, partial orders,
+credits, refunds, exceptions, stale confirmation/void behavior, preservation, and
+customer/Admin mobile and desktop messaging. Synthetic SQL fixtures verify existing
+financial snapshots and appointments remain unchanged and no allocation is inserted
+by full-order eligibility. Syntax/whitespace checks passed. The full unrelated suite
+and inventory/liquidation audits were not repeated.
+
+RELEASE / COMPATIBILITY
+No migration or new configuration is required. Production records and existing
+schema stay unchanged. This is a read-time policy correction; eligible mixed-order
+Items may become financially eligible after a future authorized deployment. The
+emergency control remains an independent operational gate and must remain PAUSED.
+No production access or mutation was used in this development task.
+
+Historical missing/inconsistent frozen totals and ambiguous adjustment/credit cases
+continue requiring review; this change does not repair or reinterpret them. Impact
+on representative production records should be reviewed read-only under separately
+authorized release preparation. No new consequential policy decision is required
+for this focused implementation.
+
+NEXT AUTHORIZATION
+Governance review of this exact development commit/PR, followed by separate owner
+authorization for controlled merge only into fix/catalog-price-order-20261109,
+preparation/publication of an exact new deployment and read-only production checks.
+No production migration is needed. Do not resume containment, unlock automatic
+publishing, deploy divergent main, or modify historical data. Initial operational
+resume requires separate explicit owner approval. Stop for Governance review.

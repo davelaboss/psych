@@ -75,6 +75,15 @@ test('available neighbors use nearest numeric available products and skip sold s
   assert.equal(result.next.itemNumber, 7);
 });
 
+test('fully held items are not recommended as available, while partial free stock remains eligible',()=>{
+  const current=product(4),held=product(5,{purchaseBlockedByHold:true,purchasableQuantity:0});
+  const partial=product(6,{purchasableQuantity:1});
+  const result=buildProductDiscovery([product(1),current,held,partial],current);
+  assert.equal(result.next.itemNumber,6);
+  assert.ok(result.recommendations.every(p=>p.itemNumber!==5));
+  assert.ok(result.recommendations.some(p=>p.itemNumber===6));
+});
+
 test('sold current product still points to surrounding available products', () => {
   const result = buildProductDiscovery(catalog, catalog[1]);
   assert.equal(result.previous.itemNumber, 1);

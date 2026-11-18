@@ -352,7 +352,7 @@ export function catalogBatchProducts(additionalVolume5Items = VOLUME5_ITEMS, add
   if (!Array.isArray(remainingVolume6Items) || remainingVolume6Items.some(item =>
     item.id !== `real-202611-volume6-${item.itemNumber}` || !Number.isInteger(item.itemNumber) ||
     (item.itemNumber === 615
-      ? item.saleMode !== 'INQUIRY' || item.currency !== 'USD' || item.askingPriceUSD !== 18000 || item.asking != null
+      ? item.saleMode !== 'INQUIRY' || item.currency !== 'USD' || item.askingPriceUSD !== 16990 || item.asking != null
       : item.itemNumber < 648 || !['IMMEDIATE', 'DELAYED'].includes(item.saleMode) || !(item.asking > 0))
   )) throw new Error('Inventario restante de Volume 6 inválido.');
   // Admit only the specifically approved recovered Phase 2 items.

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { database, inventoryTransaction } from './inventory-database.mjs';
 import { ensureAllBuyerGroups } from './buyer-groups.mjs';
+import { requireCollectionPayments } from './item-payment-decisions.mjs';
+import {CLOSED_OWNER_RETENTION} from './owner-retention-core.mjs';
 import {
   FULFILLMENT_LOCK,
   assertExpectedRevision,
@@ -109,6 +111,7 @@ export async function ensureFulfillmentAssignments(client, dependencies = {}) {
     JOIN buyer_group_orders membership USING (order_id)
     WHERE attempt.committed_at IS NOT NULL
       AND COALESCE(attempt.order_snapshot->>'status', '') <> 'CANCELLED'
+      AND NOT (attempt.order_id='VM-2026-514DA2AA' AND attempt.order_snapshot->'ownerRetention'->>'kind'='NO_CASH_OWNER_RETENTION') IS TRUE
     ORDER BY attempt.created_at, attempt.order_id`)).rows;
 
   let assigned = 0;
@@ -245,6 +248,10 @@ export async function transitionBatch(client, {
   }
 
   const items = await affectedItems(client, batchId);
+  // PREPARED -> DELIVERED records a current collection. LEGACY_FROZEN's
+  // separate, explicitly confirmed action records a completed historical
+  // delivery; preserve that retrospective workflow and its evidence.
+  if (action === 'DELIVER' && batch.status === 'PREPARED') await requireCollectionPayments(client, items);
   const updated = (await client.query(`UPDATE fulfillment_batches SET
       status=$2,
       auto_attach=$3,
@@ -280,6 +287,7 @@ export async function combineBatches(client, {
   const rows = await lockBatches(client, [batchId, targetBatchId]);
   const source = rows.get(batchId);
   const target = rows.get(targetBatchId);
+  if([source.status,target.status].includes(CLOSED_OWNER_RETENTION))throw conflict('La retención personal cerrada no admite cambios.');
   assertExpectedRevision({ revision: source.revision }, expectedRevision);
   assertExpectedRevision({ revision: target.revision }, expectedTargetRevision);
   if (source.merged_into_batch_id || target.merged_into_batch_id) {
@@ -331,6 +339,7 @@ export async function separateItems(client, {
 }) {
   const rows = await lockBatches(client, [batchId]);
   const source = rows.get(batchId);
+  if(source.status===CLOSED_OWNER_RETENTION)throw conflict('La retención personal cerrada no admite cambios.');
   assertExpectedRevision({ revision: source.revision }, expectedRevision);
   if (source.merged_into_batch_id) throw conflict('Este lote ya fue combinado con otro.');
   if (source.status !== 'OPEN' && confirmFrozen !== true) {

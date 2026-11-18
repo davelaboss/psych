@@ -1,7 +1,9 @@
 import {
   jsonResponse,
   loadPublicCatalog,
+  cartSessionIdFromRequest,
 } from './_shared/commerce.mjs';
+import { liquidationEnabled } from './_shared/liquidation.mjs';
 
 
 export default async function handler(request) {
@@ -20,10 +22,11 @@ export default async function handler(request) {
   const {
     products,
     deliveredProduct,
-  } = await loadPublicCatalog(origin, { requestedSlug });
+  } = await loadPublicCatalog(origin, { requestedSlug, cartSessionId: cartSessionIdFromRequest(request) });
 
   return jsonResponse({
     ok: true,
+    liquidationActive: liquidationEnabled(),
     products,
     deliveredProduct,
   });

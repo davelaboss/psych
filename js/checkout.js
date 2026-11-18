@@ -150,6 +150,52 @@ function getCheckoutCart() {
 }
 
 
+// Presentation only: all amounts and terms come from the existing cart snapshot.
+function renderCheckoutSummary(items, totals) {
+  const pickupGroups = new Map();
+  const itemRows = items.map(({ product, quantity }) => {
+    const dueNow = dueNowForProduct(product) * quantity;
+    const future = (product.askingPricePYG - dueNowForProduct(product)) * quantity;
+    if (product.saleMode === 'DELAYED' || product.pickupWindowStart || product.pickupAvailableDate) {
+      const key = JSON.stringify([
+        product.pickupWindowStart, product.pickupWindowEnd,
+        product.pickupAvailableDate === product.pickupWindowStart ? null : product.pickupAvailableDate,
+      ]);
+      if (!pickupGroups.has(key)) pickupGroups.set(key, { product, labels: [] });
+      pickupGroups.get(key).labels.push(`Ítem ${product.itemNumber || product.title}`);
+    }
+    return `
+      <div class="checkout-item">
+        <strong>${escapeHtml(product.title)}</strong>
+        <span class="checkout-item-detail">${product.itemNumber ? `Ítem ${escapeHtml(product.itemNumber)} · ` : ''}Cantidad: ${quantity} · Precio unitario: ${formatPYG(product.askingPricePYG)}</span>
+        <div class="checkout-item-payment">
+          <span>${product.saleMode === 'DELAYED' ? `Ahora · Seña ${Number(product.depositPercent)}%` : 'A pagar ahora'}</span>
+          <strong>${formatPYG(dueNow)}</strong>
+        </div>
+        ${future > 0 ? `<span class="checkout-item-detail">Saldo pendiente: ${formatPYG(future)}</span>` : ''}
+      </div>`;
+  }).join('');
+  const pickupRows = Array.from(pickupGroups.values()).map(({ product, labels }) => `
+    <p><strong>Retiro · ${escapeHtml(labels.join(', '))}</strong><br>
+      ${escapeHtml(formatPickupWindow(product.pickupWindowStart, product.pickupWindowEnd))}${product.pickupAvailableDate && product.pickupAvailableDate !== product.pickupWindowStart ? ` · Desde ${escapeHtml(product.pickupAvailableDate)}` : ''}
+    </p>`).join('');
+
+  return `
+    <span class="section-kicker">RESUMEN</span>
+    <h2>Tu compra</h2>
+    <dl class="checkout-totals">
+      <div><dt>Valor total</dt><dd>${formatPYG(totals.total)}</dd></div>
+      <div class="summary-due"><dt>A pagar ahora</dt><dd>${formatPYG(totals.dueNow)}</dd></div>
+      <div><dt>Saldo pendiente</dt><dd>${formatPYG(totals.future)}</dd></div>
+    </dl>
+    <div class="checkout-items">${itemRows}</div>
+    <div class="checkout-shared-terms">
+      ${totals.future > 0 ? `<p><strong>Pago final del saldo pendiente</strong><br>${DELAYED_FINAL_PAYMENT_WINDOW}</p>` : ''}
+      ${pickupRows}
+    </div>`;
+}
+
+
 async function renderCheckoutPage() {
   const main =
     document.querySelector('main');
@@ -282,53 +328,6 @@ async function renderCheckoutPage() {
       }
     );
 
-  const itemRows =
-    items
-      .map(
-        ({ product, quantity }) => `
-          <div class="checkout-item">
-            <strong>
-              ${escapeHtml(
-                product.title
-              )}
-            </strong>
-
-            <span>
-              Cantidad:
-              ${quantity}
-            </span>
-
-            <span>
-              A pagar ahora:
-              ${formatPYG(
-                dueNowForProduct(
-                  product
-                ) * quantity
-              )}
-            </span>
-
-            ${
-              product.saleMode === 'DELAYED' &&
-              product.askingPricePYG > dueNowForProduct(product)
-                ? `
-                  <span>
-                    Saldo pendiente: ${formatPYG(
-                      (product.askingPricePYG - dueNowForProduct(product)) * quantity
-                    )}
-                  </span>
-                  <span>Pago final: ${DELAYED_FINAL_PAYMENT_WINDOW}</span>
-                  <span>Retiro: ${escapeHtml(formatPickupWindow(
-                    product.pickupWindowStart,
-                    product.pickupWindowEnd
-                  ))}</span>
-                `
-                : ''
-            }
-          </div>
-        `
-      )
-      .join('');
-
   main.innerHTML = `
     <section
       class="checkout-shell"
@@ -421,67 +420,9 @@ async function renderCheckoutPage() {
         </form>
 
         <aside
-          class="cart-summary"
+          class="cart-summary checkout-order-summary"
         >
-          <span class="section-kicker">
-            RESUMEN
-          </span>
-
-          <h2>
-            Tu compra
-          </h2>
-
-          <div
-            class="checkout-items"
-          >
-            ${itemRows}
-          </div>
-
-          <dl>
-            <div>
-              <dt>
-                Valor total
-              </dt>
-
-              <dd>
-                ${formatPYG(
-                  totals.total
-                )}
-              </dd>
-            </div>
-
-            <div
-              class="summary-due"
-            >
-              <dt>
-                A pagar ahora
-              </dt>
-
-              <dd>
-                ${formatPYG(
-                  totals.dueNow
-                )}
-              </dd>
-            </div>
-
-            <div>
-              <dt>
-                Saldo pendiente
-              </dt>
-
-              <dd>
-                ${formatPYG(
-                  totals.future
-                )}
-              </dd>
-            </div>
-          </dl>
-
-          ${
-            totals.future > 0
-              ? `<p>Pago final del saldo pendiente: ${DELAYED_FINAL_PAYMENT_WINDOW}.</p>`
-              : ''
-          }
+          ${renderCheckoutSummary(items, totals)}
         </aside>
 
       </div>
@@ -811,6 +752,13 @@ function displayOrder(
   const main =
     document.querySelector('main');
 
+  if(order.ownerRetention?.kind==='NO_CASH_OWNER_RETENTION'){
+    main.innerHTML=`<section class="order-shell"><h1>Retención personal</h1><p>${escapeHtml(order.id)}</p>
+      <section class="checkout-card" role="status"><p>Los artículos fueron retenidos por David y María. No hubo intercambio real de dinero, venta a cliente ni entrega.</p>
+      <p>No realices una transferencia. El registro original se conserva como historial.</p></section></section>`;
+    return;
+  }
+
   if (order.status === 'CANCELLED') {
     const cancellationMessage = order.cancelledBy === 'CUSTOMER'
       ? 'Cancelaste este pedido. Los artículos fueron liberados y ya no están reservados para vos.'
@@ -878,7 +826,7 @@ function displayOrder(
     <section class="order-fulfillment-part ${part.timingKey === 'IMMEDIATE' ? 'is-immediate' : 'is-delayed'}">
       <header>
         <span class="section-kicker">${escapeHtml(part.timingLabel).toUpperCase()}</span>
-        <strong>${part.schedulingEligible ? 'Podés agendar o cambiar el retiro sin pago previo' : 'Agendamiento no disponible para este pedido'}</strong>
+        <strong>Consultá la habilitación de cada artículo en la sección Retiro.</strong>
       </header>
       <div class="fulfillment-financials">
         <span>Pago requerido ahora: ${formatPYG(part.dueNowPYG)}</span>
@@ -909,6 +857,9 @@ function displayOrder(
                 Cantidad:
                 ${item.quantity}
               </span>
+
+              <span>Precio unitario acordado: ${formatPYG(item.unitPricePYG)}</span>
+              ${item.saleMode === 'DELAYED' ? `<span>Seña acordada: ${Number(item.depositPercent)}%</span>` : ''}
 
               <span>
                 A pagar ahora:
@@ -1214,7 +1165,7 @@ async function setupPickupScheduler(order, access) {
     if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los horarios.');
     target.innerHTML = `<h2>Retiro</h2>
       <p>Hora de Paraguay. Nuevos turnos de una hora.</p>
-      <p>Podés agendar o cambiar el horario sin pago previo. Agendar no confirma el pago ni modifica el saldo o las fechas de retiro. David y María verificarán los pagos antes de entregar los artículos.</p>
+      <p>Para agendar cada artículo inmediato, Admin debe confirmar el pago total. Para un artículo de retiro posterior, debe confirmar la seña acordada; el saldo se paga antes de retirarlo. Cuando Admin confirma el pago total acordado y verificado del pedido, todos sus artículos quedan habilitados. Subir un comprobante no habilita el agendamiento.</p>
       <div class="pickup-fulfillment-list">
         ${(data.fulfillments || []).map((part, index) => {
           const appointment = part.appointment?.status === 'SCHEDULED' ? part.appointment : null;
@@ -1224,7 +1175,10 @@ async function setupPickupScheduler(order, access) {
             <h3>${escapeHtml(part.timingLabel)}</h3>
             <p>Artículos: ${(part.items || []).map(item => escapeHtml(orderItemLabel(item))).join(', ')}</p>
             ${appointment ? `<p><strong>Horario confirmado:</strong> ${escapeHtml(current)}</p>` : ''}
-            ${part.schedulingEligible ? `<form id="${formId}" data-pickup-timing-key="${escapeHtml(part.timingKey)}">
+            ${appointment ? `<p>Artículos agendados: ${(part.items || []).filter(item => appointment.itemIds == null || appointment.itemIds.includes(item.productId)).map(item => escapeHtml(orderItemLabel(item))).join(', ')}. El horario existente se conserva.</p>` : ''}
+            <ul>${(part.itemEligibility || []).map(item => `<li>${escapeHtml(orderItemLabel(part.items.find(i => i.productId === item.productId)))}: ${item.schedulingEligible ? item.fundingSource === 'FULL_ORDER' ? 'Pago total del pedido confirmado' : 'Pago requerido confirmado' : item.reviewRequired || item.reason === 'ITEM_ALLOCATION_REQUIRED' ? 'Pendiente de revisión o asignación del pago por Admin' : 'Pendiente de confirmación del pago requerido por Admin'}</li>`).join('')}</ul>
+            ${part.writesPaused ? '<p role="status">Los cambios de retiros están pausados temporalmente. Tu pedido y horario existente se conservan.</p>' : part.schedulingEligible ? `<form id="${formId}" data-pickup-timing-key="${escapeHtml(part.timingKey)}">
+              <fieldset><legend>Artículos para este retiro</legend>${(part.items || []).filter(item => (part.schedulableItemIds || []).includes(item.productId)).map(item => `<label><input type="checkbox" name="itemIds" value="${escapeHtml(item.productId)}"${!appointment || appointment.itemIds == null || appointment.itemIds.includes(item.productId) ? ' checked' : ''}> ${escapeHtml(orderItemLabel(item))}</label>`).join('')}</fieldset>
               <label>${appointment ? 'Cambiar horario' : 'Elegí un horario'}
                 <select name="slotKey" required>
                   <option value="">Seleccioná fecha y horario</option>
@@ -1234,7 +1188,7 @@ async function setupPickupScheduler(order, access) {
               </label>
               <button class="primary-action" type="submit">${appointment ? 'Cambiar retiro' : 'Agendar retiro'}</button>
               <p class="form-error" role="alert" hidden></p>
-            </form>` : `<p>${part.status === 'CANCELLED' ? 'Pedido cancelado.' : 'Agendamiento no disponible: revisá si el pedido sigue activo o si la reserva venció.'}</p>`}
+            </form>` : `<p>${part.status === 'CANCELLED' ? 'Pedido cancelado.' : 'No hay artículos habilitados para un nuevo retiro. Revisá la confirmación del pago y si la reserva sigue activa.'}</p>`}
           </section>`;
         }).join('')}
       </div>`;
@@ -1251,6 +1205,8 @@ async function setupPickupScheduler(order, access) {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ orderId: order.id, access,
               timingKey: form.dataset.pickupTimingKey,
+              itemIds: new FormData(form).getAll('itemIds'),
+              expectedRevision: data.fulfillments.find(part => part.timingKey === form.dataset.pickupTimingKey)?.appointment?.revision ?? 0,
               slotKey: new FormData(form).get('slotKey') }) });
           const result = await saved.json();
           if (!saved.ok) throw new Error(result.error || 'No se pudo agendar el retiro.');
@@ -1278,15 +1234,17 @@ function renderCustomerFinancialSummary(order) {
   const remainingBalance = Number(order.remainingBalancePYG ?? grossOrderTotal);
   const dueNow = Number(order.totals?.dueNowPYG || 0);
   const delayedOrder = order.items?.some(item => item.saleMode === 'DELAYED');
+  const mixedOrder = delayedOrder && order.items?.some(item => item.saleMode === 'IMMEDIATE');
   const depositShortfall = Math.max(0,
     Math.min(adjustedOrderTotal, dueNow) - Math.max(0, netReceived));
   const expectedNow = delayedOrder && Date.now() < Date.parse('2026-12-01T00:00:00-03:00')
     ? depositShortfall : remainingBalance;
   const overpayment = Math.max(0, netReceived - adjustedOrderTotal);
   const installmentRows = delayedOrder ? `
-    <div><dt>Seña requerida</dt><dd>${formatPYG(Math.min(adjustedOrderTotal, dueNow))}</dd></div>
-    <div><dt>Faltante de seña</dt><dd>${formatPYG(depositShortfall)}</dd></div>
+    <div><dt>${mixedOrder ? 'Pago inicial requerido' : 'Seña requerida'}</dt><dd>${formatPYG(Math.min(adjustedOrderTotal, dueNow))}</dd></div>
+    <div><dt>${mixedOrder ? 'Faltante del pago inicial' : 'Faltante de seña'}</dt><dd>${formatPYG(depositShortfall)}</dd></div>
     <div><dt>Importe esperado ahora</dt><dd>${formatPYG(expectedNow)}</dd></div>
+    ${remainingBalance > expectedNow ? `<div><dt>Saldo posterior tras este pago</dt><dd>${formatPYG(remainingBalance - expectedNow)}</dd></div>` : ''}
   ` : '';
   const overpaymentRow = overpayment > 0
     ? `<div><dt>Saldo a favor</dt><dd>${formatPYG(overpayment)}</dd></div>` : '';
@@ -1901,6 +1859,12 @@ function injectCheckoutStyles() {
       gap: 6px;
     }
 
+    .pickup-fulfillment-card fieldset label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .pickup-fulfillment-card input[type="checkbox"] { width: auto; }
     .pickup-fulfillment-card h3 {
       margin: 0;
     }
@@ -1921,6 +1885,25 @@ function injectCheckoutStyles() {
       background: white;
       color: inherit;
     }
+
+    .checkout-order-summary .checkout-totals { margin: 0 0 16px; }
+    .checkout-order-summary .checkout-totals .summary-due {
+      display: grid;
+      gap: 4px;
+      margin: 8px 0;
+      padding: 14px;
+      border-radius: 10px;
+      background: #e7f1eb;
+      color: var(--forest-dark);
+    }
+    .checkout-order-summary .summary-due dd { font-size: 1.9rem !important; line-height: 1.15; text-align: left; }
+    .checkout-order-summary .checkout-items { gap: 0; }
+    .checkout-order-summary .checkout-item { padding: 12px 0; gap: 4px; }
+    .checkout-order-summary .checkout-item-detail { font-size: 14px !important; color: var(--muted); }
+    .checkout-item-payment { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .checkout-shared-terms { font-size: .85rem; line-height: 1.45; }
+    .checkout-shared-terms p, .checkout-shared-terms strong { font-size: 14px !important; }
+    .checkout-shared-terms p { margin: 12px 0 0; }
 
     .checkout-items,
     .bank-details,

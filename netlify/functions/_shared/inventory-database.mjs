@@ -1,4 +1,5 @@
 import { getDatabase } from '@netlify/database';
+import {isOwnerRetainedOrder} from './owner-retention-core.mjs';
 import { createHash } from 'node:crypto';
 import {
   applyPaymentConfirmation,
@@ -53,6 +54,7 @@ async function cartRows(client, sessionId) {
 async function now(client) { return ms((await client.query('SELECT clock_timestamp() AS now')).rows[0].now); }
 
 async function productLocks(client, ids, capacities = {}) {
+  const locked = new Map();
   for (const id of [...new Set(ids)].sort()) {
     if (Object.hasOwn(capacities, id)) {
       await client.query('INSERT INTO operational_inventory(product_id,capacity) VALUES ($1,$2) ON CONFLICT DO NOTHING',
@@ -60,7 +62,9 @@ async function productLocks(client, ids, capacities = {}) {
     }
     const row = (await client.query('SELECT * FROM operational_inventory WHERE product_id=$1 FOR UPDATE', [id])).rows[0];
     if (!row) throw fail('No encontramos el inventario de este artículo.');
+    locked.set(id, row);
   }
+  return locked;
 }
 async function expireCart(client, session, timestamp) {
   if (session.expires_at && ms(session.expires_at) <= timestamp) {
@@ -165,11 +169,12 @@ export async function getCartLeaseStatus(sessionId) {
     return status;
   });
 }
-async function setCartQuantity({ cartSessionId, productId, quantity, availability }, allowNew) {
+async function setCartQuantity({ cartSessionId, productId, quantity, availability, pricingSnapshot }, allowNew) {
   return inventoryTransaction(async client => {
     const session = await sessionLock(client, cartSessionId);
     const lockedRows = await cartRows(client, cartSessionId);
-    await productLocks(client, [...lockedRows.map(row => row.product_id), productId], { [productId]: availability });
+    const products = await productLocks(client, [...lockedRows.map(row => row.product_id), productId], { [productId]: availability });
+    if (quantity > 0 && products.get(productId)?.owner_withdrawal) throw fail('Este artículo fue retirado de la venta.');
     const timestamp = await now(client);
     await expireCart(client, session, timestamp);
     const rows = await cartRows(client, cartSessionId);
@@ -188,10 +193,11 @@ async function setCartQuantity({ cartSessionId, productId, quantity, availabilit
         [cartSessionId, session.created_at]);
     }
     if (quantity > 0) {
-      await client.query(`INSERT INTO inventory_reservations(product_id,session_id,quantity,phase,expires_at)
-        VALUES ($1,$2,$3,'CART',$4) ON CONFLICT(session_id,product_id) WHERE phase='CART'
+      await client.query(`INSERT INTO inventory_reservations(product_id,session_id,quantity,phase,expires_at${pricingSnapshot ? ',pricing_snapshot' : ''})
+        VALUES ($1,$2,$3,'CART',$4${pricingSnapshot ? ',$5' : ''}) ON CONFLICT(session_id,product_id) WHERE phase='CART'
         DO UPDATE SET quantity=EXCLUDED.quantity,updated_at=clock_timestamp()`,
-      [productId, cartSessionId, quantity, session.expires_at || new Date(timestamp + CART_HOLD_MS)]);
+      [productId, cartSessionId, quantity, session.expires_at || new Date(timestamp + CART_HOLD_MS),
+        ...(pricingSnapshot ? [JSON.stringify(pricingSnapshot)] : [])]);
     } else {
       await client.query("DELETE FROM inventory_reservations WHERE session_id=$1 AND product_id=$2 AND phase='CART'", [cartSessionId, productId]);
     }
@@ -257,13 +263,24 @@ export async function transitionCartLeaseToOrder({ cartSessionId, checkoutId, or
       return attempt(previous);
     }
     const rows = await cartRows(client, cartSessionId);
-    await productLocks(client, [...rows.map(row => row.product_id), ...items.map(item => item.productId)], availability);
+    const products = await productLocks(client, [...rows.map(row => row.product_id), ...items.map(item => item.productId)], availability);
+    if (items.some(item => products.get(item.productId)?.owner_withdrawal)) throw fail('Un artículo fue retirado de la venta.');
     const timestamp = await now(client);
     if (!session.expires_at || ms(session.expires_at) <= timestamp) throw fail(EXPIRED);
     if (fingerprint(rows.map(row => ({ productId: row.product_id, quantity: row.quantity }))) !== fingerprint(items)) {
       throw fail('La selección del carrito cambió. Actualizá el carrito e intentá de nuevo.');
     }
     for (const item of items) if ((await available(client, item.productId, cartSessionId)) < item.quantity) throw fail(RESERVED);
+    // Recheck the frozen price under the same locks as the CART -> ORDER transition.
+    for (const row of rows) {
+      if (!row.pricing_snapshot) continue;
+      const line = orderSnapshot.items.find(item => item.productId === row.product_id);
+      if (line?.unitPricePYG !== row.pricing_snapshot.askingPricePYG ||
+          line?.depositPercent !== Number(row.pricing_snapshot.depositPercent || 0) ||
+          line?.saleMode !== row.pricing_snapshot.saleMode) {
+        throw fail('El precio reservado cambió. Actualizá el carrito e intentá de nuevo.');
+      }
+    }
     const expiresAt = new Date(timestamp + ORDER_HOLD_MS);
     const snapshot = { ...orderSnapshot, createdAt: timestamp, updatedAt: timestamp,
       holdExpiresAt: ms(expiresAt), reservationState: 'ACTIVE' };
@@ -295,12 +312,13 @@ export async function synchronizeOrderProjection(orderId, writer) {
     return row.order_snapshot;
   });
 }
-async function orderLock(client, orderId) {
+async function orderLock(client, orderId, {allowRetention=false} = {}) {
   const row = (await client.query('SELECT * FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
   if (!row) return null;
+  if(!allowRetention&&isOwnerRetainedOrder(row.order_snapshot))throw fail('Retención personal cerrada. El historial no admite cambios.');
   const rows = (await client.query("SELECT * FROM inventory_reservations WHERE order_id=$1 AND phase IN ('ORDER','COMMITTED') ORDER BY product_id", [orderId])).rows;
-  await productLocks(client, rows.map(item => item.product_id));
-  return { row, rows };
+  const products = await productLocks(client, rows.map(item => item.product_id));
+  return { row, rows, products };
 }
 
 async function reclaimExpiredOrderLocked(client, locked, timestamp) {
@@ -324,7 +342,8 @@ async function reclaimExpiredOrderLocked(client, locked, timestamp) {
       holdExpiresAt: expiresAt }, renewed: false, available: false };
   }
   for (const item of orderRows) {
-    if ((await availableForOrderReceipt(client, item.product_id, row.order_id)) < item.quantity) {
+    if (locked.products.get(item.product_id)?.owner_withdrawal ||
+        (await availableForOrderReceipt(client, item.product_id, row.order_id)) < item.quantity) {
       return { order: { ...current, status: 'RESERVATION_EXPIRED', reservationState: 'EXPIRED',
         holdExpiresAt: expiresAt }, renewed: false, available: false };
     }
@@ -357,7 +376,7 @@ async function reclaimExpiredOrderLocked(client, locked, timestamp) {
 
 export async function refreshOrderReservation(orderId) {
   return inventoryTransaction(async client => {
-    const locked = await orderLock(client, orderId);
+    const locked = await orderLock(client, orderId, {allowRetention:true});
     if (!locked) return null;
     return reclaimExpiredOrderLocked(client, locked, await now(client));
   });
@@ -417,6 +436,9 @@ export async function confirmOrderPayment(orderId, confirmation) {
     const result = applyPaymentConfirmation(current, { ...confirmation, paymentType: type, timestamp });
     if (result.idempotent) return result.order;
     if (confirmationRequiresInventoryCommit(row.committed_at, result)) {
+      if (rows.some(item => locked.products.get(item.product_id)?.owner_withdrawal)) {
+        throw fail('Un artículo fue retirado de la venta. Revisá el pedido antes de confirmar el pago.');
+      }
       const orderRows = rows.filter(item => item.phase === 'ORDER');
       if (!orderRows.length) return false;
       for (const item of orderRows) {
@@ -595,9 +617,35 @@ export async function listOrderSnapshots() {
 
 export async function readCommittedInventory() {
   const rows = (await database().pool.query(
-    'SELECT product_id,capacity,committed_quantity FROM operational_inventory'
+    `SELECT product_id,capacity,committed_quantity,to_jsonb(operational_inventory)->'owner_withdrawal' AS owner_withdrawal,
+      COALESCE((SELECT sum(CASE WHEN item->>'quantity'='1' THEN 1 ELSE 0 END)
+        FROM checkout_attempts a CROSS JOIN LATERAL jsonb_array_elements(COALESCE(a.order_snapshot->'ownerRetention'->'items','[]'::jsonb)) item
+        WHERE a.order_id='VM-2026-514DA2AA'
+          AND a.order_snapshot->'ownerRetention'->>'kind'='NO_CASH_OWNER_RETENTION'
+          AND a.order_snapshot->'ownerRetention'->>'correctionId'='owner-retention-VM-2026-514DA2AA-v1'
+          AND item->>'productId'=operational_inventory.product_id),0) AS owner_retained_quantity
+      FROM operational_inventory`
   )).rows;
   return new Map(rows.map(row => [row.product_id, row]));
+}
+
+export async function readSalePricingState(sessionId) {
+  // Read-only, one statement/snapshot. Other customers' CART and ORDER holds
+  // are excluded; this customer's own accepted cart prices are retained.
+  const rows = (await database().pool.query(`
+    SELECT p.product_id,p.capacity,p.committed_quantity,
+      GREATEST(0,p.capacity-p.committed_quantity-COALESCE(sum(r.quantity) FILTER (
+        WHERE r.phase='ORDER' OR r.session_id IS DISTINCT FROM $1::uuid),0)) AS purchasable_quantity,
+      jsonb_agg(r.pricing_snapshot) FILTER (WHERE r.phase='CART' AND r.session_id=$1::uuid) AS own_prices
+    FROM operational_inventory p
+    LEFT JOIN inventory_reservations r ON r.product_id=p.product_id
+      AND ((r.phase='CART' AND r.expires_at>clock_timestamp())
+        OR (r.phase='ORDER' AND (r.expires_at IS NULL OR r.expires_at>clock_timestamp())))
+    GROUP BY p.product_id`, [sessionId])).rows;
+  return {
+    inventory: new Map(rows.map(row => [row.product_id, row])),
+    cartPrices: new Map(rows.filter(row => row.own_prices?.length).map(row => [row.product_id, row.own_prices[0]])),
+  };
 }
 
 export async function readPurchasableInventory({ query = (sql) => database().pool.query(sql) } = {}) {

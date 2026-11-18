@@ -4,7 +4,7 @@ import {
   getOrder,
   hashAccessToken,
   jsonResponse,
-  loadCatalog,
+  loadSaleCatalog,
   makeOrderId,
   publicOrder,
   salesAreOpen,
@@ -17,7 +17,12 @@ import { assertHouseholdPurchase } from './_shared/purchase-eligibility.mjs';
 const FINAL_SALE_POLICY_VERSION = '2026-10-02-v1';
 
 
-export default async function handler(request) {
+export function createOrderHandler({
+  loadProducts = loadSaleCatalog,
+  recoverOrder = writeNewOrder,
+  readOrder = getOrder,
+} = {}) {
+return async function handler(request) {
   if (request.method !== 'POST') {
     return jsonResponse(
       { error: 'Método no permitido.' },
@@ -93,7 +98,7 @@ export default async function handler(request) {
         error.status = 409;
         throw error;
       }
-      const recovered = await writeNewOrder(existingAttempt.orderSnapshot);
+      const recovered = await recoverOrder(existingAttempt.orderSnapshot);
       return jsonResponse({ ok: true, order: publicOrder(recovered), accessToken: accessTokenFor(existingAttempt.orderId) });
     }
 
@@ -141,7 +146,7 @@ export default async function handler(request) {
       new URL(request.url).origin;
 
     const catalog =
-      await loadCatalog(origin);
+      await loadProducts(origin, { cartSessionId });
 
     const byId =
       new Map(
@@ -253,6 +258,8 @@ export default async function handler(request) {
         unitPricePYG:
           unitPrice,
 
+        ...(product.liquidation ? { liquidation: product.liquidation } : {}),
+
         saleMode:
           product.saleMode,
 
@@ -295,7 +302,7 @@ export default async function handler(request) {
       makeOrderId();
 
     while (
-      await getOrder(orderId)
+      await readOrder(orderId)
     ) {
       orderId =
         makeOrderId();
@@ -346,7 +353,7 @@ export default async function handler(request) {
       orderSnapshot,
     });
     const finalAccessToken = accessTokenFor(attempt.orderId);
-    const order = await writeNewOrder(attempt.orderSnapshot);
+    const order = await recoverOrder(attempt.orderSnapshot);
 
     return jsonResponse(
       {
@@ -371,3 +378,6 @@ export default async function handler(request) {
     );
   }
 }
+}
+
+export default createOrderHandler();

@@ -1,4 +1,5 @@
 const ADMIN_SESSION_KEY = 'mudanza-admin-token';
+const ADMIN_COOKIE_SESSION = 'cookie-session';
 
 const ADMIN_STATE = {
   token: '',
@@ -43,23 +44,25 @@ window.addEventListener('load', function () {
 });
 
 
-function renderAdmin() {
+async function renderAdmin() {
   document.title =
     'Panel vendedor | Venta de Mudanza';
 
-  const token =
-    sessionStorage.getItem(
-      ADMIN_SESSION_KEY
-    );
-
-  if (!token) {
-    renderAdminLogin();
-    return;
+  // Remove the former per-tab plaintext credential. Existing users authenticate
+  // once after deployment; only the server's HttpOnly cookie persists afterward.
+  sessionStorage.removeItem(ADMIN_SESSION_KEY);
+  try {
+    await adminFetch('/api/admin/session');
+    ADMIN_STATE.token = ADMIN_COOKIE_SESSION;
+    await loadAdminDashboard();
+  } catch (error) {
+    if (error.status === 401) renderAdminLogin();
+    else {
+      const main = document.querySelector('main');
+      main.innerHTML = '<section class="checkout-shell"><p role="alert">No se pudo comprobar la sesión. Intentá nuevamente.</p><button type="button" id="admin-retry-session" class="secondary-action">Reintentar</button></section>';
+      document.getElementById('admin-retry-session').addEventListener('click', renderAdmin);
+    }
   }
-
-  ADMIN_STATE.token = token;
-
-  loadAdminDashboard();
 }
 
 
@@ -101,6 +104,12 @@ function renderAdminLogin() {
           >
         </label>
 
+        <label class="admin-editor-checkbox">
+          <input type="checkbox" name="rememberMe">
+          <span>Mantener sesión iniciada</span>
+        </label>
+        <p>Hasta 30 días en un dispositivo de confianza. Sin marcar: 12 horas.</p>
+
         <p
           id="admin-login-error"
           class="form-error"
@@ -123,10 +132,11 @@ function renderAdminLogin() {
       'submit',
       async function (event) {
         event.preventDefault();
+        const form = event.currentTarget;
 
         const data =
           new FormData(
-            event.currentTarget
+            form
           );
 
         const token =
@@ -140,15 +150,11 @@ function renderAdminLogin() {
           );
 
         try {
-          await fetchAdminOrders(token);
-
-          sessionStorage.setItem(
-            ADMIN_SESSION_KEY,
-            token
-          );
-
-          ADMIN_STATE.token =
-            token;
+          await adminFetch('/api/admin/session', { method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'login', token, rememberMe: data.get('rememberMe') === 'on' }) });
+          form.querySelector('[name="token"]').value = '';
+          ADMIN_STATE.token = ADMIN_COOKIE_SESSION;
 
           await loadAdminDashboard();
         } catch (error) {
@@ -173,16 +179,14 @@ async function adminFetch(
       options.headers || {}
     );
 
-  headers.set(
-    'x-admin-token',
-    ADMIN_STATE.token
-  );
+  if (ADMIN_STATE.token && ADMIN_STATE.token !== ADMIN_COOKIE_SESSION) headers.set('x-admin-token', ADMIN_STATE.token);
 
   const response =
     await fetch(
       url,
       {
         ...options,
+        credentials: 'same-origin',
         headers,
         cache:
           options.cache ||
@@ -213,10 +217,10 @@ async function adminFetch(
     await response.json();
 
   if (!response.ok) {
-    throw new Error(
+    throw Object.assign(new Error(
       data.error ||
       'No se pudo completar la operación.'
-    );
+    ), { status: response.status });
   }
 
   return data;
@@ -240,12 +244,13 @@ async function fetchAdminOrders(
   request.promise = (async () => {
     try {
       const response = await fetch('/api/admin/orders', {
-        headers: { 'x-admin-token': token },
+        headers: token && token !== ADMIN_COOKIE_SESSION ? { 'x-admin-token': token } : {},
+        credentials: 'same-origin',
         cache: 'no-store',
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'No se pudieron cargar los pedidos.');
+        throw Object.assign(new Error(data.error || 'No se pudieron cargar los pedidos.'), { status: response.status });
       }
       if (!Array.isArray(data.orders)) throw new Error('Respuesta de pedidos inválida.');
       const orders = data.orders;
@@ -407,10 +412,7 @@ async function loadAdminDashboard() {
     renderAdminShell();
   } catch (error) {
     if (
-      error instanceof Error &&
-      /no autorizado/i.test(
-        error.message
-      )
+      error.status === 401
     ) {
       sessionStorage.removeItem(
         ADMIN_SESSION_KEY
@@ -467,10 +469,16 @@ async function loadAdminDashboard() {
 }
 
 
+function adminIsOwnerRetention(order) {
+  return order?.id==='VM-2026-514DA2AA' && order.ownerRetention?.kind==='NO_CASH_OWNER_RETENTION' &&
+    order.ownerRetention.correctionId==='owner-retention-VM-2026-514DA2AA-v1';
+}
+
 function buildAdminStats(
   orders,
   products
 ) {
+  orders=orders.filter(order=>!adminIsOwnerRetention(order));
   const published =
     products.filter(
       (product) =>
@@ -604,6 +612,7 @@ function renderAdminShell() {
           >
             Cerrar sesión
           </button>
+          <button id="admin-revoke-sessions" class="text-action" type="button">Cerrar todas las sesiones</button>
         </div>
       </header>
 
@@ -692,16 +701,10 @@ function renderAdminShell() {
     )
     ?.addEventListener(
       'click',
-      function () {
-        sessionStorage.removeItem(
-          ADMIN_SESSION_KEY
-        );
-
-        ADMIN_STATE.token = '';
-
-        renderAdminLogin();
-      }
+      () => logoutAdmin()
     );
+
+  document.getElementById('admin-revoke-sessions')?.addEventListener('click', () => logoutAdmin(true));
 
   document
     .getElementById(
@@ -2239,7 +2242,11 @@ function renderLegacyProductRow(
   product
 ) {
   const publicState =
-    product.published
+    product.quantityOwnerRetained
+      ? `<span class="admin-pill">Retención personal: ${Number(product.quantityOwnerRetained)} · ${product.live?.status==='AVAILABLE'?'Otras unidades conservan su disponibilidad':'NO LONGER FOR SALE'}</span>`
+      : product.ownerWithdrawal
+      ? '<span class="admin-pill">Retirado de la venta · NO LONGER FOR SALE</span>'
+      : product.published
       ? `
         <span class="admin-pill is-published">
           Publicado
@@ -2543,6 +2550,15 @@ function renderLegacyProductDetail(
           `
           : ''
       }
+
+      <section class="admin-withdrawal" aria-label="Retirar de la venta">
+        ${product.quantityOwnerRetained ? `<p role="status">Unidades retenidas por David y María: ${Number(product.quantityOwnerRetained)}. No son ventas ni entregas. Las demás unidades conservan sus compromisos y disponibilidad.</p>` : ''}
+        ${product.ownerWithdrawal
+          ? `<p role="status"><strong>Retirado de la venta · NO LONGER FOR SALE.</strong> Acción del propietario registrada el ${adminEscape(new Date(product.ownerWithdrawal.recordedAt).toLocaleString('es-PY', { timeZone: 'America/Asuncion' }))}. Sin venta ni entrega.</p>`
+          : product.live?.status === 'AVAILABLE' ? `<button type="button" class="secondary-action" data-withdraw-product>Retirar de la venta</button>
+            <p>Para conservar el artículo. Se verifican pedidos y reservas antes de retirarlo.</p>` : ''}
+        <p data-withdraw-result role="status"></p>
+      </section>
 
       <section class="admin-photo-editor">
         <header class="admin-editor-heading">
@@ -3211,6 +3227,27 @@ function bindAdminProductEditor(
   if (!editor) {
     return;
   }
+
+  editor.querySelector('[data-withdraw-product]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const result = editor.querySelector('[data-withdraw-result]');
+    if (!window.confirm(`¿Retirar ${adminFormatItem(product.itemNumber)} — ${product.title} de la venta? Se conservarán su ficha, fotos e historial. No se registrará una venta ni una entrega. Si tiene compromisos, la acción se bloqueará.`)) return;
+    button.disabled = true;
+    result.textContent = 'Verificando pedidos y reservas…';
+    try {
+      const data = await adminFetch('/api/admin/withdraw-product', { method: 'POST',
+        headers: { 'content-type': 'application/json' }, body: JSON.stringify({ productId: product.live?.id || product.id, confirmed: true }) });
+      product.status = 'UNLISTED';
+      product.published = false;
+      product.ownerWithdrawal = data.withdrawal;
+      if (product.live) product.live.status = 'UNLISTED';
+      result.textContent = data.message;
+      button.textContent = 'Retirado de la venta · NO LONGER FOR SALE';
+    } catch (error) {
+      result.textContent = error.message;
+      button.disabled = false;
+    }
+  });
 
   const publicView =
     editor.querySelector(
@@ -4481,17 +4518,22 @@ function fulfillmentBatchesForFilter(filter = ADMIN_STATE.fulfillmentFilter) {
 
 
 function renderFulfillmentBatchSheet(batch, printable = printableFulfillmentBatches()) {
+  if(batch.status==='CLOSED_OWNER_WITHDRAWAL')return `<article class="buyer-sheet"><h2>Retención personal — cerrada sin entrega</h2>
+    <p>Los artículos fueron retenidos por David y María. No hubo intercambio real de dinero, venta a cliente ni entrega.</p>
+    <p>Lote ${adminEscape(batch.fulfillmentBatchId)} · revisión ${Number(batch.revision)}</p>
+    <ul>${batch.items.map(i=>`<li>${adminEscape(adminFormatItem(i.itemNumber))} · ${adminEscape(i.title)} · Cantidad ${Number(i.quantity)}</li>`).join('')}</ul>
+    <p>El historial original se conserva. Esta planilla no admite acciones de entrega ni cambios.</p></article>`;
   const combineTargets = printable.filter((candidate) =>
     candidate.fulfillmentBatchId !== batch.fulfillmentBatchId &&
     candidate.buyerGroupId === batch.buyerGroupId &&
     candidate.timingKey === batch.timingKey &&
-    candidate.status !== 'DELIVERED'
+    candidate.status !== 'DELIVERED' && candidate.status !== 'CLOSED_OWNER_WITHDRAWAL'
   );
   const hasDifferentTimingForBuyer = printable.some(candidate =>
     candidate.fulfillmentBatchId !== batch.fulfillmentBatchId &&
     candidate.buyerGroupId === batch.buyerGroupId &&
     candidate.timingKey !== batch.timingKey &&
-    candidate.status !== 'DELIVERED');
+    candidate.status !== 'DELIVERED' && candidate.status !== 'CLOSED_OWNER_WITHDRAWAL');
   return `
   <article class="buyer-sheet" data-fulfillment-batch="${adminEscapeAttribute(batch.fulfillmentBatchId)}">
     <header>
@@ -4663,6 +4705,7 @@ function fulfillmentStatusLabel(status) {
     PREPARED: 'Preparado',
     DELIVERED: 'Entregado',
     LEGACY_FROZEN: 'Histórico congelado',
+    CLOSED_OWNER_WITHDRAWAL: 'Retención personal — cerrada sin entrega',
   })[status] || status;
 }
 
@@ -4968,7 +5011,7 @@ function renderOrdersTab({ preserveDetails = false } = {}) {
                   <span>
                     ${order.status === 'AWAITING_INITIAL_PAYMENT' && order.holdExpiresAt
                       ? `Esperando transferencia - reservado hasta ${adminEscape(adminOrderDeadline(order.holdExpiresAt))}`
-                      : adminStatus(order.status)}
+                      : adminIsOwnerRetention(order) ? 'Retención personal — sin dinero ni entrega' : adminStatus(order.status)}
                   </span>
                 </div>
 
@@ -5312,6 +5355,7 @@ function adminOrderSearchText(order) {
 
 
 function adminOrderMatchesFilter(order, filter) {
+  if(adminIsOwnerRetention(order))return filter==='ALL';
   const status = order.status;
 
   const groups = {
@@ -5450,6 +5494,18 @@ function renderAdminOrderDetail(
   order,
   target
 ) {
+  if(adminIsOwnerRetention(order)){
+    target.innerHTML=`<section class="admin-detail-card" role="status"><h2>Retención personal — sin dinero ni entrega</h2>
+      <p>${adminEscape(order.id)} · Los cuatro artículos fueron retenidos por David y María. No hubo intercambio real de dinero.</p>
+      <ul>${(order.items||[]).map(i=>`<li>${adminEscape(adminFormatItem(i.itemNumber))} · ${adminEscape(i.title)} · Cantidad ${Number(i.quantity)}</li>`).join('')}</ul>
+      <h3>Evidencia histórica conservada</h3>
+      <p>Los siguientes importes son registros originales; no representan dinero realmente recibido o devuelto.</p>
+      <ul>${(order.payments||[]).map(p=>`<li>Pago registrado originalmente: ${adminMoney(p.amountPYG)} · ${adminEscape(p.id)}</li>`).join('')}
+      ${(order.paymentAdjustments||[]).map(a=>`<li>Ajuste registrado originalmente: ${adminMoney(a.amountPYG)} · ${adminEscape(a.id)} · ${adminEscape(a.internalNote||'')}</li>`).join('')}</ul>
+      <p>Corrección: ${adminEscape(order.ownerRetention.correctionId)} · Aprobación: ${adminEscape(order.ownerRetention.approvalReference||'')}.</p>
+      <p>Fotos, comprobantes y auditoría original se conservan. El lote está cerrado sin entrega.</p></section>`;
+    return;
+  }
   const fulfillmentParts = Array.isArray(order.fulfillments) && order.fulfillments.length
     ? order.fulfillments
     : [{ timingKey: 'IMMEDIATE', timingLabel: 'Retiro', items: order.items || [],
@@ -5459,7 +5515,7 @@ function renderAdminOrderDetail(
     <article class="admin-fulfillment-part ${part.timingKey === 'IMMEDIATE' ? 'is-immediate' : 'is-delayed'}">
       <header>
         <div><span class="section-kicker">${adminEscape(part.timingLabel).toUpperCase()}</span>
-          <strong>${part.schedulingEligible ? 'Listo para agendar o cambiar sin pago previo' : 'Agendamiento no disponible para este pedido'}</strong></div>
+          <strong>Consultá la habilitación de cada artículo en la sección Retiros.</strong></div>
         <div><span>A pagar ahora: ${adminMoney(part.dueNowPYG)}</span>
           ${Number(part.futureBalancePYG || 0) > 0 ? `<span>Saldo futuro de estos artículos: ${adminMoney(part.futureBalancePYG)}</span>` : ''}</div>
       </header>
@@ -6096,31 +6152,41 @@ async function setupAdminPickup(order) {
           <h4>${adminEscape(part.timingLabel)}</h4>
           <p>Artículos: ${(part.items || []).map(item => adminEscape(adminFormatItem(item.itemNumber))).join(', ')}</p>
           ${appointment ? `<p><strong>Agendado:</strong> ${adminEscape(appointment.slotKey.replace('|', ' · '))}</p>` : '<p>Sin horario agendado.</p>'}
-          ${part.schedulingEligible ? '<p><strong>Listo para agendar o cambiar sin pago previo.</strong></p>' : '<p>Agendamiento no disponible: revisá si el pedido sigue activo o si la reserva venció.</p>'}
-          ${part.schedulingEligible && part.slots.length ? `<form data-admin-pickup-form>
+          ${appointment ? `<p>Items agendados: ${(part.items || []).filter(item => appointment.itemIds == null || appointment.itemIds.includes(item.productId)).map(item => adminEscape(adminFormatItem(item.itemNumber))).join(', ')}. El turno existente se conserva.</p>` : ''}
+          ${part.writesPaused ? '<p role="status">Cambios de retiros y decisiones por artículo pausados. Los registros existentes se conservan.</p>' : ''}
+          <p>Inmediatos: pago total confirmado. Posteriores: seña acordada confirmada y saldo antes del retiro. Si Admin confirma el total acordado del pedido sin ambigüedades, todos sus artículos quedan habilitados sin asignaciones separadas. Subir un comprobante no habilita el agendamiento.</p>
+          <ul>${(part.itemEligibility || []).map(item => `<li>${adminEscape(adminFormatItem(part.items.find(i => i.productId === item.productId)?.itemNumber))}: ${item.schedulingEligible ? 'Habilitado' : 'Pendiente de pago, asignación o revisión'} · ${item.fundingSource === 'FULL_ORDER' ? 'Cubierto por pago total del pedido' : 'Asignado'} ${adminMoney(item.fundedPYG)} · Requerido ${item.requiredPYG == null ? 'Revisar acuerdo' : adminMoney(item.requiredPYG)}</li>`).join('')}</ul>
+          ${part.schedulingEligible ? '<p><strong>Pago requerido confirmado para los artículos habilitados.</strong></p>' : '<p>Agendamiento no disponible: revisá los pagos por artículo y si la reserva sigue activa.</p>'}
+          ${!part.writesPaused && part.schedulingEligible && part.slots.length ? `<form data-admin-pickup-form>
+            <fieldset><legend>Artículos para este retiro</legend>${(part.items || []).filter(item => (part.schedulableItemIds || []).includes(item.productId)).map(item => `<label><input type="checkbox" name="itemIds" value="${adminEscapeAttribute(item.productId)}"${!appointment || appointment.itemIds == null || appointment.itemIds.includes(item.productId) ? ' checked' : ''}> ${adminEscape(adminFormatItem(item.itemNumber))}</label>`).join('')}</fieldset>
             <label>Horario <select name="slotKey" required><option value="">Seleccioná fecha y horario</option>
               ${part.slots.filter(slot => slot.remaining > 0 || slot.selected).map(slot =>
                 `<option value="${adminEscapeAttribute(slot.key)}"${slot.selected ? ' selected' : ''}>${adminEscape(slot.key.replace('|', ' · '))} · ${slot.remaining} lugar(es)</option>`).join('')}</select></label>
             <button class="primary-action" type="submit">${appointment ? 'Cambiar este retiro' : 'Agendar este retiro'}</button>
           </form>` : ''}
-          ${appointment ? '<button class="secondary-action" type="button" data-admin-cancel-pickup>Cancelar este retiro</button>' : ''}
+          ${appointment && !part.writesPaused ? '<button class="secondary-action" type="button" data-admin-cancel-pickup>Cancelar este retiro</button>' : ''}
           <p class="form-error" data-admin-pickup-error role="alert" hidden></p>
         </article>`;
       }).join('')}</div>`;
+    target.insertAdjacentHTML('beforeend', adminItemPaymentEditor(order, data.decisions || [], (data.fulfillments || []).some(part => part.writesPaused)));
+    bindAdminItemPaymentEditor(target, order);
     target.querySelectorAll('[data-admin-pickup-part]').forEach(partElement => {
       const timingKey = partElement.dataset.adminPickupPart;
       let saving = false;
       const save = async slotKey => {
         if (saving) return;
+        const itemIds = slotKey ? new FormData(partElement.querySelector('form')).getAll('itemIds') : undefined;
         saving = true;
-        const controls = partElement.querySelectorAll('button, select');
+        const controls = partElement.querySelectorAll('button, select, input');
         controls.forEach(control => { control.disabled = true; });
         const error = partElement.querySelector('[data-admin-pickup-error]');
         error.hidden = true;
         try {
           await adminFetch('/api/admin/pickup', { method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ orderId: order.id, timingKey, slotKey }) });
+            body: JSON.stringify({ orderId: order.id, timingKey, slotKey,
+              itemIds,
+              expectedRevision: data.fulfillments.find(part => part.timingKey === timingKey)?.appointment?.revision ?? 0 }) });
           await setupAdminPickup(order);
           await loadUpcomingPickups();
         } catch (problem) { error.textContent = problem.message; error.hidden = false; }
@@ -6136,6 +6202,49 @@ async function setupAdminPickup(order) {
 }
 
 
+function adminItemPaymentEditor(order, decisions, writesPaused = false) {
+  const undone = new Set(decisions.map(e => e.reverses_id).filter(Boolean));
+  return `<details class="admin-detail-card"><summary>Asignaciones y excepciones de pago por artículo</summary>
+    <p>Solo Admin. Asigná fondos ya confirmados a un artículo. No se cambian precios, pagos ni turnos existentes. Los pedidos con el total acordado confirmado y sin ambigüedades habilitan todos sus artículos sin asignaciones separadas. Los pedidos parcialmente pagados mantienen las reglas por artículo.</p>
+    <p>Las notas históricas no cambian los requisitos automáticamente. Una excepción debe registrar expresamente el importe para agendar y el importe total para entregar.</p>
+    <form data-item-payment-decision><fieldset${writesPaused ? ' disabled' : ''}><legend>Decisión de Admin${writesPaused ? ' · Pausado' : ''}</legend>
+      <label>Decisión<select name="kind" required><option value="">Seleccioná una acción</option>
+        <option value="ALLOCATE">Asignar pago confirmado</option><option value="REVERSE">Revertir asignación</option>
+        <option value="REQUIREMENT">Aprobar excepción acordada por artículo</option><option value="REVOKE">Revocar excepción</option></select></label>
+      <label>Artículo<select name="productId"><option value="">Seleccioná un artículo</option>${(order.items || []).map(item => `<option value="${adminEscapeAttribute(item.productId)}">${adminEscape(adminFormatItem(item.itemNumber))}</option>`).join('')}</select></label>
+      <label>Pago confirmado<select name="paymentId"><option value="">Seleccioná un pago</option>${(order.payments || []).filter(p => p.verificationStatus === 'CONFIRMED' && p.voidedAt == null).map(p => `<option value="${adminEscapeAttribute(p.id)}">${adminEscape(p.id)} · ${adminMoney(p.amountPYG)} · ${adminEscape(p.amountSource || 'Histórico sin verificar')}</option>`).join('')}</select></label>
+      <label>Importe a asignar (₲)<input name="amountPYG" type="number" min="1" step="1"></label>
+      <label>Excepción: importe requerido para agendar (₲)<input name="schedulingRequiredPYG" type="number" min="0" step="1"></label>
+      <label>Excepción: importe total requerido para entregar (₲)<input name="collectionRequiredPYG" type="number" min="0" step="1"></label>
+      <label>Decisión a revertir / revocar<select name="reversesId"><option value="">Seleccioná una decisión</option>${decisions.filter(e => ['ALLOCATE', 'REQUIREMENT'].includes(e.kind) && !undone.has(e.id)).map(e => `<option value="${adminEscapeAttribute(e.id)}">${adminEscape(e.kind)} · ${adminEscape(e.product_id)} · ${adminEscape(e.id)}</option>`).join('')}</select></label>
+      <label>Nota de auditoría y referencia al acuerdo<textarea name="note" maxlength="2000" required></textarea></label>
+      <button type="submit" class="primary-action">Registrar decisión de Admin</button><p role="alert" data-item-payment-error></p>
+    </fieldset></form><h4>Historial de decisiones</h4><ul>${decisions.map(e => `<li>${adminEscape(e.kind)} · ${adminEscape(e.product_id || e.reverses_id)} · ${adminEscape(e.amount_pyg ?? e.scheduling_required_pyg ?? '')} · ${adminEscape(e.note)}${undone.has(e.id) ? ' · Revertida / revocada' : ''}</li>`).join('') || '<li>Sin decisiones explícitas.</li>'}</ul></details>`;
+}
+function bindAdminItemPaymentEditor(target, order) {
+  const form = target.querySelector('[data-item-payment-decision]');
+  if (!form) return;
+  let pendingId;
+  form.addEventListener('input', () => { pendingId = undefined; });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = form.querySelector('button'); if (button.disabled) return;
+    const fields = new FormData(form), kind = fields.get('kind');
+    const body = { id: pendingId ||= crypto.randomUUID(), orderId: order.id, kind, note: fields.get('note') };
+    if (['ALLOCATE', 'REQUIREMENT'].includes(kind)) body.productId = fields.get('productId');
+    if (kind === 'ALLOCATE') Object.assign(body, { paymentId: fields.get('paymentId'), amountPYG: fields.get('amountPYG') === '' ? null : Number(fields.get('amountPYG')) });
+    if (kind === 'REQUIREMENT') for (const key of ['schedulingRequiredPYG', 'collectionRequiredPYG']) body[key] = fields.get(key) === '' ? null : Number(fields.get(key));
+    if (['REVERSE', 'REVOKE'].includes(kind)) body.reversesId = fields.get('reversesId');
+    button.disabled = true;
+    const error = form.querySelector('[data-item-payment-error]'); error.textContent = '';
+    try {
+      await adminFetch('/api/admin/item-payment', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      await setupAdminPickup(order);
+    } catch (problem) { error.textContent = problem.message; button.disabled = false; }
+  });
+}
+
+
 async function viewAdminReceipt(
   orderId,
   paymentId
@@ -6146,10 +6255,10 @@ async function viewAdminReceipt(
         orderId
       )}&paymentId=${encodeURIComponent(paymentId || '')}`,
       {
-        headers: {
-          'x-admin-token':
-            ADMIN_STATE.token,
-        },
+        credentials: 'same-origin',
+        headers: ADMIN_STATE.token && ADMIN_STATE.token !== ADMIN_COOKIE_SESSION
+          ? { 'x-admin-token': ADMIN_STATE.token }
+          : {},
       }
     );
 
@@ -6325,6 +6434,19 @@ async function recordAdminPostSaleAdjustment(event, orderId) {
   }
 }
 
+
+async function logoutAdmin(all = false) {
+  if (all && !window.confirm('¿Cerrar todas las sesiones de Admin, incluida esta?')) return;
+  try {
+    await adminFetch('/api/admin/session', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: all ? 'revoke-all' : 'logout' }) });
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    ADMIN_STATE.token = '';
+    ADMIN_STATE.orders = [];
+    ADMIN_STATE.inventory = [];
+    renderAdminLogin();
+  } catch (error) { window.alert(error.message || 'No se pudo cerrar la sesión. Intentá nuevamente.'); }
+}
 
 function exportAdminInventory() {
   const payload = {
@@ -7180,6 +7302,11 @@ function injectAdminStyles() {
 
     .admin-detail-card > h3,
     .admin-fulfillment-part h4,
+    .admin-pickup-part fieldset label { display: flex; align-items: center; gap: 0.5rem; }
+    .admin-pickup-part input[type="checkbox"] { width: auto; }
+    [data-item-payment-decision] { display: grid; gap: 0.75rem; }
+    [data-item-payment-decision] label { display: grid; gap: 0.25rem; min-width: 0; }
+    [data-item-payment-decision] select { width: 100%; min-width: 0; }
     .admin-pickup-part h4 {
       margin: 0 0 12px;
     }

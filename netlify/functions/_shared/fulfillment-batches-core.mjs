@@ -3,6 +3,7 @@ export const FULFILLMENT_STATUSES = Object.freeze([
   'PREPARED',
   'DELIVERED',
   'LEGACY_FROZEN',
+  'CLOSED_OWNER_WITHDRAWAL',
 ]);
 
 export const FULFILLMENT_LOCK = 202610060324;

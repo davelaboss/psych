@@ -4,6 +4,10 @@ import { createHash, randomBytes } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { liquidationPrice, newPurchaseTerms, withCartPricing } from './liquidation.mjs';
+import { withPublicPurchaseAvailability } from './purchase-eligibility.mjs';
+import { applyOwnerWithdrawal } from './owner-withdrawal.mjs';
+import { ownerRetentionProduct, isOwnerRetainedOrder } from './owner-retention-core.mjs';
 import { dispatchSellerNotificationsSafely } from './seller-notifications.mjs';
 
 export const SALES_OPEN_AT =
@@ -440,6 +444,8 @@ export async function loadCatalog(origin, dependencies = {}) {
         }));
       }
     )
+    .map(product => applyOwnerWithdrawal(product, committedInventory.get(product.id)))
+    .map(product => ownerRetentionProduct(product, committedInventory.get(product.id)))
     .map(correctItem054058DefectNote)
     .sort(
       (a, b) =>
@@ -517,8 +523,19 @@ export function projectPublicCatalog(products, deliveryRows, requestedSlug = '')
 }
 
 
+export async function loadSaleCatalog(origin, options = {}, dependencies = {}) {
+  const [products, state] = await Promise.all([
+    (dependencies.loadCatalog || loadCatalog)(origin),
+    (dependencies.readSalePricingState || readSalePricingState)(options.cartSessionId || null),
+  ]);
+  return products.map(product => withPublicPurchaseAvailability(state.cartPrices.has(product.id)
+    ? withCartPricing(product, state.cartPrices.get(product.id))
+    : liquidationPrice(newPurchaseTerms(product), state.inventory.get(product.id), dependencies.enabled),
+    state.inventory.get(product.id)));
+}
+
 export async function loadPublicCatalog(origin, options = {}, dependencies = {}) {
-  const loadAuthoritativeCatalog = dependencies.loadCatalog || loadCatalog;
+  const loadAuthoritativeCatalog = dependencies.loadCatalog || ((origin) => loadSaleCatalog(origin, options));
   const readDeliveryRows = dependencies.readFulfillmentDeliveryRows || readFulfillmentDeliveryRows;
   const [products, deliveryRows] = await Promise.all([
     loadAuthoritativeCatalog(origin),
@@ -567,6 +584,7 @@ import {
   listOrderSnapshots,
   readCommittedInventory,
   readFulfillmentDeliveryRows,
+  readSalePricingState,
 } from './inventory-database.mjs';
 import { recoverOrderBlob, readRecoverableOrder } from './order-recovery.mjs';
 import { publicPayments, withPaymentState } from './order-payments.mjs';
@@ -617,6 +635,8 @@ export function publicOrder(order) {
     updatedAt: order.updatedAt,
 
     status: order.status,
+    ...(isOwnerRetainedOrder(order) ? { ownerRetention: {kind:order.ownerRetention.kind,
+      correctionId:order.ownerRetention.correctionId,recordedAt:order.ownerRetention.recordedAt} } : {}),
     cancelledBy: order.cancelledBy || null,
 
     buyer: {
@@ -668,22 +688,7 @@ export function publicOrder(order) {
   };
 }
 
-export function adminAuthorized(request) {
-  const expected = String(
-    process.env.ADMIN_TOKEN || ''
-  );
-
-  const provided = String(
-    request.headers.get('x-admin-token') || ''
-  );
-
-  return Boolean(
-    expected &&
-    provided &&
-    expected === provided
-  );
-}
-
+export { adminAuthorized } from './admin-sessions.mjs';
 
 export async function listOrders() {
   const store = ordersStore();

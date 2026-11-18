@@ -1,0 +1,116 @@
+HISTORICAL OWNER RETENTION — DEVELOPMENT ONLY / SEPARATE EXECUTION APPROVAL
+
+Scope: VM-2026-514DA2AA, exactly one unit each of Items 043, 411, 432, 466.
+Base release: d8e677ef99d0f3d0c0ec21107756718d5b9104a9 (approved PR82 then PR83).
+No production correction, migration, publication or pickup-control change is
+authorized by this patch's development authorization.
+
+IMPLEMENTATION
+An operator-only procedure appends ownerRetention to the existing authoritative
+order snapshot and appends an OWNER_RETENTION event to the existing fulfillment
+audit. The marker states that David and Maria retained the four exact units,
+with zero actual cash received/refunded and no customer sale or physical delivery.
+It references the original payment c5929d87-e991-41bb-a468-2ddca8605c6d,
+adjustment 375c0bab-e233-45c2-ad12-2ecb8db53a55 and PREPARE event 204.
+No original payment, adjustment, receipt, order field or previous audit record is
+deleted, zeroed, voided or overwritten. The original financial entries remain
+historical evidence. The original order status is also preserved for history;
+the explicit non-sale marker governs operational classification and reporting.
+
+Batch 0d646d9f-80ae-4db5-acd6-bce66eca410a moves only from PREPARED revision 2
+to CLOSED_OWNER_WITHDRAWAL revision 3. delivered_at stays null, auto_attach stays
+false, all memberships remain, and no DELIVER event or payment exception is
+created. Closed batches cannot be reopened, delivered, combined or separated.
+Automatic assignment excludes the corrected order even if membership evidence
+were later missing. Closed history stays available under Todos, with no delivery
+controls, and is excluded from outstanding preparation/delivery filters.
+
+Inventory capacities, committed counters, reservations, product IDs, source
+information and photographs remain unchanged. Committed physical stock remains
+unavailable. A read-only projection derives retained quantity from the exact
+order-line marker and subtracts only those units from customer-sale counts.
+043/411/432 become UNLISTED / NO LONGER FOR SALE, with zero customer units sold.
+466 remains AVAILABLE with one owner-retained unit, the other customer's one
+committed unit and one free unit. Future legitimate purchases of the free unit
+retain the existing checkout/price/locking rules. Liquidation logic is untouched.
+
+Admin statistics and Sale Pulse exclude this owner record from customer sales.
+Admin and private-order views label it personal retention and explain that the
+original 95,000 PYG payment and matching adjustment are historical entries, not
+cash exchanged. Normal payment/receipt/ledger/pickup mutations reject this closed
+record. Genuine customer full-payment recognition, refunds, partial payments,
+credits and exceptions retain their existing policy. No customer protection is
+relaxed. OWNER/REVIEWER authentication is unchanged; no new HTTP correction action
+or Admin write control is introduced.
+
+SCHEMA
+20261118_historical_owner_retention.sql extends the existing batch-status and
+audit-event CHECK constraints with the new non-delivery values. It adds guards
+against editing/removing retained order history, closed batch/membership and the
+new audit evidence, including bulk truncation. It performs no historical update
+or backfill. Applying this migration alone does not execute the correction.
+Old deployed code can coexist with the empty schema extension, but the new
+reader/guard code must be published before any future historical execution.
+After execution, rollback must retain the new non-sale reader/guard behavior;
+reverting to old readers would mislabel preserved history as an ordinary sale.
+No routine undo/reopen feature is added. Any later change needs a separately
+reviewed append-only correction, not deletion of this evidence.
+
+EXACT EXECUTION PLAN — PROPOSED, DO NOT RUN UNDER DEVELOPMENT AUTHORIZATION
+1. Governance reviews the exact draft head, migration18, scope and preservation
+   evidence. Separately authorize any merge, new exact artifact preparation,
+   migration/publication and final data correction. The prepared PR82/83 artifact
+   does not contain this patch; publishing it cannot execute this correction.
+2. Before execution, confirm the intended release/artifact and publishing lock;
+   leave ACTIVE pickup scheduling unchanged. Take a fresh production snapshot,
+   an authoritative read-only record backup/hash manifest and original Blob/
+   photograph references. Do not restore an old whole-database snapshot over
+   newer customer activity. Any recovery procedure requires its own review.
+3. After separately approved schema/code release, run only the read-only plan:
+   node tools/owner-retention/correct-four-items.mjs --plan
+   It uses a REPEATABLE READ READ ONLY transaction. Review the exact fingerprint
+   together with the original record backup. Approve that fingerprint explicitly.
+4. The case guard requires the exact order/units, original frozen line amounts,
+   95,000 payment/adjustment identities and verification, PREPARED revision 2,
+   only PREPARE event 204, four COMMITTED reservations, no target appointment or
+   payment decision, capacity/commit counts 1/1,1/1,1/1,3/2, and the other 466
+   customer VM-2026-497D5F3F. New active holds or related commitments cause a stop.
+   Normal drift such as another customer's purchase must never be overwritten.
+5. Only after separate execution approval, an authorized operator with the
+   existing protected server database configuration may run:
+   node tools/owner-retention/correct-four-items.mjs --apply
+     --confirm-order=VM-2026-514DA2AA --approval=EXPLICIT_OWNER_APPROVAL_REFERENCE
+     --expected=EXACT_APPROVED_64_CHARACTER_PLAN_FINGERPRINT
+   This is one command; the line breaks above are documentation only. No token
+   belongs in the command, repository, browser storage or report. The tool
+   rejects incomplete approval or simultaneous --plan/--apply flags before
+   database access. This task never runs that command against production.
+6. The transaction takes the existing fulfillment advisory lock, exact batch,
+   sorted target/sibling order locks and product locks, with a five-second lock
+   timeout. It rereads all case evidence and compares the exact approved hash.
+   Drift stops execution; failure rolls everything back. A matching retry returns
+   the existing correction without duplicate audit or inventory/financial writes.
+7. Verify only the target snapshot marker/projection version, target batch closure
+   and one appended audit event changed. Compare all original finance, receipt,
+   reservation, inventory, membership, unrelated order/appointment and control
+   records. Verify private/Admin labels, public exclusion of 043/411/432, and
+   preserved availability/customer commitment for 466. Stop on any discrepancy;
+   never compensate by inventing payments, refunds or deliveries.
+
+VALIDATION
+Synthetic PostgreSQL/PGlite and real Chromium desktop/mobile cases cover schema
+preservation, exact case/fingerprint/approval guards, atomic rollback, idempotent
+concurrent execution, competing legitimate 466 claims, immutable evidence,
+unchanged financial records/stock/reservations/appointments, customer checkout,
+correct public/admin inventory counts, read-only order/batch views, rejection of
+future financial/pickup mutations and exclusion from outstanding work/sale stats.
+Existing policy and security regressions are run independently. No production
+correction is part of validation. The previously accepted unrelated storefront
+discovery test exception remains unchanged; no new failures are accepted.
+
+Final results: 399/399 focused tests passed, zero skipped. The full suite ran
+1,024 tests: 1,023 passed, zero skipped; its sole failure is the previously
+accepted unrelated storefront-discovery assertion (source and test unchanged).
+All 29 new historical correction tests passed, including three real PostgreSQL
+independent-worker cases and two Chromium desktop/mobile cases. No test was
+relaxed or skipped to accommodate the correction.

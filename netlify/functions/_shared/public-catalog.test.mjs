@@ -158,9 +158,9 @@ test('internal, stale-cart, and marketing consumers remain isolated and safe', a
   ]);
   assert.match(adminSource, /loadCatalog/);
   assert.doesNotMatch(adminSource, /loadPublicCatalog/);
-  assert.match(cartSource, /loadCatalog/);
+  assert.match(cartSource, /loadSaleCatalog/);
   assert.match(cartSource, /product\.status !== 'AVAILABLE'/);
-  assert.match(orderSource, /loadCatalog/);
+  assert.match(orderSource, /loadSaleCatalog/);
   assert.match(orderSource, /product\.status !== 'AVAILABLE'/);
   assert.match(marketingSource, /loadCatalog/);
   assert.match(endpointSource, /loadPublicCatalog/);
