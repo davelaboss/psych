@@ -1050,7 +1050,7 @@ function renderProductDetail(product) {
             </div>
           </div>
 
-          ${held ? '<p class="reserved-purchase-note" role="status">Este artículo está reservado por otro comprador. El precio mostrado es de referencia; no podés iniciar una compra mientras siga reservado.</p>' : inquiry ? '<div class="private-sale-terms"><strong>Venta particular · US$18,000</strong><p>Entrega inmediata, con visitas coordinadas. Pago completo y transferencia en trato privado. Título y cédula verde al día; lista para transferir. Contactá al propietario por WhatsApp para coordinar.</p></div>' : `<div class="payment-breakdown">
+          ${held ? '<p class="reserved-purchase-note" role="status">Este artículo está reservado por otro comprador. El precio mostrado es de referencia; no podés iniciar una compra mientras siga reservado.</p>' : inquiry ? '<div class="private-sale-terms"><strong>Venta particular · ' + price + '</strong><p>Entrega inmediata, con visitas coordinadas. Pago completo y transferencia en trato privado. Título y cédula verde al día; lista para transferir. Contactá al propietario por WhatsApp para coordinar.</p></div>' : `<div class="payment-breakdown">
             <div>
               <span>Precio total</span>
               <strong>${price}</strong>

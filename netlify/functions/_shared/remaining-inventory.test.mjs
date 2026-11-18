@@ -17,9 +17,9 @@ test('remaining approval prices, selling units, disclosures and delayed terms su
  for(const p of products)assert.doesNotMatch(JSON.stringify(p),/NO CHANGE|ownerPatch|confirmedFields|sourceEvidence|C:\\\\Users/);
 });
 test('Tracker uses genuine USD inquiry mode, approved specs and nine authentic photos',async()=>{
- assert.equal(tracker.currency,'USD');assert.equal(tracker.askingPriceUSD,18000);assert.equal(tracker.askingPricePYG,null);assert.equal(tracker.depositPercent,null);assert.equal(tracker.purchasable,false);assert.equal(tracker.saleMode,'INQUIRY');assert.equal(tracker.images.length,9);assert.match(tracker.description,/10.695 km al 06\/11\/2026.*1.2 Turbo Flex.*automática de 6.*Entrega inmediata/);
+ assert.equal(tracker.currency,'USD');assert.equal(tracker.askingPriceUSD,16990);assert.equal(tracker.askingPricePYG,null);assert.equal(tracker.depositPercent,null);assert.equal(tracker.purchasable,false);assert.equal(tracker.saleMode,'INQUIRY');assert.equal(tracker.images.length,9);assert.match(tracker.description,/10.695 km al 06\/11\/2026.*1.2 Turbo Flex.*automática de 6.*Entrega inmediata/);
  for(const p of products)for(const image of p.images)assert((await readFile(new URL('../../../'+image.slice(1),import.meta.url))).length>0);
- const html=injectProductPreviewMetadata('<head></head>',tracker,'https://thelabossieres.com');assert.match(html,/US\$18,000/);assert.match(html,/product:price:currency" content="USD"/);assert.match(html,/tracker-615-01/);
+ const html=injectProductPreviewMetadata('<head></head>',tracker,'https://thelabossieres.com');assert.match(html,/US\$16,990/);assert.match(html,/product:price:currency" content="USD"/);assert.match(html,/tracker-615-01/);
 });
 test('all previous source records are unchanged; existing overrides and stock still win',async()=>{
  const before=catalogBatchProducts(undefined,undefined,[]),after=catalogBatchProducts(undefined,undefined,VOLUME6_REMAINING.filter(p=>p.itemNumber<=660));assert.equal(after.length,before.length+14);

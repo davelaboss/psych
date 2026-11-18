@@ -79,7 +79,7 @@ test('tiers use current asking price before discount, rounded to whole guaranies
 
 test('protected Items, inquiry/USD, invalid prices and unsellable stock are untouched', () => {
   for (const p of [product(274,2950000),product(313,1800000),
-    product(615,null,{currency:'USD',askingPriceUSD:18000,saleMode:'INQUIRY'}),
+    product(615,null,{currency:'USD',askingPriceUSD:16990,saleMode:'INQUIRY'}),
     ...['SOLD','PICKED_UP','RESERVED','WITHDRAWN','UNAVAILABLE','UNLISTED','NEEDS_REVIEW'].map(status=>product(1,20000,{status})),
     product(1,20000,{quantityRemaining:0}),product(1,0),product(1,1.5),product(1,NaN)]) {
     assert.equal(liquidationPrice(p, stock, true), p);
@@ -141,7 +141,7 @@ test('real cart-to-checkout flow freezes prices, preserves commitments and old r
   const a='11111111-1111-4111-8111-111111111111', b='22222222-2222-4222-8222-222222222222';
   let enabled=true;
   let products=[product(1),product(2,11999,{saleMode:'IMMEDIATE',depositPercent:100}),
-    product(274,2950000),product(313,1800000),product(615,null,{saleMode:'INQUIRY',currency:'USD',askingPriceUSD:18000})];
+    product(274,2950000),product(313,1800000),product(615,null,{saleMode:'INQUIRY',currency:'USD',askingPriceUSD:16990})];
   try {
     // An old active cart exists before the additive migration; no price rewrite.
     await claimCartLease({cartSessionId:b,productId:'item-1',quantity:1,availability:3});
@@ -200,7 +200,7 @@ test('real cart-to-checkout flow freezes prices, preserves commitments and old r
     const protectedSale=await loadProducts('http://localhost',{});
     assert.equal(protectedSale.find(p=>p.itemNumber===274).askingPricePYG,2950000);
     assert.equal(protectedSale.find(p=>p.itemNumber===313).askingPricePYG,1800000);
-    assert.equal(protectedSale.find(p=>p.itemNumber===615).askingPriceUSD,18000);
+    assert.equal(protectedSale.find(p=>p.itemNumber===615).askingPriceUSD,16990);
     await releaseCartLease(b);
   } finally { setInventoryDatabaseClientForTests(undefined);await db.close(); }
 });

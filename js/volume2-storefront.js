@@ -1003,7 +1003,7 @@
           <span class="card-category">${escapeHtml(product.category || '')}</span>
         </div>
         <div class="card-actions">
-          ${inquiry ? '<a class="secondary-action" href="https://wa.me/595972588347?text=' + encodeURIComponent('Hola, quisiera consultar por Chevrolet Tracker LTZ 2024 (Item 615), US$18,000.') + '" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>' : `<button type="button" data-cart-action ${!canBuy ? 'disabled' : ''}>
+          ${inquiry ? '<a class="secondary-action" href="https://wa.me/595972588347?text=' + encodeURIComponent('Hola, quisiera consultar por Chevrolet Tracker LTZ 2024 (Item 615), US$' + Number(product.askingPriceUSD).toLocaleString('en-US') + '.') + '" target="_blank" rel="noreferrer">Consultar por WhatsApp</a>' : `<button type="button" data-cart-action ${!canBuy ? 'disabled' : ''}>
             ${held ? 'Reservado' : !canBuy ? 'No disponible' : 'Agregar al carrito'}
           </button>`}
         </div>

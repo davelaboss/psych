@@ -14,7 +14,7 @@ const product = (itemNumber, askingPricePYG, extra = {}) => ({
   dateListed: '2026-11-09', ...extra,
 });
 const tracker = product(615, null, {id: 'real-202611-volume6-615', title: 'Chevrolet Tracker',
-  category: 'Vehículos', currency: 'USD', askingPriceUSD: 18000, saleMode: 'INQUIRY', purchasable: false});
+  category: 'Vehículos', currency: 'USD', askingPriceUSD: 16990, saleMode: 'INQUIRY', purchasable: false});
 const criteria = {query: '', category: '', availability: 'ALL', condition: 'ALL', maxPrice: 0, showSold: false};
 
 test('default sorts live effective prices descending, including USD; sold remains hidden', () => {
@@ -30,7 +30,7 @@ test('mixed currencies interleave by value in both directions, rather than by cu
   assert.deepEqual(list.map(p=>p.itemNumber),[3,2,615]);
   sortProducts(list,'price-desc');
   assert.deepEqual(list.map(p=>p.itemNumber),[615,2,3]);
-  assert.equal(sortingPricePYG(tracker),112071780);
+  assert.equal(sortingPricePYG(tracker),16990 * 6226.21);
 });
 
 test('null, zero and malformed prices remain browsable after known prices, never used as zero', () => {
@@ -49,7 +49,8 @@ test('Tracker remains in all, vehicle, immediate and search results with inquiry
   }
   assert.equal(filterProducts([tracker],{...criteria,availability:'DELAYED'}).length,0);
   const card = renderCard(tracker).innerHTML;
-  assert.match(card,/US\$18,000/);
+  assert.match(card,/US\$16,990/);
+  assert.match(decodeURIComponent(card),/Item 615\), US\$16,990\./);
   assert.match(card,/Consultar por WhatsApp/);
   assert.doesNotMatch(card,/data-cart-action|Agregar al carrito|Gratis/);
 });
