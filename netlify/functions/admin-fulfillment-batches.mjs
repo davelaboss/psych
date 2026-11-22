@@ -24,6 +24,9 @@ export function createFulfillmentBatchesHandler({
 
       const body = await request.json();
       const action = String(body?.action || '').trim().toUpperCase();
+      if (body?.ownerDeliveryAuthorization != null && action !== 'DELIVER') {
+        return jsonResponse({ error: 'La autorización solo corresponde a la entrega.' }, 400);
+      }
       const batchId = String(body?.batchId || '').trim();
       if (!batchId) return jsonResponse({ error: 'Falta el lote.' }, 400);
       if (!UUID.test(batchId)) return jsonResponse({ error: 'El lote no es válido.' }, 400);
@@ -49,7 +52,8 @@ export function createFulfillmentBatchesHandler({
         expectedRevision: body?.expectedRevision,
         expectedTargetRevision: body?.expectedTargetRevision,
         confirmFrozen: body?.confirmFrozen === true,
-      });
+        ownerDeliveryAuthorization: body?.ownerDeliveryAuthorization,
+      }, { actor: 'OWNER' }); // adminAuthorized accepts only the server-verified OWNER.
       return jsonResponse({
         ok: true,
         committed: true,
