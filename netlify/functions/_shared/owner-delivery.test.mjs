@@ -184,8 +184,9 @@ test('explicit historical confirmation keeps its separate existing behavior', as
   assert.deepEqual((await events(f))[0].context, { reason: 'HISTORICAL_DELIVERY_CONFIRMED' });
 });
 
-test('delivery never repairs unrelated assignments, and the separately corrected order cannot be delivered', async () => {
-  const protectedOrder = await fixture(db, { orderId: 'VM-2026-96200FE0', assigned: false });
+test('delivery never repairs unrelated assignments or changes uncommitted orders', async () => {
+  const protectedOrder = await fixture(db, { assigned: false });
+  await db.query('UPDATE checkout_attempts SET committed_at=NULL WHERE order_id=$1', [protectedOrder.order.id]);
   const unrelated = await fixture(db, { assigned: false });
   const f = await fixture(), before = await state();
   const unrelatedBatches = (await db.query('SELECT * FROM fulfillment_batches WHERE fulfillment_batch_id<>$1 ORDER BY fulfillment_batch_id', [f.batchId])).rows;
@@ -193,12 +194,55 @@ test('delivery never repairs unrelated assignments, and the separately corrected
   assert.deepEqual(await state(), before);
   assert.deepEqual((await db.query('SELECT * FROM fulfillment_batches WHERE fulfillment_batch_id<>$1 ORDER BY fulfillment_batch_id', [f.batchId])).rows, unrelatedBatches);
   for (const o of [protectedOrder, unrelated]) assert.deepEqual((await db.query('SELECT * FROM buyer_group_orders WHERE order_id=$1', [o.order.id])).rows, []);
-  // A synthetic batch containing the protected ID must fail before any write.
-  const client = { query: (sql, params) => sql.includes('SELECT order_id,product_id')
-    ? { rows: [{ order_id: protectedOrder.order.id, product_id: f.order.items[0].productId }] }
-    : db.query(sql, params) };
-  const second = await fixture();
-  await assert.rejects(transitionBatch(client, approved(second), owner), e => e.code === 'FULFILLMENT_ORDER_UNDER_REVIEW');
+});
+
+test('correction lifecycle blocks premature delivery but permits only committed Item 369 afterward', async () => {
+  // Synthetic records only: model PR #86's pre/postconditions without executing
+  // its correction or changing any of that PR's code.
+  const f = await fixture(db, { orderId: 'VM-2026-96200FE0' });
+  await db.query('UPDATE checkout_attempts SET committed_at=NULL WHERE order_id=$1', [f.order.id]);
+  let before = await state();
+  const premature = await handler(request(approved(f)));
+  assert.equal(premature.status, 409);
+  assert.equal((await premature.json()).code, 'FULFILLMENT_ORDER_INELIGIBLE');
+  assert.deepEqual(await state(), before); assert.deepEqual(await events(f), []);
+
+  // The actual pre-correction order has no membership. Delivery cannot create
+  // membership for it, and an empty persisted batch cannot be delivered.
+  await db.query('DELETE FROM fulfillment_batch_items WHERE order_id=$1', [f.order.id]);
+  before = await state();
+  assert.equal((await handler(request(approved(f)))).status, 409);
+  assert.deepEqual(await state(), before); assert.deepEqual(await events(f), []);
+
+  const kept = { ...f.order.items[0], productId: 'real-202610-volume4-369', itemNumber: 369,
+    unitPricePYG: 30000, dueNowPYG: 30000, futureBalancePYG: 0 };
+  const corrected = { ...f.order, items: [kept], totals: { totalPYG: 30000, dueNowPYG: 30000, futureBalancePYG: 0 },
+    payments: f.order.payments.map(p => ({ ...p, amountPYG: 30000, amountSource: 'ADMIN_VERIFIED' })) };
+  await db.query('UPDATE checkout_attempts SET committed_at=clock_timestamp(),order_snapshot=$2 WHERE order_id=$1', [f.order.id, JSON.stringify(corrected)]);
+  await db.query('DELETE FROM inventory_reservations WHERE order_id=$1', [f.order.id]);
+  await db.query('UPDATE operational_inventory SET committed_quantity=0 WHERE product_id=ANY($1::text[])', [f.order.items.map(i => i.productId)]);
+  await db.query('INSERT INTO operational_inventory(product_id,capacity,committed_quantity) VALUES($1,1,1)', [kept.productId]);
+  await db.query("INSERT INTO inventory_reservations(product_id,session_id,quantity,phase,order_id) VALUES($1,$2,1,'COMMITTED',$3)", [kept.productId, f.session, f.order.id]);
+
+  // Even after commitment, delivery cannot manufacture an assignment. Once the
+  // normal assignment/preparation workflow provides Item 369, it can be delivered.
+  assert.equal((await handler(request(deliver(f)))).status, 409);
+  await db.query("INSERT INTO fulfillment_batch_items(order_id,product_id,fulfillment_batch_id,assignment_mode) VALUES($1,$2,$3,'AUTO_NEW')", [f.order.id, f.order.items[1].productId, f.batchId]);
+  before = await state();
+  const removedItem = await handler(request(approved(f)));
+  assert.equal(removedItem.status, 409);
+  assert.equal((await removedItem.json()).code, 'FULFILLMENT_ITEMS_NOT_FOUND');
+  assert.deepEqual(await state(), before); assert.deepEqual(await events(f), []);
+  await db.query('DELETE FROM fulfillment_batch_items WHERE order_id=$1', [f.order.id]);
+  await db.query("INSERT INTO fulfillment_batch_items(order_id,product_id,fulfillment_batch_id,assignment_mode) VALUES($1,$2,$3,'AUTO_NEW')", [f.order.id, kept.productId, f.batchId]);
+  before = await state();
+  const delivered = await handler(request(deliver(f)));
+  assert.equal(delivered.status, 200);
+  assert.deepEqual((await delivered.json()).changedBatches[0].items.map(i => i.productId), [kept.productId]);
+  const [event] = await events(f);
+  assert.deepEqual(event.affected_items, [{ orderId: f.order.id, productId: kept.productId }]);
+  assert.deepEqual(event.context, {}, 'verified full payment needs no owner override');
+  assert.deepEqual(await state(), before, 'delivery preserves the corrected snapshot, financial evidence and inventory');
 });
 
 test('audit failure rolls back the delivery and retry writes exactly one event', async () => {

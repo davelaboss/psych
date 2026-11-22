@@ -262,9 +262,6 @@ export async function transitionBatch(client, {
   }
 
   const items = await affectedItems(client, batchId);
-  if (action === 'DELIVER' && items.some(item => item.orderId === 'VM-2026-96200FE0')) {
-    throw conflict('Este lote contiene un pedido con una corrección separada en curso.', 'FULFILLMENT_ORDER_UNDER_REVIEW');
-  }
   // PREPARED -> DELIVERED records a current collection. LEGACY_FROZEN's
   // separate, explicitly confirmed action records a completed historical
   // delivery; preserve that retrospective workflow and its evidence.

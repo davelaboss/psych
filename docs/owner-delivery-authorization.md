@@ -31,9 +31,11 @@ Existing LEGACY_FROZEN historical confirmation retains its separate meaning.
 
 Delivery takes the existing fulfillment advisory lock but does not run global
 buyer/assignment maintenance. Other operations retain their existing behavior.
-Delivery of a batch containing `VM-2026-96200FE0` is explicitly blocked while its
-separately governed correction is in progress. Removing that guard needs a
-separate review; this change does not modify the correction project.
+No order-specific delivery prohibition is used. PR #86 requires its target order
+to be uncommitted and without fulfillment membership before correction, and then
+commits only Item 369. Delivery rejects an uncommitted order even if stale
+membership exists, cannot create missing membership, and only delivers persisted
+members after normal assignment/preparation. This change does not modify PR #86.
 
 No payment, allocation, exception, receipt, order balance/status, reservation,
 inventory quantity, appointment or notification is created or updated by delivery.
@@ -47,6 +49,13 @@ No database migration is required.
 PGlite fixtures, intercepted desktop/mobile browser requests and independent
 PostgreSQL workers on a disposable localhost `pickup_test_*` database. No live
 customer record was read or changed by those tests.
+
+Governance compatibility amendment: removed the order-specific prohibition and
+reran only eight affected checks, all passing with zero failures/skips. Synthetic
+pre/post-correction fixtures verify uncommitted rejection, absent membership,
+rejection of removed Items even with OWNER authorization, and ordinary delivery of
+only committed Item 369. This is code review and state-contract coverage, not
+execution of PR #86 or a combined release test. Its code and project were untouched.
 
 Before release: Governance reviews the exact diff and test evidence, rechecks the
 live commit and separate correction status, and explicitly authorizes a controlled
