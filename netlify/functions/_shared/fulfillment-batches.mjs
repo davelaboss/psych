@@ -205,11 +205,12 @@ async function recordEvent(client, {
   items = [],
   revisions = {},
   context = {},
+  actor = 'ADMIN',
 }) {
   await client.query(`INSERT INTO fulfillment_batch_events
     (event_type,fulfillment_batch_id,source_batch_id,target_batch_id,actor,
       affected_items,revisions,context)
-    VALUES($1,$2,$3,$4,'ADMIN',$5::jsonb,$6::jsonb,$7::jsonb)`, [
+    VALUES($1,$2,$3,$4,$8,$5::jsonb,$6::jsonb,$7::jsonb)`, [
     eventType,
     fulfillmentBatchId,
     sourceBatchId,
@@ -217,6 +218,7 @@ async function recordEvent(client, {
     JSON.stringify(items),
     JSON.stringify(revisions),
     JSON.stringify(context),
+    actor,
   ]);
 }
 
@@ -225,7 +227,16 @@ export async function transitionBatch(client, {
   action,
   expectedRevision,
   confirmFrozen,
-}) {
+  ownerDeliveryAuthorization,
+}, { actor } = {}) {
+  if (ownerDeliveryAuthorization != null) {
+    if (actor !== 'OWNER') throw Object.assign(new Error('Acción exclusiva del propietario.'), { status: 403 });
+    if (action !== 'DELIVER' || ownerDeliveryAuthorization.confirmed !== true ||
+        typeof ownerDeliveryAuthorization.reason !== 'string' ||
+        !ownerDeliveryAuthorization.reason.trim() || ownerDeliveryAuthorization.reason.trim().length > 500) {
+      throw Object.assign(new Error('Confirmá la autorización e ingresá un motivo de hasta 500 caracteres.'), { status: 400 });
+    }
+  }
   const rows = await lockBatches(client, [batchId]);
   const batch = rows.get(batchId);
   if (batch.merged_into_batch_id) throw conflict('Este lote ya fue combinado con otro.');
@@ -234,6 +245,9 @@ export async function transitionBatch(client, {
     throw conflict('Confirmá expresamente que el lote histórico ya fue entregado.');
   }
   const status = nextStatus(batch.status, action);
+  if (ownerDeliveryAuthorization != null && batch.status !== 'PREPARED') {
+    throw conflict('La autorización del propietario solo corresponde a un lote preparado.');
+  }
 
   if (action === 'REOPEN') {
     const competing = (await client.query(`SELECT fulfillment_batch_id
@@ -248,10 +262,16 @@ export async function transitionBatch(client, {
   }
 
   const items = await affectedItems(client, batchId);
+  if (action === 'DELIVER' && items.some(item => item.orderId === 'VM-2026-96200FE0')) {
+    throw conflict('Este lote contiene un pedido con una corrección separada en curso.', 'FULFILLMENT_ORDER_UNDER_REVIEW');
+  }
   // PREPARED -> DELIVERED records a current collection. LEGACY_FROZEN's
   // separate, explicitly confirmed action records a completed historical
   // delivery; preserve that retrospective workflow and its evidence.
-  if (action === 'DELIVER' && batch.status === 'PREPARED') await requireCollectionPayments(client, items);
+  let blockedItems = [];
+  if (action === 'DELIVER' && batch.status === 'PREPARED') {
+    blockedItems = await requireCollectionPayments(client, items, { authorizeDelivery: ownerDeliveryAuthorization != null });
+  }
   const updated = (await client.query(`UPDATE fulfillment_batches SET
       status=$2,
       auto_attach=$3,
@@ -269,7 +289,11 @@ export async function transitionBatch(client, {
     targetBatchId: batchId,
     items,
     revisions: { before: Number(batch.revision), after: Number(updated.revision) },
-    context: action === 'DELIVER' && batch.status === 'LEGACY_FROZEN'
+    actor: ownerDeliveryAuthorization != null ? 'OWNER' : 'ADMIN',
+    context: ownerDeliveryAuthorization != null
+      ? { kind: 'OWNER_DELIVERY_AUTHORIZATION', reason: ownerDeliveryAuthorization.reason.trim(),
+        paymentEvidenceBypassed: blockedItems.length > 0, paymentEvidenceBlockedItems: blockedItems }
+      : action === 'DELIVER' && batch.status === 'LEGACY_FROZEN'
       ? { reason: 'HISTORICAL_DELIVERY_CONFIRMED' }
       : {},
   });
@@ -397,12 +421,15 @@ export async function separateItems(client, {
   return loadFulfillmentBatches(client, [batchId, newBatchId]);
 }
 
-export async function mutateFulfillmentBatch(args) {
+export async function mutateFulfillmentBatch(args, { actor } = {}) {
   return inventoryTransaction(async client => {
-    await ensureFulfillmentAssignments(client);
     const action = String(args?.action || '').toUpperCase();
+    // Delivery operates only on persisted membership. Do not run global buyer or
+    // assignment maintenance while recording an existing batch's handover.
+    if (action === 'DELIVER') await lockFulfillment(client);
+    else await ensureFulfillmentAssignments(client);
     if (['PREPARE', 'DELIVER', 'REOPEN'].includes(action)) {
-      return transitionBatch(client, { ...args, action });
+      return transitionBatch(client, { ...args, action }, { actor });
     }
     if (action === 'COMBINE') return combineBatches(client, args);
     if (action === 'SEPARATE') return separateItems(client, args);

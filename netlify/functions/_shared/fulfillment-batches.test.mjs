@@ -180,7 +180,7 @@ function transitionClient({
       queries.push({ sql, params });
       if (sql.includes('SELECT * FROM fulfillment_batches')) return { rows: [batch] };
       if (sql.includes('SELECT order_id,product_id')) return { rows: itemRows };
-      if (sql.includes('SELECT * FROM checkout_attempts')) return { rows: [{order_snapshot:{status:'PAYMENT_CONFIRMED',
+      if (sql.includes('SELECT * FROM checkout_attempts')) return { rows: [{committed_at:preparedAt,order_snapshot:{status:'PAYMENT_CONFIRMED',
         items:[{productId:'item-062',saleMode:'IMMEDIATE',dueNowPYG:100,futureBalancePYG:0}],
         payments:[{id:'paid',amountPYG:paymentAmount,amountSource:'ADMIN_VERIFIED',verifiedBy:'ADMIN',verificationStatus:'CONFIRMED'}]}}] };
       if (sql.includes('FROM item_payment_decisions')) return {rows:[]};
