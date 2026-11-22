@@ -47,7 +47,7 @@ test('405/441 new purchases use owner-confirmed 25% with campaign ON or OFF; agr
       assert.equal(p.pickupWindowStart,'2026-12-09');
       assert.equal(p.pickupWindowEnd,'2026-12-12');
     }
-    assert.deepEqual(sale.map(p=>p.askingPricePYG),enabled?[19000,25000]:[38000,50000]);
+    assert.deepEqual(sale.map(p=>p.askingPricePYG),enabled?[7600,10000]:[38000,50000]);
     const accepted=await loadSaleCatalog('http://localhost',{}, {...dependencies,
       readSalePricingState:async()=>({inventory:new Map(),cartPrices:new Map([
         [products[0].id,null],
@@ -64,8 +64,8 @@ test('405/441 new purchases use owner-confirmed 25% with campaign ON or OFF; agr
 });
 
 test('tiers use current asking price before discount, rounded to whole guaranies', () => {
-  for (const [original, percent, expected] of [[12000,10,10800],[11999,10,10799],
-    [12001,50,6001],[26301,50,13151],[10000,10,9000]]) {
+  for (const [original, percent, expected] of [[4000,10,3600],[3999,10,3599],
+    [4001,80,800],[4003,80,801],[26301,80,5260],[12000,80,2400]]) {
     const p = product(1, original, { originalPricePYG: 999999 });
     const result = liquidationPrice(p, stock, true);
     assert.equal(result.askingPricePYG, expected);
@@ -78,7 +78,7 @@ test('tiers use current asking price before discount, rounded to whole guaranies
 });
 
 test('protected Items, inquiry/USD, invalid prices and unsellable stock are untouched', () => {
-  for (const p of [product(274,2950000),product(313,1800000),
+  for (const p of [product(274,2950000,{status:'SOLD'}),product(313,1800000),
     product(615,null,{currency:'USD',askingPriceUSD:16990,saleMode:'INQUIRY'}),
     ...['SOLD','PICKED_UP','RESERVED','WITHDRAWN','UNAVAILABLE','UNLISTED','NEEDS_REVIEW'].map(status=>product(1,20000,{status})),
     product(1,20000,{quantityRemaining:0}),product(1,0),product(1,1.5),product(1,NaN)]) {
@@ -86,7 +86,7 @@ test('protected Items, inquiry/USD, invalid prices and unsellable stock are unto
   }
   const p = product(1);
   assert.equal(liquidationPrice(p, {purchasable_quantity:0}, true), p);
-  assert.equal(liquidationPrice(p, undefined, true).askingPricePYG,13151);
+  assert.equal(liquidationPrice(p, undefined, true).askingPricePYG,5260);
   for (const inventory of [{}, {purchasable_quantity:null}, {purchasable_quantity:NaN},
     {purchasable_quantity:-1}, {purchasable_quantity:0.5}]) {
     assert.equal(liquidationPrice(p,inventory,true),p);
@@ -94,7 +94,7 @@ test('protected Items, inquiry/USD, invalid prices and unsellable stock are unto
 });
 
 test('uninitialized stock uses the first-claim catalog quantity, with both tiers and fail-closed exclusions',()=>{
-  for(const [price,expected] of [[30000,15000],[25000,12500],[12000,10800],[12001,6001]]) {
+  for(const [price,expected] of [[30000,6000],[25000,5000],[4000,3600],[4001,800]]) {
     const p=product(658,price,{saleMode:'IMMEDIATE',quantityRemaining:1});
     assert.equal(liquidationPrice(p,undefined,true).askingPricePYG,expected);
     assert.equal(liquidationPrice(p,{purchasable_quantity:1},true).askingPricePYG,expected);
@@ -104,27 +104,30 @@ test('uninitialized stock uses the first-claim catalog quantity, with both tiers
     const p=product(658,30000,{quantityRemaining});assert.equal(liquidationPrice(p,undefined,true),p);
   }
   const p=product(658,30000,{quantityRemaining:null,quantityTotal:2});
-  assert.equal(liquidationPrice(p,undefined,true).askingPricePYG,15000);
-  for(const p of [product(274),product(313),product(615),product(1,30000,{status:'SOLD'}),
+  assert.equal(liquidationPrice(p,undefined,true).askingPricePYG,6000);
+  for(const p of [product(274,30000,{status:'SOLD'}),product(313),product(615),product(1,30000,{status:'SOLD'}),
     product(31,30000,{status:'NEEDS_REVIEW',quantityRemaining:0}),product(1,30000,{saleMode:'INQUIRY'})]) {
     assert.equal(liquidationPrice(p,undefined,true),p);
   }
 });
 
 test('Admin override wins; authoring/Admin catalog and original objects never get discounted', async () => {
-  const base = [product(1,9000),product(274,3800000)];
+  const base = [product(1,9000),product(274,3800000),product(265,5000)];
   const before = structuredClone(base);
   const raw = () => loadCatalog('http://localhost', {
     loadBaseCatalog: async()=>base,
     listProductOverrides: async()=>[
       {productId:'item-1',publicFields:{askingPricePYG:26301}},
       {productId:'item-274',publicFields:{askingPricePYG:2950000}},
+      {productId:'item-265',publicFields:{askingPricePYG:2500}},
     ], readCommittedInventory: async()=>new Map(),
   });
   const sale = await loadSaleCatalog('http://localhost', {}, {loadCatalog:raw, enabled:true,
     readSalePricingState: async()=>({inventory:new Map(base.map(p=>[p.id,stock])),cartPrices:new Map()})});
-  assert.equal(sale[0].askingPricePYG,13151);
-  assert.equal(sale[1].askingPricePYG,2950000);
+  assert.equal(sale.find(p=>p.itemNumber===1).askingPricePYG,5260);
+  assert.equal(sale.find(p=>p.itemNumber===274).askingPricePYG,590000);
+  assert.equal(sale.find(p=>p.itemNumber===265).askingPricePYG,2250);
+  assert.equal(sale.find(p=>p.itemNumber===265).liquidation.percent,10);
   assert.equal((await raw())[0].askingPricePYG,26301);
   assert.deepEqual(base,before);
 });
@@ -140,8 +143,8 @@ test('real cart-to-checkout flow freezes prices, preserves commitments and old r
   setInventoryDatabaseClientForTests({pool:{query:client.query,connect:async()=>client}});
   const a='11111111-1111-4111-8111-111111111111', b='22222222-2222-4222-8222-222222222222';
   let enabled=true;
-  let products=[product(1),product(2,11999,{saleMode:'IMMEDIATE',depositPercent:100}),
-    product(274,2950000),product(313,1800000),product(615,null,{saleMode:'INQUIRY',currency:'USD',askingPriceUSD:16990})];
+  let products=[product(1),product(2,3999,{saleMode:'IMMEDIATE',depositPercent:100}),
+    product(274,2950000,{status:'SOLD'}),product(313,1800000),product(615,null,{saleMode:'INQUIRY',currency:'USD',askingPriceUSD:16990})];
   try {
     // An old active cart exists before the additive migration; no price rewrite.
     await claimCartLease({cartSessionId:b,productId:'item-1',quantity:1,availability:3});
@@ -164,16 +167,18 @@ test('real cart-to-checkout flow freezes prices, preserves commitments and old r
     };
     await claim('item-1',2); await claim('item-2',2);
     let sale=await loadProducts('http://localhost',{cartSessionId:a});
-    assert.equal(sale[0].askingPricePYG,13151);
-    assert.equal(sale[1].askingPricePYG,10799);
+    assert.equal(sale[0].askingPricePYG,5260);
+    assert.equal(sale[1].askingPricePYG,3599);
     const held=await readSalePricingState(null);
     assert.equal(Number(held.inventory.get('item-1').purchasable_quantity),0);
     assert.equal(liquidationPrice(products[0],held.inventory.get('item-1'),true),products[0]);
     // Admin changes and campaign reversal affect new shoppers, never held prices.
     products=products.map(p=>p.id==='item-1'?{...p,askingPricePYG:50000}:p);
     enabled=false;
+    await claim('item-1',1);
+    await claim('item-1',2);
     sale=await loadProducts('http://localhost',{cartSessionId:a});
-    assert.equal(sale[0].askingPricePYG,13151);
+    assert.equal(sale[0].askingPricePYG,5260);
     assert.deepEqual(await getCartLeaseStatus(b),oldLease);
     const handler=createOrderHandler({loadProducts,readOrder:async()=>null,recoverOrder:async order=>order});
     const checkoutId='33333333-3333-4333-8333-333333333333';
@@ -186,15 +191,15 @@ test('real cart-to-checkout flow freezes prices, preserves commitments and old r
     const response=await handler(request());
     const result=await response.json();assert.equal(response.status,201,JSON.stringify(result));
     const order=result.order;
-    assert.deepEqual(order.totals,{totalPYG:47900,dueNowPYG:28174,futureBalancePYG:19726});
-    assert.equal(order.items[0].unitPricePYG,13151);
+    assert.deepEqual(order.totals,{totalPYG:17718,dueNowPYG:9828,futureBalancePYG:7890});
+    assert.equal(order.items[0].unitPricePYG,5260);
     assert.equal(order.items[0].depositPercent,25);
     assert.equal(order.items[0].pickupWindowStart,'2026-12-09');
     assert.equal(order.items[0].pickupWindowEnd,'2026-12-12');
     const stored=(await db.query('SELECT order_snapshot FROM checkout_attempts')).rows[0].order_snapshot;
     const retry=await handler(request());assert.deepEqual((await retry.json()).order,order);
     assert.deepEqual((await db.query('SELECT order_snapshot FROM checkout_attempts')).rows[0].order_snapshot,stored);
-    assert.equal(publicOrder(stored).items[0].unitPricePYG,13151);
+    assert.equal(publicOrder(stored).items[0].unitPricePYG,5260);
     assert.equal((await db.query("SELECT committed_quantity FROM operational_inventory WHERE product_id='item-2'")).rows[0].committed_quantity,1);
     assert.deepEqual(await getCartLeaseStatus(b),oldLease);
     const protectedSale=await loadProducts('http://localhost',{});

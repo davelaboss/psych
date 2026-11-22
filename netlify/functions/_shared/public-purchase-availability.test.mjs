@@ -46,8 +46,8 @@ test('real CART and protected ORDER holds block all four reported items; owner s
   const anonymous=await loadProducts('http://localhost',{cartSessionId:buyer});
   assert.ok(anonymous.slice(0,4).every(p=>p.purchaseBlockedByHold&&p.purchasableQuantity===0));
   assert.deepEqual(anonymous.slice(0,4).map(p=>p.askingPricePYG),[100000,50000,50000,55000]);
-  assert.equal(anonymous[4].purchasableQuantity,1);assert.equal(anonymous[4].askingPricePYG,15000);
-  assert.equal(anonymous[5].purchasableQuantity,1);assert.equal(anonymous[5].askingPricePYG,15000);
+  assert.equal(anonymous[4].purchasableQuantity,1);assert.equal(anonymous[4].askingPricePYG,6000);
+  assert.equal(anonymous[5].purchasableQuantity,1);assert.equal(anonymous[5].askingPricePYG,6000);
   const cart=createCartReservationHandler({loadProducts,recordEvent:async()=>{}});
   for(const p of products.slice(0,4)){
    const response=await cart(new Request('http://localhost/api/cart/reservation',{method:'POST',headers:{cookie:`psych_cart_session=${buyer}`,'content-type':'application/json'},body:JSON.stringify({action:'claim',productId:p.id,quantity:1})}));
@@ -59,7 +59,7 @@ test('real CART and protected ORDER holds block all four reported items; owner s
   await db.query("DELETE FROM inventory_reservations WHERE product_id='item-447'"); // disposable local hold only
   const released=(await loadProducts('http://localhost',{cartSessionId:buyer})).find(p=>p.itemNumber===447);
   assert.equal(released.purchaseBlockedByHold,false);assert.equal(released.purchasableQuantity,1);
-  assert.equal(released.askingPricePYG,27500);assert.equal(released.liquidation.percent,50);
+  assert.equal(released.askingPricePYG,11000);assert.equal(released.liquidation.percent,80);
  }finally{setInventoryDatabaseClientForTests(undefined);await db.close()}
 });
 
