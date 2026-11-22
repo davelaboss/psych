@@ -312,7 +312,7 @@ export async function synchronizeOrderProjection(orderId, writer) {
     return row.order_snapshot;
   });
 }
-async function orderLock(client, orderId, {allowRetention=false} = {}) {
+export async function orderLock(client, orderId, {allowRetention=false} = {}) {
   const row = (await client.query('SELECT * FROM checkout_attempts WHERE order_id=$1 FOR UPDATE', [orderId])).rows[0];
   if (!row) return null;
   if(!allowRetention&&isOwnerRetainedOrder(row.order_snapshot))throw fail('Retención personal cerrada. El historial no admite cambios.');
@@ -416,6 +416,12 @@ export async function confirmOrderPayment(orderId, confirmation) {
   return inventoryTransaction(async client => {
     const locked = await orderLock(client, orderId);
     if (!locked) return false;
+    return confirmLockedOrderPayment(client, orderId, locked, confirmation);
+  });
+}
+
+// Caller must hold the order and product locks in the same transaction.
+export async function confirmLockedOrderPayment(client, orderId, locked, confirmation, { notify = true } = {}) {
     const { row, rows } = locked;
     const current = withPaymentState(row.order_snapshot);
     if (current.status === 'CANCELLED') return false;
@@ -451,13 +457,12 @@ export async function confirmOrderPayment(orderId, confirmation) {
     const snapshot = result.order;
     await client.query('UPDATE checkout_attempts SET committed_at=COALESCE(committed_at,$2),order_snapshot=$3,projection_version=projection_version+1,updated_at=clock_timestamp() WHERE order_id=$1',
       [orderId, new Date(timestamp), JSON.stringify(snapshot)]);
-    await queueOrderNotifications(client, { key: `payment:${confirmation.paymentId}`, order: snapshot,
+    if (notify) await queueOrderNotifications(client, { key: `payment:${confirmation.paymentId}`, order: snapshot,
       type: 'PAYMENT_CONFIRMED', details: { paymentType: type,
         verifiedAmountPYG: Number(confirmation.verifiedAmountPYG),
         previousConfirmedPaidPYG: result.previousConfirmedPaidPYG,
         paymentState: snapshot.paymentState } });
     return snapshot;
-  });
 }
 
 async function reconcileLockedOrderLegacyPayment(client, orderId, orderSnapshot, reconciliation) {
