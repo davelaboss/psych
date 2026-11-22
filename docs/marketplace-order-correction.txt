@@ -1,0 +1,124 @@
+TARGETED MARKETPLACE CORRECTION — DRAFT, NOT EXECUTED
+
+Scope: VM-2026-96200FE0 only. Keep Item 369, quantity one, at its
+owner-approved Marketplace price of Gs. 30,000. Remove Items 402, 454 and
+643. Reconcile the existing pending receipt as the owner-verified Gs. 30,000
+bank payment. No catalog price changes, pickup appointment or delivery.
+
+REVIEW / RELEASE BASE
+
+The source base is deployed commit e91ef4c9d6eb75efecdd18e18646a0ce3485af3c,
+not GitHub main (115baa475e2e566391af83c0ee210892ae3730ac).
+Netlify's November 18 release explicitly built that SHA using its builds API;
+the release did not move GitHub main. GitHub reports divergent histories:
+39 commits unique to the production side and three unique to main.
+The exact reason for all prior divergence is not established by this narrow
+check; do not attribute it to a force push or lost commits without evidence.
+
+The deployed commit is retrievable from GitHub. The separate review base
+preserves its exact source tree with a no-change [skip netlify] commit so
+creating the review branch does not request an automatic deployment.
+Both review branches are unrelated to delivery-authorization or new pricing
+work. No existing branch is reset, merged, cleaned up or reconciled.
+
+Release blocker: reconcile the divergent release history separately before
+restoring normal main-based publication. Safest approach: retain production
+as the starting point, review the three main-only commits, and merge/cherry-
+pick only changes still needed through a separately reviewed reconciliation
+PR. Never deploy current main over production or force-reset either history.
+The correction itself requires no schema migration or architecture change.
+
+IMPLEMENTATION
+
+Authenticated endpoint: /.netlify/functions/admin-correct-marketplace-order
+GET: read-only plan; does not call getOrder, repair Blobs, or renew holds.
+POST: fixed action, fixed order, fixed products and fixed Gs. 30,000 amount.
+No general-purpose item, price, payment or inventory editing input exists.
+
+The write uses existing inventoryTransaction and orderLock. Under the same
+order/product locks it validates version 2, the original four prices and
+quantities, one pending receipt, no payment/commitment, four protected ORDER
+holds, capacity one/committed zero, and no pickup, fulfillment or item-payment
+decision. Changed state aborts with 409; there is no adaptation to paid orders.
+
+It saves original details (including buyer, receipt and pending payment
+history, excluding the access-token hash) in order_snapshot.orderCorrections.
+The live order keeps its original identity, buyer, receipt, token hash and
+checkout fingerprint. An ORDER_CORRECTION entry in the existing paymentNotes
+history records the reason and authorization reference for Admin review.
+This uses the existing durable JSON snapshot; no new audit table is needed.
+
+Only the three removed ORDER reservations are deleted. Capacity is never
+increased. The retained line receives its order-specific Gs. 30,000 price;
+its obsolete liquidation annotation is removed only from the active order
+line and remains in the original audit snapshot.
+
+The existing confirmation implementation is extracted into a locked helper,
+which the routine confirmation wrapper still calls with notifications on.
+The correction calls that same helper with notifications off, confirming the
+existing pending payment as FULL/ADMIN_VERIFIED and committing only Item 369.
+There is one atomic snapshot write and one projection-version increment.
+Any failure rolls back the reservation release, payment, commitment and audit.
+The resulting status is PAYMENT_CONFIRMED, never PICKED_UP/ENTREGADO.
+
+The endpoint then uses existing recoverOrderBlob/synchronizeOrderProjection.
+If Blob synchronization fails after SQL commit, it returns 503/committed:true.
+An exact POST retry recognizes the fixed correction ID, makes no second
+financial/inventory change, and repairs the Blob projection. Never recreate
+the order or reverse inventory to recover from projection failure.
+No notification is queued, replayed, drained or sent by this endpoint.
+
+READ-ONLY PRODUCTION PREFLIGHT
+
+November 21, 2026, 21:19 Paraguay time: one read-only database session using
+netlifydb_readonly confirmed the expected unchanged version-2 state. Direct
+Blob reads confirmed matching order items/payments and the unchanged receipt.
+No production mutation or payment confirmation occurred.
+
+PROPOSED EXECUTION — REQUIRES FURTHER OWNER AUTHORIZATION
+
+1. Obtain Governance review and separate owner approval for integration,
+   publication and the actual correction/payment confirmation. This draft PR
+   grants none of those permissions. Resolve the release-base blocker above,
+   or explicitly authorize an exact-SHA release based on the preserved
+   production tree. Keep automatic publication locked during that work.
+2. Publish only the reviewed source through the approved release process.
+   Merely deploying the function does not run it; no migration is required.
+3. GET the authenticated endpoint once. Require version 2 and the exact
+   approved plan; stop on 409 or any changed order/payment/hold state.
+4. After explicit authorization to execute, POST the following JSON using
+   existing secure Admin authentication. Use the pending paymentId from GET,
+   and the real Governance/owner approval reference. Do not use an ordinary
+   payment-confirmation endpoint or click cancellation first.
+
+   {
+     "action": "CORRECT_AND_CONFIRM",
+     "expectedVersion": 2,
+     "paymentId": "<pending paymentId returned by GET>",
+     "verifiedAmountPYG": 30000,
+     "approvalReference": "<approved Governance/owner reference>"
+   }
+
+5. Verify read-only: one active line (369 x1 at Gs. 30,000), original details
+   in the audit, same receipt/payment ID, ADMIN_VERIFIED confirmed Gs. 30,000,
+   balance zero, only 369 COMMITTED, the three other holds absent, capacities
+   unchanged, matching SQL/Blob projection versions, no new notification,
+   and no pickup/delivery change. Other customers may buy released products;
+   do not mistake their later valid reservations for a failed correction.
+6. For a committed:true projection failure, repeat the identical POST only.
+   For 409 or unexpected data, stop and investigate without resetting data.
+
+FOCUSED VALIDATION
+
+Run against a disposable local PostgreSQL database named correction_test_*:
+
+ORDER_CORRECTION_TEST_DATABASE_URL=postgres://...@127.0.0.1:PORT/correction_test_...
+node --import tsx --test netlify/functions/_shared/marketplace-order-correction.test.mjs netlify/functions/_shared/payment-confirmation-transaction.test.mjs netlify/functions/_shared/order-payments.test.mjs
+
+The new tests require an explicit local URL and reject hosted databases.
+They use separate disposable schemas and real independent SQL workers.
+Coverage: totals, bank-confirmation provenance, stock/availability, original
+audit and receipt preservation, unaffected inventory, retry/idempotency,
+changed-state rejection, rollback, concurrent cancellation/confirmation,
+projection-failure repair, private audit visibility, auth and read-only GET.
+External HTTP requests are prohibited during these tests.

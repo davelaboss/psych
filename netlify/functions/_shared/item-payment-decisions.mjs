@@ -9,18 +9,29 @@ const fail = message => Object.assign(new Error(message), { status: 409 });
 export async function readItemPaymentDecisions(orderId, client = database().pool) {
   return (await client.query('SELECT * FROM item_payment_decisions WHERE order_id=$1 ORDER BY created_at,id', [orderId])).rows;
 }
-export async function requireCollectionPayments(client, items) {
+export async function requireCollectionPayments(client, items, { authorizeDelivery = false } = {}) {
   if (!items.length) throw fail('No hay artículos para entregar.');
+  const blockedItems = [];
   for (const orderId of [...new Set(items.map(i => i.orderId))].sort()) {
     const row = (await client.query('SELECT * FROM checkout_attempts WHERE order_id=$1 FOR UPDATE',[orderId])).rows[0];
     const order = snapshotWithReservation(row);
-    const decisions = await readItemPaymentDecisions(orderId,client);
-    const funding = order ? itemPaymentEligibility(order,decisions) : [];
-    if (!order || !orderSchedulingEligible(order) || items.filter(i=>i.orderId===orderId).some(item=>
-      !funding.find(i=>i.productId===item.productId)?.handoverEligible)) {
-      throw fail('Antes de entregar, confirmá y asigná el pago total de cada artículo o registrá su excepción acordada.');
+    // An owner may authorize handover despite payment evidence, never restore an
+    // expired/cancelled/uncommitted order or deliver a missing membership.
+    if (!order || !row.committed_at || !orderSchedulingEligible(order)) {
+      throw Object.assign(fail('El pedido no admite entrega. Revisá su estado y reserva.'), { code: 'FULFILLMENT_ORDER_INELIGIBLE' });
     }
+    const selected = items.filter(i => i.orderId === orderId);
+    if (selected.some(item => !order.items?.some(i => i.productId === item.productId))) {
+      throw Object.assign(fail('Uno o más artículos ya no pertenecen al pedido.'), { code: 'FULFILLMENT_ITEMS_NOT_FOUND' });
+    }
+    const decisions = await readItemPaymentDecisions(orderId,client);
+    const funding = itemPaymentEligibility(order,decisions);
+    blockedItems.push(...selected.filter(item => !funding.find(i => i.productId === item.productId)?.handoverEligible));
   }
+  if (blockedItems.length && !authorizeDelivery) {
+    throw Object.assign(fail('Antes de entregar, confirmá y asigná el pago total de cada artículo o registrá su excepción acordada.'), { code: 'DELIVERY_PAYMENT_EVIDENCE_REQUIRED' });
+  }
+  return blockedItems;
 }
 export async function appendItemPaymentDecision(orderId, input, dependencies = {}) {
   return (dependencies.transaction || inventoryTransaction)(async client => {

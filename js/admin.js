@@ -220,7 +220,7 @@ async function adminFetch(
     throw Object.assign(new Error(
       data.error ||
       'No se pudo completar la operación.'
-    ), { status: response.status });
+    ), { status: response.status, code: data.code });
   }
 
   return data;
@@ -4820,11 +4820,26 @@ async function deliverFulfillmentBatch(batchId) {
     ? '¿Confirmar que este lote histórico ya fue entregado? Esta acción registra la entrega sin reabrir ni volver a preparar el lote.'
     : '¿Confirmar que este lote fue entregado?';
   if (!window.confirm(confirmation)) return;
+  const payload = { action: 'DELIVER', batchId, expectedRevision: batch.revision };
+  if (isHistorical) payload.confirmFrozen = true;
   try {
-    const payload = { action: 'DELIVER', batchId, expectedRevision: batch.revision };
-    if (isHistorical) payload.confirmFrozen = true;
     await updateFulfillmentBatch(payload);
   } catch (error) {
+    if (!isHistorical && error.code === 'DELIVERY_PAYMENT_EVIDENCE_REQUIRED') {
+      if (!window.confirm('Autorizar entrega como propietario\n\nEl registro de pago no permite confirmar la cobertura de todos los artículos. ¿Confirmás que autorizás la entrega física? Esta autorización queda en el historial y no registra pagos ni cambia saldos.')) return;
+      const reason = window.prompt('Motivo breve de la autorización (obligatorio, hasta 500 caracteres):');
+      if (reason === null) return;
+      if (!reason.trim() || reason.trim().length > 500) {
+        alert('Ingresá un motivo de entre 1 y 500 caracteres. No se registró la entrega.');
+        return;
+      }
+      try {
+        await updateFulfillmentBatch({ ...payload, ownerDeliveryAuthorization: { confirmed: true, reason: reason.trim() } });
+      } catch (authorizationError) {
+        alert(authorizationError instanceof Error ? authorizationError.message : 'No se pudo autorizar la entrega.');
+      }
+      return;
+    }
     alert(error instanceof Error ? error.message : 'No se pudo marcar el lote como entregado.');
   }
 }
