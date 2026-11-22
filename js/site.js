@@ -685,7 +685,7 @@ function setupProductDiscoveryKeyboard(discovery) {
 
 function renderLiquidationPrice(product, context) {
   const offer = product.liquidation;
-  if (!offer || ![10, 50].includes(offer.percent)) return '';
+  if (!offer || ![10, 50, 80].includes(offer.percent)) return '';
   return `<div class="${context === 'card' ? 'price ' : ''}liquidation-price liquidation-price-${context}">
     <span class="liquidation-original"><del aria-label="Precio anterior">${formatPYG(offer.originalAskingPricePYG)}</del><span class="liquidation-badge liquidation-badge-${offer.percent}" aria-label="${offer.percent}% de descuento">−${offer.percent}%</span></span>
     <div class="liquidation-offer"><strong class="${context === 'detail' ? 'detail-price' : 'liquidation-current'}">${formatPYG(product.askingPricePYG)}${product.quantityTotal > 1 ? ' <small>por unidad</small>' : ''}</strong>

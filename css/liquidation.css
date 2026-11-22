@@ -16,7 +16,7 @@ html.liquidation-active{scroll-padding-top:calc(var(--liquidation-announcement-h
 .liquidation-original{display:flex;align-items:center;justify-content:flex-start;gap:6px;white-space:nowrap}
 .liquidation-original del{color:#655b52;font-weight:500}
 .liquidation-badge{display:inline-block;border:1px solid #a51f28;border-radius:4px;padding:1px 5px;font-size:11px!important;font-weight:800;line-height:1.3;color:#8e1b23;background:#fff1ed}
-.liquidation-badge-50{color:#fff;background:#a51f28}
+.liquidation-badge-50,.liquidation-badge-80{color:#fff;background:#a51f28}
 .liquidation-current,.liquidation-price .detail-price{display:block;color:#b0212b;font-weight:800;line-height:1.15}
 .liquidation-current small,.liquidation-price .detail-price small{font-size:11px!important;font-weight:500;white-space:nowrap}
 .liquidation-offer{min-width:0;text-align:right}

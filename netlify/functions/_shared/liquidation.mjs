@@ -1,5 +1,5 @@
 export const LIQUIDATION_ID = 'moving-sale-final-2026-11-13';
-const PROTECTED_ITEMS = new Set([274, 313, 615]);
+const PROTECTED_ITEMS = new Set([313, 615]);
 
 export function liquidationEnabled() {
   return process.env.FINAL_LIQUIDATION_ENABLED === 'true';
@@ -32,7 +32,7 @@ export function liquidationPrice(product, inventory, enabled = liquidationEnable
       (product.currency && product.currency !== 'PYG') || !Number.isSafeInteger(price) || price <= 0 ||
       !Number.isSafeInteger(quantity) || quantity <= 0 ||
       !Number.isSafeInteger(purchasable) || purchasable <= 0) return product;
-  const percent = price <= 12000 ? 10 : 50;
+  const percent = price <= 4000 ? 10 : 80;
   return {
     ...product,
     ...(product.saleMode === 'DELAYED' ? { depositPercent: 25 } : {}),
