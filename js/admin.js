@@ -5352,7 +5352,12 @@ function adminOrderMatchesFilter(order, filter) {
   const status = order.status;
 
   const groups = {
-    ACTIVE: status !== 'CANCELLED',
+    ACTIVE: status !== 'CANCELLED' && !(
+      order.fullyDelivered === true && order.remainingBalancePYG === 0 && !order.hasPendingPayment && [
+        'PAYMENT_CONFIRMED', 'DEPOSIT_CONFIRMED', 'PAID_IN_FULL',
+        'READY_TO_SCHEDULE', 'PICKUP_SCHEDULED', 'PICKED_UP',
+      ].includes(status)
+    ),
     WAITING: [
       'AWAITING_INITIAL_PAYMENT',
       'DEPOSIT_CONFIRMED',
