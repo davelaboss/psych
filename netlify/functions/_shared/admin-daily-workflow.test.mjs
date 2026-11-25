@@ -267,6 +267,69 @@ test('order search, state filters and open/close navigation still work after ref
   assert.equal(s.node('[data-admin-detail="NEW"]').hidden, true);
 });
 
+test('Pedidos hides only settled fully delivered orders in Activos and preserves all five other buttons', () => {
+  const s = scenario();
+  const delivered = (id, status = 'PAYMENT_CONFIRMED', extra = {}) => ({
+    ...order(id, status), fullyDelivered: true, remainingBalancePYG: 0,
+    hasPendingPayment: false, ...extra,
+  });
+  s.state.orders = [
+    delivered('DELIVERED'), delivered('PICKED-UP', 'PICKED_UP'),
+    delivered('PARTIAL', 'PAID_IN_FULL', { fullyDelivered: false }),
+    delivered('UNPAID', 'AWAITING_INITIAL_PAYMENT', { remainingBalancePYG: 50000 }),
+    delivered('BALANCE', 'DEPOSIT_CONFIRMED', { remainingBalancePYG: 25000 }),
+    delivered('UNPAID-CONFIRMED', 'PAYMENT_CONFIRMED', { remainingBalancePYG: 1 }),
+    delivered('RECEIPT', 'RECEIPT_RECEIVED'), delivered('VERIFYING', 'VERIFYING_PAYMENT'),
+    delivered('FINAL-RECEIPT', 'FINAL_RECEIPT_RECEIVED'),
+    delivered('PENDING-PAYMENT', 'PAYMENT_CONFIRMED', { hasPendingPayment: true }),
+    delivered('CANCELLED', 'CANCELLED'), delivered('UNKNOWN', 'NEEDS_REVIEW'),
+    delivered('MISSING-DELIVERY', 'PAYMENT_CONFIRMED', { fullyDelivered: undefined }),
+    delivered('MISSING-BALANCE', 'PAYMENT_CONFIRMED', { remainingBalancePYG: undefined }),
+  ];
+  const before = JSON.stringify(s.state.orders);
+  s.renderOrdersTab();
+  const ids = () => s.target.querySelectorAll('[data-admin-open]').map(node => node.attrs['data-admin-open']);
+  assert.deepEqual(ids(), ['PARTIAL', 'UNPAID', 'BALANCE', 'UNPAID-CONFIRMED',
+    'RECEIPT', 'VERIFYING', 'FINAL-RECEIPT', 'PENDING-PAYMENT', 'UNKNOWN',
+    'MISSING-DELIVERY', 'MISSING-BALANCE']);
+  assert.equal(s.target.querySelectorAll('[data-admin-order-filter]').length, 6);
+  for (const [filter, expected] of [
+    ['WAITING', ['UNPAID', 'BALANCE']],
+    ['RECEIPT', ['RECEIPT', 'VERIFYING', 'FINAL-RECEIPT']],
+    ['PAID', ['DELIVERED', 'PICKED-UP', 'PARTIAL', 'UNPAID-CONFIRMED',
+      'PENDING-PAYMENT', 'MISSING-DELIVERY', 'MISSING-BALANCE']],
+    ['CANCELLED', ['CANCELLED']],
+    ['ALL', s.state.orders.map(order => order.id)],
+  ]) {
+    s.node(`[data-admin-order-filter="${filter}"]`).fire('click');
+    assert.deepEqual(ids(), expected, filter);
+  }
+  assert.ok(s.node('[data-admin-open="DELIVERED"]'));
+  assert.equal(JSON.stringify(s.state.orders), before);
+  assert.ok(s.calls.every(call => !call.options?.method || call.options.method === 'GET'));
+});
+
+test('personal retention stays read-only and appears only in Todos across all six filters', async () => {
+  const s = scenario();
+  const retained = { ...order('VM-2026-514DA2AA', 'PAYMENT_CONFIRMED'),
+    fullyDelivered: false, remainingBalancePYG: 0,
+    ownerRetention: { kind: 'NO_CASH_OWNER_RETENTION',
+      correctionId: 'owner-retention-VM-2026-514DA2AA-v1' } };
+  s.state.orders = [retained];
+  s.renderOrdersTab();
+  for (const filter of ['ACTIVE', 'WAITING', 'RECEIPT', 'PAID', 'CANCELLED', 'ALL']) {
+    s.node(`[data-admin-order-filter="${filter}"]`).fire('click');
+    assert.equal(Boolean(s.node('[data-admin-open="VM-2026-514DA2AA"]')), filter === 'ALL', filter);
+  }
+  s.respond(async () => json({ order: retained }));
+  await s.node('[data-admin-open="VM-2026-514DA2AA"]').fire('click');
+  await tick();
+  const detail = s.node('[data-admin-detail="VM-2026-514DA2AA"]').innerHTML;
+  assert.match(detail, /Retención personal — sin dinero ni entrega/);
+  assert.doesNotMatch(detail, /<(?:button|input|form)\b/);
+  assert.ok(s.calls.every(call => !call.options?.method || call.options.method === 'GET'));
+});
+
 function inventoryFixture() {
   const item = (id, overrides = {}) => ({ id, itemNumber: id, title: `Artículo ${id}`, batchId: 'ONE',
     published: true, status: 'SOLD', quantityRemaining: 0,
