@@ -250,7 +250,9 @@ async function fetchAdminOrders(
       });
       const data = await response.json();
       if (!response.ok) {
-        throw Object.assign(new Error(data.error || 'No se pudieron cargar los pedidos.'), { status: response.status });
+        throw Object.assign(new Error(data.error || 'No se pudieron cargar los pedidos.'), {
+          status: response.status, code: data.code, errorReference: data.errorReference,
+        });
       }
       if (!Array.isArray(data.orders)) throw new Error('Respuesta de pedidos inválida.');
       const orders = data.orders;
@@ -265,7 +267,12 @@ async function fetchAdminOrders(
       return orders;
     } catch (error) {
       if (token === ADMIN_STATE.token) {
-        ADMIN_STATE.ordersError = 'No se pudieron actualizar los pedidos. Intentá nuevamente.';
+        const reference = error.code === 'ORDER_DELIVERY_LOOKUP_FAILED' &&
+          /^PEDIDOS-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(error.errorReference)
+          ? error.errorReference : null;
+        ADMIN_STATE.ordersError = reference
+          ? `No se pudo verificar el estado de entrega de los pedidos. Intentá nuevamente. Referencia: ${reference}.`
+          : 'No se pudieron actualizar los pedidos. Intentá nuevamente.';
       }
       throw error;
     } finally {

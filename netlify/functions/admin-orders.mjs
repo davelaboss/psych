@@ -5,6 +5,7 @@ import {
 } from './_shared/commerce.mjs';
 import { database } from './_shared/inventory-database.mjs';
 import { normalizeProductId, orderItems } from './_shared/fulfillment-batches-core.mjs';
+import { randomUUID } from 'node:crypto';
 
 export async function fullyDeliveredOrderIds(orders, client = database().pool) {
   if (!orders.length) return new Set();
@@ -43,7 +44,21 @@ export default async function handler(request) {
 
   const orders =
     await listOrders();
-  const deliveredOrderIds = await fullyDeliveredOrderIds(orders);
+  let deliveredOrderIds;
+  try {
+    deliveredOrderIds = await fullyDeliveredOrderIds(orders);
+  } catch (error) {
+    const errorReference = `PEDIDOS-${randomUUID()}`;
+    console.error('ADMIN_ORDERS_DELIVERY_LOOKUP_FAILED', {
+      errorReference,
+      code: typeof error?.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : 'UNKNOWN',
+    });
+    return jsonResponse({
+      error: `No se pudo verificar el estado de entrega de los pedidos. Intentá nuevamente. Referencia: ${errorReference}.`,
+      code: 'ORDER_DELIVERY_LOOKUP_FAILED',
+      errorReference,
+    }, 503);
+  }
 
   return jsonResponse({
     ok: true,

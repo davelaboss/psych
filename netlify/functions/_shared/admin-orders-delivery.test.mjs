@@ -3,6 +3,63 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import handler, { fullyDeliveredOrderIds } from '../admin-orders.mjs';
 import { setInventoryDatabaseClientForTests } from './inventory-database.mjs';
+import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { runInNewContext } from 'node:vm';
+import { jsonResponse } from './commerce.mjs';
+import { normalizeProductId, orderItems } from './fulfillment-batches-core.mjs';
+
+const endpoint = (await readFile(new URL('../admin-orders.mjs', import.meta.url), 'utf8'))
+  .replace(/^import\s[\s\S]*?from\s+['"][^'"]+['"];\r?\n/gm, '')
+  .replace('export default async function handler', 'async function handler')
+  .replace('export async function fullyDeliveredOrderIds', 'async function fullyDeliveredOrderIds');
+
+test('delivery lookup failures return a safe explicit 503 with a unique logged reference and no orders', async () => {
+  const orders = [{ id: 'SYNTHETIC', items: [{ productId: 'one', quantity: 1 }],
+    buyer: { email: 'private@example.test' }, payments: [], remainingBalancePYG: 0 }];
+  const before = JSON.stringify(orders), logs = [], calls = [];
+  let failing = true, code = '08006';
+  const context = {
+    randomUUID, jsonResponse, normalizeProductId, orderItems,
+    adminAuthorized: async () => true,
+    listOrders: async () => { calls.push('orders'); return orders; },
+    database: () => ({ pool: { query: async sql => {
+      assert.match(sql, /^SELECT\b/);
+      calls.push('delivery');
+      if (failing) throw Object.assign(new Error('private@example.test postgres://secret@private-host raw SQL'), { code });
+      return { rows: [{ order_id: 'SYNTHETIC', product_id: 'one' }] };
+    } } }),
+    console: { error: (...args) => logs.push(args) },
+  };
+  runInNewContext(endpoint + '\n;globalThis.handler = handler;', context);
+  const references = new Set();
+  for (const expectedCode of ['08006', 'UNKNOWN']) {
+    const response = await context.handler(new Request('https://isolated.test/api/admin/orders'));
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const body = await response.json();
+    assert.equal(body.code, 'ORDER_DELIVERY_LOOKUP_FAILED');
+    assert.match(body.errorReference, /^PEDIDOS-[0-9a-f-]{36}$/);
+    assert.ok(body.error.includes(body.errorReference));
+    assert.equal(Object.hasOwn(body, 'orders'), false);
+    const [event, entry] = logs.at(-1);
+    assert.equal(event, 'ADMIN_ORDERS_DELIVERY_LOOKUP_FAILED');
+    assert.deepEqual(Object.keys(entry).sort(), ['code', 'errorReference']);
+    assert.equal(entry.errorReference, body.errorReference);
+    assert.equal(entry.code, expectedCode);
+    assert.doesNotMatch(JSON.stringify([body, logs]), /private@example|postgres:|secret|private-host|raw SQL/);
+    references.add(body.errorReference);
+    code = 'private@example.test';
+  }
+  assert.equal(references.size, 2);
+  failing = false;
+  const recovered = await context.handler(new Request('https://isolated.test/api/admin/orders'));
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).orders[0].fullyDelivered, true);
+  assert.deepEqual(calls, ['orders', 'delivery', 'orders', 'delivery', 'orders', 'delivery']);
+  assert.equal(logs.length, 2);
+  assert.equal(JSON.stringify(orders), before);
+});
 
 test('order listing awaits authorization and rejects unsupported methods before business reads', async () => {
   const previous = process.env.ADMIN_TOKEN;

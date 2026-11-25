@@ -246,6 +246,44 @@ for (const failure of ['network', 'http', 'json', 'shape']) {
   });
 }
 
+test('delivery lookup error shows its reference on refresh and initial load; retry clears it', async () => {
+  const reference = 'PEDIDOS-11111111-2222-4333-8444-555555555555';
+  const message = `No se pudo verificar el estado de entrega de los pedidos. Intentá nuevamente. Referencia: ${reference}.`;
+  const failed = () => ({ ...json({ error: message, code: 'ORDER_DELIVERY_LOOKUP_FAILED', errorReference: reference }, false), status: 503 });
+  const s = scenario();
+  s.state.ordersUpdatedAt = instant;
+  s.renderOrdersTab();
+  const original = s.state.orders;
+  s.respond(async () => failed());
+  await s.node('#admin-refresh-orders').fire('click');
+  assert.equal(s.node('#admin-orders-refresh-error').hidden, false);
+  assert.equal(s.node('#admin-orders-refresh-error').textContent, message);
+  assert.equal(s.state.orders, original);
+  assert.equal(s.state.ordersUpdatedAt, instant);
+  s.respond(async () => json({ orders: [order('RECOVERED')] }));
+  await s.node('#admin-refresh-orders').fire('click');
+  assert.equal(s.state.orders[0].id, 'RECOVERED');
+  assert.equal(s.node('#admin-orders-refresh-error').hidden, true);
+  const initial = scenario();
+  initial.state.orders = [];
+  initial.respond(async () => failed());
+  await initial.loadDashboard();
+  assert.match(initial.target.innerHTML, /No pudimos cargar el panel/);
+  assert.ok(initial.target.innerHTML.includes(reference));
+  assert.equal(initial.state.orders.length, 0);
+});
+
+test('refresh errors never display invalid reference values or raw server diagnostics', async () => {
+  const s = scenario();
+  s.renderOrdersTab();
+  s.respond(async () => json({ error: 'private@example.test postgres://secret',
+    code: 'ORDER_DELIVERY_LOOKUP_FAILED', errorReference: '<script>secret</script>' }, false));
+  await s.node('#admin-refresh-orders').fire('click');
+  assert.equal(s.node('#admin-orders-refresh-error').hidden, false);
+  assert.match(s.node('#admin-orders-refresh-error').textContent, /No se pudieron actualizar/);
+  assert.doesNotMatch(s.node('#admin-orders-refresh-error').textContent, /private|postgres|secret|script/);
+});
+
 test('order search, state filters and open/close navigation still work after refresh', async () => {
   const s = scenario();
   s.respond(async () => json({ orders: [order('NEW'), order('CANCELLED', 'CANCELLED')] }));
